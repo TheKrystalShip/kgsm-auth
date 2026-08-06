@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`TheKrystalShip.KGSM.Auth.Discord`** — the ecosystem's single chokepoint to `discord.com`.
+  - `IDiscordDirectory` / `DiscordDirectory`: the OAuth exchange, `/users/@me` identity verification,
+    and the bot-token guild-role lookup that resolves a tier. Not-a-member, a member with no roles,
+    and a failed lookup stay three distinct answers.
+  - `OAuthHandshake`: CSRF `state` + PKCE verifier in one HttpOnly cookie, so a surface runs PKCE with
+    no server-side pending store and the state is bound to the browser that started the login.
+  - `DiscordTierCache`: short-TTL per-user tier cache for surfaces that re-derive authority per
+    request. Caches denials too.
+
 ## [1.0.0]
 
 ### Added

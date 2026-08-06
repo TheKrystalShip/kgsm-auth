@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TheKrystalShip.KGSM.Auth.Discord</RootNamespace>
+    <AssemblyName>TheKrystalShip.KGSM.Auth.Discord</AssemblyName>
+
+    <!--
+      HttpClient and nothing else. In particular NOT ASP.NET: the cookie this package's handshake is
+      carried in is written by the host in three lines, and depending on a web framework to save them
+      would put one in every consumer and make the handshake untestable without standing up a server.
+    -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+
+    <PackageId>TheKrystalShip.KGSM.Auth.Discord</PackageId>
+    <Authors>Heisenberg</Authors>
+    <Version>1.0.0</Version>
+    <Description>
+      The KGSM ecosystem's single chokepoint to discord.com: the OAuth login flow (cookie-carried
+      state + PKCE, no server-side pending store), identity verification, and the bot-token guild-role
+      lookup that resolves a caller's tier. Honest failure modes throughout — Discord unreachable is
+      an error, never a denial and never a grant.
+    </Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Auth/Auth.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

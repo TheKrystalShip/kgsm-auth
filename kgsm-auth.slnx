@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="src/Auth/Auth.csproj" />
+  <Project Path="src/Auth.Discord/Auth.Discord.csproj" />
   <Project Path="tests/Auth.Tests/Auth.Tests.csproj" />
+  <Project Path="tests/Auth.Discord.Tests/Auth.Discord.Tests.csproj" />
 </Solution>

@@ -33,6 +33,21 @@ Authority for the wider effort: **`../auth-unification-plan.md`**.
 - **`ResolveSnowflakes` is named apart from `Resolve` deliberately.** As an overload, an empty
   collection expression binds to neither and fails to compile at every call site passing one.
 
+## `Auth.Discord` — locked decisions
+
+- **The three lookup answers stay three answers.** `404` (not a member) ⇒ `null`, a member with no
+  roles ⇒ empty, and a failed lookup ⇒ `DiscordAuthException`. Never collapse the third into either of
+  the others: an outage read as "no roles" demotes an admin mid-incident, and read as "member" lets a
+  stranger in.
+- **`state` and PKCE ride one cookie and neither is optional.** `state` stops login CSRF and only
+  works because the cookie binds it to the browser that started the login; a server-side set of issued
+  states admits the attacker's own state. PKCE stops code interception. Do not "simplify" either away.
+- **`SameSite=Lax`, never `Strict`.** Strict suppresses the cookie on the top-level redirect back from
+  Discord, which breaks every login.
+- **No web framework dependency.** The package hands the host a cookie *value*; the host writes the
+  cookie. Taking a dependency on ASP.NET to save three lines would put it in every consumer and make
+  the handshake untestable without standing up a server.
+
 ## Conventions
 
 - Namespace `TheKrystalShip.KGSM.Auth`; package id matches.
