@@ -1,0 +1,82 @@
+# kgsm-auth
+
+The shared authorization model for the KGSM ecosystem: **one definition of who may do what**, used by
+every surface onto a host, so the same person gets the same authority through the Control Panel, the
+assistant and the Discord bot alike.
+
+## Packages
+
+| package | contents | taken by |
+|---|---|---|
+| **`TheKrystalShip.KGSM.Auth`** | the tier model, the Discord role map, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
+
+## The model
+
+Three ordered tiers — a higher one subsumes the lower (`admin ⊇ operator ⊇ viewer`):
+
+| tier | holds |
+|---|---|
+| `viewer` | reads: status, listings, whether a server is running |
+| `operator` | acts: start, stop, restart, install, uninstall, backup, update |
+| `admin` | host settings, audit configuration, session revocation, reading other people's conversations |
+
+Two rules decide every request:
+
+- **Guild membership is the access gate.** Not a member ⇒ `none` ⇒ a terminal denial. Re-authenticating
+  cannot change the answer, so it is never retried.
+- **A verified member floors at `viewer`.** The admin and operator role ids elevate from there. There is
+  no viewer role list, because it would grant what every member already has.
+
+```csharp
+KgsmRoleMap map = options.ToRoleMap();
+
+// A REST caller, roles fetched with the bot token. null == not a member.
+KgsmTier tier = map.Resolve(member?.Roles);
+
+// A gateway client that already holds the member object.
+KgsmTier tier = map.ResolveSnowflakes(guildUser?.Roles.Select(r => r.Id));
+
+if (tier < KgsmTier.Operator)
+    return Deny();
+```
+
+`null` and an empty collection mean different things and must not be conflated: `null` is *not a
+member*, an empty collection is *a member holding only `@everyone`*. Never pass an empty collection to
+stand in for a failed lookup — that turns an outage into a silent grant. Report the failure and deny.
+
+## Configuration
+
+Bound from the `KgsmAuth` section. The package owns the section and property names, so every surface
+binds the same keys by construction and one file can configure all of them:
+
+```
+KgsmAuth__GuildId=…
+KgsmAuth__ClientId=…
+KgsmAuth__ClientSecret=…        # environment only
+KgsmAuth__BotToken=…            # environment only
+KgsmAuth__RoleAdminIds=…        # comma-separated
+KgsmAuth__RoleOperatorIds=…     # comma-separated
+```
+
+Roles come from the **bot token** (`GET /guilds/{guild}/members/{user}`) — the only path to them, since
+the `identify guilds` user scopes do not carry roles. A surface that resolves authority therefore needs
+a bot token even when it runs no bot of its own.
+
+## Why it is dependency-free
+
+Every surface takes this assembly, including the Discord bot — whose deploy is tuned for footprint —
+and the CLI, whose startup a user feels directly. Anything referenced here would reach all of them, so
+the tier model stays a pure library: no HTTP, no configuration binder, no ORM. Transports that need
+those live in sibling packages that only the surfaces needing them take.
+
+## Development
+
+```bash
+dotnet build kgsm-auth.slnx
+dotnet test kgsm-auth.slnx
+dotnet pack src/Auth/Auth.csproj -c Release
+cp src/Auth/bin/Release/TheKrystalShip.KGSM.Auth.<v>.nupkg /home/heisen/local-nuget/
+```
+
+A consumer pins a version from the local feed, so a change here needs a repack and a version bump on
+both sides — a same-version repack is served stale from the NuGet cache, which is keyed by id+version.
