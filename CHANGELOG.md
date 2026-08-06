@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`TheKrystalShip.KGSM.Auth.Sessions`** — session tokens and the storage seam.
+  - `SessionTokenService`: HMAC-SHA256 access + refresh JWTs, `sid` stable across rotation, a fresh
+    `jti` per mint. Lifetimes and issuer are settings, so one value drives both the token's expiry and
+    the registry row's, and a surface that already mints keeps its issuer rather than 401ing every
+    live token.
+  - `ISessionRegistry` / `SessionRegistration`: create, liveness, rotate-with-reuse-detection, revoke,
+    GC. Storage is each surface's own.
+  - `SessionValidator`: the cached per-request check. Absolute expiry, denials cached, namespaced keys.
+  - `SessionCleanupWorker`: startup catch-up pass plus a timer; a failed sweep never kills the worker.
+
 - **`TheKrystalShip.KGSM.Auth.Discord`** — the ecosystem's single chokepoint to `discord.com`.
   - `IDiscordDirectory` / `DiscordDirectory`: the OAuth exchange, `/users/@me` identity verification,
     and the bot-token guild-role lookup that resolves a tier. Not-a-member, a member with no roles,

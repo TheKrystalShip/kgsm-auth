@@ -48,6 +48,21 @@ Authority for the wider effort: **`../auth-unification-plan.md`**.
   cookie. Taking a dependency on ASP.NET to save three lines would put it in every consumer and make
   the handshake untestable without standing up a server.
 
+## `Auth.Sessions` — locked decisions
+
+- **The registry is a seam, not an implementation.** Two surfaces storing sessions differently behind
+  one contract is the contract working. Don't add a "default" store that consumers drift onto.
+- **`RefreshLifetime` and `Issuer` are settings, and both are load-bearing.** The lifetime is written
+  once and used for both the token and the row, so there is no second copy to drift. The issuer is
+  validated, so changing it on a running host logs everyone out — the neutral default is only for a
+  surface that has never minted a token.
+- **The validator's cache is absolute, never sliding, and caches denials.** Sliding would exempt the
+  busiest session from ever re-checking; not caching "no" would let a revoked token query the registry
+  on every request it makes.
+- **A per-surface switch belongs at composition, not in the package.** kgsm-api's inert-sessions mode
+  is a validator it substitutes and a worker it does not register — the shared types know nothing
+  about a flag one surface has.
+
 ## Conventions
 
 - Namespace `TheKrystalShip.KGSM.Auth`; package id matches.

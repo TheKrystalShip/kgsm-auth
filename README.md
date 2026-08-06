@@ -10,6 +10,7 @@ assistant and the Discord bot alike.
 |---|---|---|
 | **`TheKrystalShip.KGSM.Auth`** | the tier model, the Discord role map, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow, identity verification, and the bot-token role lookup. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
+| **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
 
 ## The model
 
@@ -132,3 +133,48 @@ The role lookup answers three different things and they must not be collapsed:
 The third is the one that matters. "We could not ask" is not "the answer is no": a surface that reads
 an outage as an empty role list quietly demotes an admin mid-incident, and one that reads it as
 membership lets a stranger in. Both are worse than a `502`.
+
+## Sessions
+
+A stateless JWT can say who someone is; it cannot say whether their session is still alive. That one
+fact is what `ISessionRegistry` holds, and it is the only reason a surface needs storage at all.
+
+```csharp
+var tokens = new SessionTokenService(new SessionTokenOptions(
+    HostId: "hotrod", SigningKey: secret,
+    AccessLifetime: TimeSpan.FromMinutes(15),
+    RefreshLifetime: TimeSpan.FromDays(30),
+    Issuer: "kgsm-api"));
+
+MintedToken access  = tokens.MintAccess(identity, tier, sid);
+MintedToken refresh = tokens.MintRefresh(identity, tier, sid);
+await registry.CreateAsync(new SessionRegistration(
+    sid, identity.UserId, hostId, DateTimeOffset.UtcNow, refresh.ExpiresAt, userAgent, refresh.Jti));
+```
+
+**The storage is a seam, and two implementations behind it is the seam working.** What a session is,
+how it rotates and when it dies are the ecosystem's; where the rows go is each surface's own — an EF
+table next to an audit log, raw SQLite, or memory.
+
+**`RefreshLifetime` is written once and used twice** — the token's expiry and the registry row's. It
+is a setting rather than a constant precisely so there is no second copy to drift, because the drift
+is invisible until a token outlives its own row or the reverse.
+
+**`Issuer` changes are breaking.** It is validated, so changing it on a running host 401s every token
+already issued and forces everyone to log in again. A surface that already mints keeps the value it
+has; the neutral default is for a surface that has never minted one.
+
+### Rotation and reuse
+
+Every refresh mints a new pair and stores the new `jti`. A refresh presenting any other `jti` is a
+replay of a token that has already been rotated away — `RotateAsync` returns false, and the caller
+refuses. It cannot tell a stale client from a stolen token, so it refuses both and lets the real
+holder authenticate again.
+
+### The cache is the revocation bound
+
+`SessionValidator` caches the registry's answer, so the hot path does not query per request. A revoke
+evicts, making the kill immediate; the TTL is the backstop for what cannot evict. Expiration is
+**absolute, never sliding** — a sliding window is extended by every hit, so the busiest session, the
+one most worth revoking, would be the one that never re-checks. A "no" is cached too, because a
+revoked session still presenting its token is exactly what a stolen one does.
