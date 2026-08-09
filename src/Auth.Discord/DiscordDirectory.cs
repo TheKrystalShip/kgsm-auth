@@ -28,6 +28,24 @@ public sealed class DiscordAuthException(string message, Exception? inner = null
 public sealed record DiscordOAuthEndpoints(string RedirectUri, string Scopes = "identify");
 
 /// <summary>
+/// A member of this host's guild, as the bot sees them: who they are, and the roles they hold.
+/// </summary>
+/// <remarks>
+/// The member object Discord returns carries the user it belongs to, so one lookup answers both
+/// questions. Nothing here is authority — it is what a seed reads once to decide what tier to write
+/// onto a KGSM account.
+/// </remarks>
+/// <param name="UserId">The Discord snowflake, as a string.</param>
+/// <param name="Username">Their Discord username.</param>
+/// <param name="Display">Their global display name, falling back to the username.</param>
+/// <param name="Roles">
+/// The role ids they hold. Empty means a member with only <c>@everyone</c> — a member that is
+/// <em>not</em> in the guild is a null <see cref="DiscordMember"/>, never an empty role list.
+/// </param>
+public sealed record DiscordMember(
+    string UserId, string Username, string Display, IReadOnlyList<string> Roles);
+
+/// <summary>
 /// The one chokepoint to <c>discord.com</c>. Everything a KGSM surface asks Discord goes through
 /// here, which is what makes the whole authorization surface — the callback verdict, the tier gate,
 /// the 401/403 matrix — testable in-process against a fake.
@@ -96,7 +114,15 @@ public sealed class DiscordDirectory(
     /// <b>not a member of the guild</b>; an empty list means a member holding only <c>@everyone</c>.
     /// Those are different answers and the tier depends on which it is.
     /// </summary>
-    public async Task<IReadOnlyList<string>?> GetGuildRolesAsync(string userId, CancellationToken ct)
+    public async Task<IReadOnlyList<string>?> GetGuildRolesAsync(string userId, CancellationToken ct) =>
+        (await GetGuildMemberAsync(userId, ct))?.Roles;
+
+    /// <summary>
+    /// The guild member behind a user id, read with the bot token: their name and the roles they
+    /// hold. <see langword="null"/> means <b>not a member of the guild</b>; a member with no roles
+    /// carries an empty list. A lookup that fails throws.
+    /// </summary>
+    public async Task<DiscordMember?> GetGuildMemberAsync(string userId, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(
             HttpMethod.Get, $"{ApiBase}/guilds/{auth.GuildId}/members/{userId}");
@@ -127,15 +153,21 @@ public sealed class DiscordDirectory(
 
             string json = await response.Content.ReadAsStringAsync(ct);
             using JsonDocument doc = SafeParse(json);
+            JsonElement member = doc.RootElement;
 
-            if (!doc.RootElement.TryGetProperty("roles", out JsonElement roles)
-                || roles.ValueKind != JsonValueKind.Array)
-                return [];
+            IReadOnlyList<string> roles =
+                member.TryGetProperty("roles", out JsonElement ids) && ids.ValueKind == JsonValueKind.Array
+                    ? [.. ids.EnumerateArray()
+                        .Select(r => r.GetString())
+                        .Where(s => !string.IsNullOrEmpty(s))
+                        .Select(s => s!)]
+                    : [];
 
-            return [.. roles.EnumerateArray()
-                .Select(r => r.GetString())
-                .Where(s => !string.IsNullOrEmpty(s))
-                .Select(s => s!)];
+            JsonElement user = member.TryGetProperty("user", out JsonElement u) ? u : default;
+            string username = (user.ValueKind == JsonValueKind.Object ? GetString(user, "username") : null) ?? userId;
+            string display = (user.ValueKind == JsonValueKind.Object ? GetString(user, "global_name") : null) ?? username;
+
+            return new DiscordMember(userId, username, display, roles);
         }
     }
 

@@ -9,6 +9,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`IdentityLinkService`** — the step between a verified external identity and an account. It finds
+  the account an identity proves, or creates an unapproved one for it to prove: signing in at a
+  provider establishes who somebody is and never that they belong here, so a first arrival lands at
+  `Pending`/`None` for an admin to decide on. Idempotent, so a login path calls it on every sign-in
+  rather than only the first, and two callers racing on one identity end with one account because
+  the credential handle is unique in the database. Never auto-links on a matching email or username:
+  providers disagree about what "verified" means, and matching on one is a documented
+  account-takeover route.
+- **`PendingPolicy`** — a cap on how many unapproved accounts a host holds, and a TTL that keeps the
+  cap from becoming a lockout. Expiry only ever removes an account that arrived on its own, is still
+  unapproved, and has no password.
+- **`UserStoreAuthority.ResolveAsync`** returns the three answers a surface has to tell apart —
+  the account may be used, there is no account, the account is switched off — because only the third
+  is a reason to end a live session. Answers are cached for a caller-chosen TTL, which is therefore
+  the staleness bound on a demotion; a read failure still throws and is never cached, so a moment of
+  unavailability cannot become a full-TTL lockout.
+- **`Usernames.Sanitize`** — the nearest usable username to a provider's, for the one case where a
+  name is not typed by a person. Returns null rather than inventing one when nothing usable survives.
+- **`DiscordDirectory.GetGuildMemberAsync`** — the member behind a user id: their name and the roles
+  they hold, from the one lookup that already carried both. `GetGuildRolesAsync` is unchanged and
+  reads through it, and the three answers (not a member ⇒ null, a member with no roles ⇒ empty, a
+  failed lookup ⇒ throw) stay three answers.
+
+### Added
+
 - **`TheKrystalShip.KGSM.Auth.Users`** — KGSM owns identity. A local account is the primary object:
   it exists on its own, carries the tier, and an external provider becomes one way to prove you are
   an account KGSM already knows about rather than the source of one.

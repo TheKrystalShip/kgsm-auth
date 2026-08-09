@@ -58,4 +58,49 @@ public static class Usernames
 
         return true;
     }
+
+    /// <summary>
+    /// The nearest usable username to <paramref name="proposed"/>, or <see langword="null"/> when
+    /// nothing usable survives.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the one case where the name is not typed by a person: an account provisioned from an
+    /// external identity starts with whatever that provider calls them, and a provider's charset is
+    /// not this one. Characters this charset does not allow are dropped rather than transliterated —
+    /// a guess at what a name "should" be in ASCII is worse than a short name, and the display name
+    /// keeps the original untouched.
+    /// </para>
+    /// <para>
+    /// Returns null rather than inventing a name when nothing is left, so the caller decides what to
+    /// do about it instead of ending up with an account called <c>user</c>.
+    /// </para>
+    /// </remarks>
+    public static string? Sanitize(string? proposed)
+    {
+        if (string.IsNullOrWhiteSpace(proposed))
+            return null;
+
+        var kept = new System.Text.StringBuilder(MaxLength);
+        foreach (char c in proposed.Trim())
+        {
+            if (kept.Length == MaxLength)
+                break;
+
+            if (char.IsAsciiLetterOrDigit(c))
+                kept.Append(c);
+            // A separator is kept only after something it can separate, so a leading one never
+            // survives to fail the first-character rule.
+            else if (c is '.' or '_' or '-' or ' ' && kept.Length > 0)
+                kept.Append(c == ' ' ? '-' : c);
+        }
+
+        // Trailing separators are legal but read as a typo; a name ending in a dot is also what a
+        // path or a sentence would leave behind.
+        while (kept.Length > 0 && !char.IsAsciiLetterOrDigit(kept[^1]))
+            kept.Length--;
+
+        string candidate = kept.ToString();
+        return IsValid(candidate) ? candidate : null;
+    }
 }

@@ -93,6 +93,90 @@ public class UserStoreAuthorityTests
         Assert.IsType<IOException>(e.InnerException);
     }
 
+    [Fact]
+    public async Task TheThreeAnswersAreThreeAnswers()
+    {
+        // A surface acts differently on each: only a disabled account is a reason to end a live
+        // session, and a pending one authenticates at no tier so the panel can say why.
+        using TempStore temp = new();
+        UserStoreAuthority authority = new(temp.Store);
+
+        KgsmUser active = Make.User("haru", KgsmTier.Operator);
+        KgsmUser pending = Make.User("wout", KgsmTier.Admin, UserStatus.Pending);
+        KgsmUser disabled = Make.User("dams", KgsmTier.Admin, UserStatus.Disabled);
+        foreach (KgsmUser user in new[] { active, pending, disabled })
+            await temp.Store.CreateAsync(user);
+
+        Assert.Equal(AuthorityOutcome.Ok, (await authority.ResolveAsync(active.AsIdentity(), default)).Outcome);
+        Assert.Equal(AuthorityOutcome.Ok, (await authority.ResolveAsync(pending.AsIdentity(), default)).Outcome);
+        Assert.Equal(KgsmTier.None, (await authority.ResolveAsync(pending.AsIdentity(), default)).Tier);
+        Assert.Equal(AuthorityOutcome.Disabled, (await authority.ResolveAsync(disabled.AsIdentity(), default)).Outcome);
+        Assert.Equal(AuthorityOutcome.NoAccount, (await authority.ResolveAsync(Discord("9999"), default)).Outcome);
+    }
+
+    [Fact]
+    public async Task AnAnswerIsCachedForItsTtlAndDroppingItReReadsTheStore()
+    {
+        // The TTL is the staleness bound on a demotion, so what it buys and what it costs are the
+        // same fact and both are pinned here.
+        using TempStore temp = new();
+        UserStoreAuthority authority = new(temp.Store, TimeSpan.FromMinutes(5));
+
+        KgsmUser user = Make.User("haru", KgsmTier.Admin);
+        await temp.Store.CreateAsync(user);
+        Assert.Equal(KgsmTier.Admin, await authority.ResolveTierAsync(user.AsIdentity(), default));
+
+        await temp.Store.UpdateAsync(user with { Tier = KgsmTier.Viewer });
+        Assert.Equal(KgsmTier.Admin, await authority.ResolveTierAsync(user.AsIdentity(), default));
+
+        authority.Forget(user.AsIdentity().Handle);
+        Assert.Equal(KgsmTier.Viewer, await authority.ResolveTierAsync(user.AsIdentity(), default));
+    }
+
+    [Fact]
+    public async Task WithNoTtlEveryQuestionIsAskedAgain()
+    {
+        using TempStore temp = new();
+        UserStoreAuthority authority = new(temp.Store);
+
+        KgsmUser user = Make.User("haru", KgsmTier.Admin);
+        await temp.Store.CreateAsync(user);
+        Assert.Equal(KgsmTier.Admin, await authority.ResolveTierAsync(user.AsIdentity(), default));
+
+        await temp.Store.UpdateAsync(user with { Tier = KgsmTier.Viewer });
+
+        Assert.Equal(KgsmTier.Viewer, await authority.ResolveTierAsync(user.AsIdentity(), default));
+    }
+
+    [Fact]
+    public async Task AnExpiredEntryIsReReadWithoutAnyoneDroppingIt()
+    {
+        using TempStore temp = new();
+        UserStoreAuthority authority = new(temp.Store, TimeSpan.FromMilliseconds(30));
+
+        KgsmUser user = Make.User("haru", KgsmTier.Admin);
+        await temp.Store.CreateAsync(user);
+        Assert.Equal(KgsmTier.Admin, await authority.ResolveTierAsync(user.AsIdentity(), default));
+
+        await temp.Store.UpdateAsync(user with { Tier = KgsmTier.Viewer });
+        await Task.Delay(80);
+
+        Assert.Equal(KgsmTier.Viewer, await authority.ResolveTierAsync(user.AsIdentity(), default));
+    }
+
+    [Fact]
+    public async Task AnOutageIsNeverCachedAsAnAnswer()
+    {
+        // Caching a failure turns a moment of unavailability into a full-TTL lockout for whoever
+        // really does hold the role.
+        UserStoreAuthority authority = new(new BrokenStore(), TimeSpan.FromMinutes(5));
+
+        await Assert.ThrowsAsync<KgsmAuthProviderException>(
+            () => authority.ResolveTierAsync(Discord("1234"), default));
+        await Assert.ThrowsAsync<KgsmAuthProviderException>(
+            () => authority.ResolveTierAsync(Discord("1234"), default));
+    }
+
     /// <summary>A store whose file is gone.</summary>
     private sealed class BrokenStore : IUserStore
     {

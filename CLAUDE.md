@@ -10,9 +10,11 @@ kgsm-llm and kgsm-bot, so a change here changes who can do what on every surface
 
 **Identity and authority are two seams, not one.** `IIdentityProvider` answers *who is this* (the
 OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they do* (the tier);
-`ISignInService`/`SignInService` composes them into one login. Discord implements both, and that is
-the only pair wired today — but a host can replace either half alone, which is the entire point of
-their being separate. Nothing above the seams names a provider.
+`ISignInService`/`SignInService` composes them into one login. In production the two halves come from
+two different places: an identity provider answers the first, and `Auth.Users` answers the second for
+everyone, however they signed in. `DiscordDirectory` still implements both interfaces — its authority
+half is what a seeding command reads a guild role with — but nothing on a request path uses it for
+that. Nothing above the seams names a provider.
 
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
 its own with a password, and an external identity is a credential attached to it. So the two seams
@@ -39,9 +41,10 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   viewer requirement admit an operator. Do not add a tier between them without walking every
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
   is how the surfaces diverged in the first place.
-- **`null` ≠ empty in `Resolve`.** `null` is *not a member of the guild* (a terminal denial); an empty
-  collection is *a member holding only `@everyone`* (the viewer floor). Collapsing them either locks
-  out every plain member or lets a failed lookup through as a grant.
+- **`null` ≠ empty in `Resolve`.** `null` is *not a member of the guild*; an empty collection is *a
+  member holding only `@everyone`* (the viewer floor). Collapsing them either misreads every plain
+  member or lets a failed lookup through as a grant. `KgsmRoleMap` is **seed input**, not a request-path
+  authority — it is what a one-shot command reads to decide what tier to write onto an account.
 - **A failed role lookup is never passed in as empty.** The caller reports the failure and denies. This
   is the security analog of the ecosystem's never-fabricate-a-status rule: authorize on measured
   membership and roles, or deny.
@@ -136,6 +139,20 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   later with no forced reset.
 - **No SMTP, and no password reset by email.** A mail dependency in the package whose purpose is
   removing outside dependencies would be self-defeating. Resets are admin-initiated.
+- **The store is the only production `IAuthorityProvider`.** An external provider proves you are an
+  account this host already has and contributes nothing else, which is what lets a provider be added
+  with no authority story of its own.
+- **Three answers, never one tier.** `UserStoreAuthority.ResolveAsync` reports *usable*, *no account*
+  and *disabled* separately, because only the third is a reason to end a live session and the first
+  covers a pending account (which authenticates at `None`). Its cache TTL is the staleness bound on a
+  demotion; a read failure throws and is never cached, or a moment of unavailability becomes a
+  full-TTL lockout for somebody who really does hold the role.
+- **An arriving identity is provisioned unapproved, never auto-linked.** `IdentityLinkService` creates
+  a `Pending`/`None` account for a subject nobody has claimed. It never matches on an email or a
+  username: providers disagree about what "verified" means, and matching on one is a documented
+  account-takeover route. Provisioning is reachable by anyone who can complete a login at a configured
+  provider, so `PendingPolicy` caps it and expires what nobody looks at — and expiry only ever removes
+  an account that arrived this way, is still unapproved, and has no password.
 
 ## Conventions
 
