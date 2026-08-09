@@ -1,5 +1,3 @@
-using TheKrystalShip.KGSM.Auth;
-
 namespace TheKrystalShip.KGSM.Auth.Tests;
 
 public class KgsmTiersTests
@@ -72,34 +70,17 @@ public class KgsmActorTests
 
 public class KgsmAuthOptionsTests
 {
+    /// <summary>
+    /// The section name and the property names are the contract: three repos bind this type from
+    /// their own configuration, and one of them spelling a key differently is how a host ends up
+    /// pointing two surfaces at two applications.
+    /// </summary>
     [Fact]
-    public void ParsesCommaSeparatedRoleIds()
+    public void TheOptionsCarryTheApplicationAndNothingElse()
     {
-        KgsmAuthOptions options = new()
-        {
-            RoleAdminIds = "1,2",
-            RoleOperatorIds = " 3 , ,4,",
-        };
-
-        KgsmRoleMap map = options.ToRoleMap();
-        Assert.Equal(["1", "2"], map.AdminRoleIds);
-        Assert.Equal(["3", "4"], map.OperatorRoleIds);
-    }
-
-    [Fact]
-    public void UnconfiguredRolesYieldAnEmptyMap()
-    {
-        KgsmRoleMap map = new KgsmAuthOptions().ToRoleMap();
-        Assert.True(map.IsEmpty);
-        Assert.Equal(KgsmTier.Viewer, map.Resolve(["anything"]));
-    }
-
-    [Fact]
-    public void ResolvingRolesNeedsAGuildAndABotToken()
-    {
-        Assert.False(new KgsmAuthOptions().CanResolveRoles);
-        Assert.False(new KgsmAuthOptions { GuildId = "1" }.CanResolveRoles);
-        Assert.False(new KgsmAuthOptions { BotToken = "t" }.CanResolveRoles);
-        Assert.True(new KgsmAuthOptions { GuildId = "1", BotToken = "t" }.CanResolveRoles);
+        Assert.Equal("KgsmAuth", KgsmAuthOptions.Section);
+        Assert.Equal(
+            ["ClientId", "ClientSecret"],
+            typeof(KgsmAuthOptions).GetProperties().Select(p => p.Name).Order());
     }
 }

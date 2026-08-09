@@ -5,10 +5,9 @@ namespace TheKrystalShip.KGSM.Auth;
 /// ones (admin ⊇ operator ⊇ viewer), so a viewer requirement is satisfied by an operator and an
 /// admin too.
 /// <para>
-/// <see cref="None"/> is "identity verified, but NOT a member of this host's guild" — a terminal
-/// denial, never retried, because re-authenticating cannot change the answer. Guild membership is
-/// the access gate; a verified member floors at <see cref="Viewer"/>
-/// (see <see cref="KgsmRoleMap.Resolve(System.Collections.Generic.IReadOnlyCollection{string})"/>).
+/// <see cref="None"/> is "identity verified, but this host grants them nothing" — a subject attached
+/// to no account here, or one awaiting approval. Re-authenticating cannot change it, so it is a
+/// terminal denial rather than a prompt to sign in again.
 /// </para>
 /// The ordinal drives the hierarchy; the lower-case name is the wire and claim form
 /// (<see cref="KgsmTiers"/>).

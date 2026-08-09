@@ -9,13 +9,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **`KgsmRoleMap` is gone, and with it `KgsmAuthOptions.GuildId`, `BotToken`, `RoleAdminIds`,
+  `RoleOperatorIds`, `ToRoleMap()` and `CanResolveRoles`** (`Auth` 2.0.0, breaking). kgsm-bot was the
+  last surface reading a guild role, and it now resolves the Discord account it is handed against the
+  KGSM account store like every other surface — so no authority anywhere derives from a group, a
+  guild or a role, and a host that sets a role id grants nothing by it. `KgsmAuthOptions` keeps
+  `ClientId` and `ClientSecret`: the application people sign in through, and nothing else.
 - **`DiscordDirectory` no longer implements `IAuthorityProvider`** (`Auth.Discord` 3.0.0, breaking).
   Guild membership and guild roles are not an answer to what a person may do on a KGSM host, so the
   provider answers who someone is and nothing else: `ResolveTierAsync`, `GetGuildRolesAsync`,
   `GetGuildMemberAsync`, the `DiscordMember` record and the `KgsmRoleMap` constructor argument are
-  gone, and it no longer reads a guild id or a bot token. `KgsmRoleMap` and `KgsmAuthOptions` stay in
-  the zero-dependency core, where kgsm-bot — a Discord surface with no login of its own, and the only
-  consumer left — reads them.
+  gone, and it no longer reads a guild id or a bot token.
 
 ### Added
 

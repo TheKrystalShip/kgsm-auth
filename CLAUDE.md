@@ -41,21 +41,13 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   viewer requirement admit an operator. Do not add a tier between them without walking every
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
   is how the surfaces diverged in the first place.
-- **`KgsmRoleMap` is kgsm-bot's map, and lives here because kgsm-bot takes only this package.** A
-  Discord surface with no login of its own reads a guild role because it has nothing else to read; no
-  other surface consults it, and nothing here is on any request path but the bot's.
-- **`null` ≠ empty in `Resolve`.** `null` is *not a member of the guild*; an empty collection is *a
-  member holding only `@everyone`* (the viewer floor). Collapsing them either misreads every plain
-  member or lets a failed lookup through as a grant.
-- **A failed role lookup is never passed in as empty.** The caller reports the failure and denies. This
-  is the security analog of the ecosystem's never-fabricate-a-status rule: authorize on measured
-  membership and roles, or deny.
+- **No surface derives authority from a group, a guild or a role.** `KgsmAuthOptions` carries the
+  Discord application and nothing else; the account store is what answers what anyone may do,
+  including for kgsm-bot, whose caller is a Discord account with no login behind it. Do not
+  reintroduce a role map: an authority source that lives outside the account is exactly what made
+  four surfaces able to disagree about one person.
 - **Parsing is fail-closed.** `KgsmTiers.Parse` maps anything unrecognised — absent, misspelled, or a
   tier invented by a newer peer — to `None`. Never add a permissive fallback.
-- **No viewer role list.** Guild membership already grants viewer, so a list of ids granting it would
-  grant what everyone has. Do not reintroduce one for symmetry.
-- **`ResolveSnowflakes` is named apart from `Resolve` deliberately.** As an overload, an empty
-  collection expression binds to neither and fails to compile at every call site passing one.
 
 ## `Auth.Discord` — locked decisions
 
@@ -169,8 +161,6 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
 ## Conventions
 
 - Namespace `TheKrystalShip.KGSM.Auth`; package id matches.
-- Role ids are Discord snowflakes held as **strings**, compared **ordinally**. Discord's member object
-  carries them as strings, so comparing as strings never risks a parse.
 - Doc comments say what the code does now and why that rule exists — never what it replaced.
 
 ## Version tracking
@@ -183,6 +173,6 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
 
 ## Gotchas
 
-- A change to the resolve matrix changes live authority on a running guild. The tests in
-  `tests/Auth.Tests/KgsmRoleMapTests.cs` are the specification — extend them before the code.
+- A change to how a tier is resolved changes live authority on four running surfaces at once. The
+  tests in `tests/Auth.Users.Tests/` are the specification — extend them before the code.
 - The package is referenced by projects in three other repos. Build those before declaring work done.

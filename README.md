@@ -8,10 +8,10 @@ assistant and the Discord bot alike.
 
 | package | contents | taken by |
 |---|---|---|
-| **`TheKrystalShip.KGSM.Auth`** | the tier model, the bot's guild-role map, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
+| **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity and authority seams, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
-| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm |
+| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot |
 
 ## The model
 
@@ -36,34 +36,32 @@ if (tier < KgsmTier.Operator)
     return Deny();
 ```
 
-**kgsm-bot is the exception, and it is one because it has no login.** A person typing a slash command
-has proved nothing but their Discord account, so the bot maps a guild role to a tier with
-`KgsmRoleMap`:
+**Every surface answers it the same way, including kgsm-bot.** The bot has no login of its own, so the
+Discord account the gateway hands it *is* the identity — and the tier is whatever KGSM account that
+identity is attached to, exactly as it is for a browser that signed in with a password:
 
 ```csharp
-KgsmTier tier = map.ResolveSnowflakes(guildUser?.Roles.Select(r => r.Id));
+KgsmTier tier = await authority.ResolveTierAsync(
+    new KgsmIdentity(KgsmActorProvider.Discord, discordUserId, username), ct);
 ```
 
-`null` and an empty collection mean different things there and must not be conflated: `null` is *not a
-member*, an empty collection is *a member holding only `@everyone`*. Never pass an empty collection to
-stand in for a failed lookup — that turns an outage into a silent grant. Report the failure and deny.
+An identity attached to no account holds `none`. A group or a guild role is a fact about somewhere
+else and is not consulted anywhere. A store that cannot be read **throws** rather than resolving to
+`none`: "we could not ask" is not "the answer is no", and reporting the first as the second demotes an
+admin mid-incident.
 
 ## Configuration
 
 Bound from the `KgsmAuth` section. The package owns the section and property names, so every surface
-binds the same keys by construction and one file can configure all of them:
+binds the same keys by construction and one file can point a whole host at one application:
 
 ```
 KgsmAuth__ClientId=…            # the OAuth application, for a surface that signs people in
 KgsmAuth__ClientSecret=…        # environment only
-KgsmAuth__GuildId=…             # kgsm-bot only
-KgsmAuth__BotToken=…            # kgsm-bot only, environment only
-KgsmAuth__RoleAdminIds=…        # kgsm-bot only, comma-separated
-KgsmAuth__RoleOperatorIds=…     # kgsm-bot only, comma-separated
 ```
 
-The guild, the bot token and the role ids configure the one surface that reads a guild role. A surface
-that signs people in needs the application and its own redirect URI, and nothing else.
+That is the whole section. A surface that signs people in needs the application and its own redirect
+URI; a surface that only authorizes needs neither, because the account store answers it.
 
 ## Why it is dependency-free
 
