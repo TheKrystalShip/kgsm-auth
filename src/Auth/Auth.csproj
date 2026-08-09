@@ -19,13 +19,14 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Description>
-      The KGSM authorization model: the ordered viewer/operator/admin tier, the Discord role map that
-      resolves it, the session claim and relay header names, and the provider:name actor convention.
-      One definition of who may do what, shared by every surface onto a host, so the same person gets
-      the same authority through the Control Panel, the assistant and the Discord bot alike.
-      Dependency-free and AOT-safe.
+      The KGSM authorization model: the ordered viewer/operator/admin tier, the provider-agnostic
+      KgsmIdentity and the IIdentityProvider/IAuthorityProvider seams that separate who someone is from
+      what they may do, the OAuth state+PKCE handshake, the session claim and relay header names, and
+      the provider:name actor convention. One definition of who may do what, shared by every surface
+      onto a host, so the same person gets the same authority through the Control Panel, the assistant
+      and the Discord bot alike. Dependency-free and AOT-safe.
     </Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

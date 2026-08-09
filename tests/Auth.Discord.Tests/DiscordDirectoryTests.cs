@@ -7,6 +7,17 @@ using TheKrystalShip.KGSM.Auth.Discord;
 namespace TheKrystalShip.KGSM.Auth.Discord.Tests;
 
 /// <summary>
+/// A whole login through the Discord provider. The directory answers both halves — who someone is and
+/// what they may do — so composing it with itself is the real production wiring, not a test shortcut:
+/// a host that took authority from elsewhere would pass a different second argument and nothing else
+/// about the login would move.
+/// </summary>
+internal static class DiscordSignIn
+{
+    public static SignInService SignIn(this DiscordDirectory directory) => new(directory, directory);
+}
+
+/// <summary>
 /// The failure contract. Every branch here decides whether someone gets in during an outage, so each
 /// is pinned against a stubbed transport rather than trusted to the implementation's shape.
 /// </summary>
@@ -120,10 +131,10 @@ public class DiscordDirectoryTests
     public async Task ResolvesIdentityAndTier()
     {
         ResolvedPrincipal? principal = await Directory(r => Route(r, $$"""{"roles":["{{OperatorRole}}"]}"""))
-            .ResolveAsync("code", "verifier", default);
+            .SignIn().ResolveAsync("code", "verifier", default);
 
         Assert.NotNull(principal);
-        Assert.Equal("42", principal.Identity.UserId);
+        Assert.Equal("42", principal.Identity.Subject);
         Assert.Equal("haru", principal.Identity.Username);
         Assert.Equal("Haru", principal.Identity.Display);
         Assert.Equal("https://cdn.discordapp.com/avatars/42/abc.png", principal.Identity.AvatarUrl);
@@ -139,10 +150,10 @@ public class DiscordDirectoryTests
                 r.RequestUri!.AbsolutePath.Contains("/members/")
                     ? new HttpResponseMessage(HttpStatusCode.NotFound)
                     : Route(r, "{}"))
-            .ResolveAsync("code", "verifier", default);
+            .SignIn().ResolveAsync("code", "verifier", default);
 
         Assert.NotNull(principal);
-        Assert.Equal("42", principal.Identity.UserId);
+        Assert.Equal("42", principal.Identity.Subject);
         Assert.Equal(KgsmTier.None, principal.Tier);
     }
 
@@ -155,7 +166,7 @@ public class DiscordDirectoryTests
                 r.RequestUri!.AbsolutePath == "/api/oauth2/token"
                     ? new HttpResponseMessage(HttpStatusCode.BadRequest)
                     : Route(r, "{}"))
-            .ResolveAsync("stale-code", "verifier", default);
+            .SignIn().ResolveAsync("stale-code", "verifier", default);
 
         Assert.Null(principal);
     }
@@ -167,7 +178,7 @@ public class DiscordDirectoryTests
             Directory(r => r.RequestUri!.AbsolutePath == "/api/oauth2/token"
                     ? new HttpResponseMessage(HttpStatusCode.BadGateway)
                     : Route(r, "{}"))
-                .ResolveAsync("code", "verifier", default));
+                .SignIn().ResolveAsync("code", "verifier", default));
     }
 
     [Fact]
@@ -181,7 +192,7 @@ public class DiscordDirectoryTests
             return Route(r, "{}");
         });
 
-        await directory.ResolveAsync("code", "the-verifier", default);
+        await directory.SignIn().ResolveAsync("code", "the-verifier", default);
 
         Assert.NotNull(sent);
         Assert.Contains("code_verifier=the-verifier", sent);
@@ -200,7 +211,7 @@ public class DiscordDirectoryTests
             return Route(r, $$"""{"roles":["{{AdminRole}}"]}""");
         });
 
-        await directory.ResolveAsync("code", "verifier", default);
+        await directory.SignIn().ResolveAsync("code", "verifier", default);
 
         Assert.Equal("Bot bot", memberAuth);
     }

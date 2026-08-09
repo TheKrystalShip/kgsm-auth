@@ -22,15 +22,14 @@ public static class KgsmActorProvider
 /// lets an action taken in Discord and the same action taken in the Control Panel land in the audit
 /// log as the same person.
 /// </summary>
+/// <remarks>
+/// The provider half is written and read as a plain string, never an enum: a surface that meets an
+/// identity from a provider its build predates must still be able to say who acted. Readers keep the
+/// name and leave the provider unrecognised rather than coercing it into something they do know —
+/// the never-fabricate rule, applied to provenance.
+/// </remarks>
 public static class KgsmActor
 {
-    /// <summary>
-    /// <c>discord:&lt;name&gt;</c> for a Discord identity, preferring the human-readable handle and
-    /// falling back to the user id when there is no handle to use.
-    /// </summary>
-    public static string Discord(string? username, string userId) =>
-        Format(KgsmActorProvider.Discord, string.IsNullOrWhiteSpace(username) ? userId : username);
-
     /// <summary>An actor string for an arbitrary provider.</summary>
     public static string Format(string provider, string name) => $"{provider}:{name}";
 

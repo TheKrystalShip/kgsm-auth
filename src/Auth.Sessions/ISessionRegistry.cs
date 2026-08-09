@@ -9,7 +9,11 @@ namespace TheKrystalShip.KGSM.Auth.Sessions;
 /// the more generic name.
 /// </remarks>
 /// <param name="SessionId">The <c>sid</c> both the access and the refresh token carry.</param>
-/// <param name="UserId">The Discord user id this session belongs to.</param>
+/// <param name="UserId">
+/// Who this session belongs to, in whatever form the storing surface keys users by — a
+/// <c>provider:subject</c> handle where sessions span providers, a bare subject where they do not.
+/// Opaque to the registry, which only ever groups and matches on it.
+/// </param>
 /// <param name="HostId">The host the session is scoped to, mirroring the token audience.</param>
 /// <param name="Created">When the login happened.</param>
 /// <param name="Expires">The absolute cap: past this the session is dead however it is stored.</param>

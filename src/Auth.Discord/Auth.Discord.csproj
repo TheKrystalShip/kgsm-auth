@@ -17,12 +17,14 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Discord</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Description>
-      The KGSM ecosystem's single chokepoint to discord.com: the OAuth login flow (cookie-carried
-      state + PKCE, no server-side pending store), identity verification, and the bot-token guild-role
-      lookup that resolves a caller's tier. Honest failure modes throughout — Discord unreachable is
-      an error, never a denial and never a grant.
+      The KGSM ecosystem's single chokepoint to discord.com, and its Discord identity/authority
+      provider: the OAuth login flow, identity verification, and the bot-token guild-role lookup that
+      resolves a caller's tier. Implements the IIdentityProvider and IAuthorityProvider seams, so a
+      host can sign people in through Discord and take authority from elsewhere, or the reverse.
+      Honest failure modes throughout — Discord unreachable is an error, never a denial and never a
+      grant.
     </Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

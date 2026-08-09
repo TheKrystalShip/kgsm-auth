@@ -1,13 +1,12 @@
 using TheKrystalShip.KGSM.Auth;
-using TheKrystalShip.KGSM.Auth.Discord;
 using TheKrystalShip.KGSM.Auth.Sessions;
 
 namespace TheKrystalShip.KGSM.Auth.Sessions.Tests;
 
 public class SessionTokenServiceTests
 {
-    private static readonly DiscordIdentity Identity =
-        new("198772043", "haru", "Haru", "https://cdn.test/a.png", ["identify", "guilds"]);
+    private static readonly KgsmIdentity Identity =
+        new("discord", "198772043", "haru", "Haru", "https://cdn.test/a.png", ["identify", "guilds"]);
 
     private static SessionTokenService Service(string key = "a-stable-secret", string host = "hotrod") =>
         new(new SessionTokenOptions(host, key, TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
@@ -21,7 +20,7 @@ public class SessionTokenServiceTests
         RefreshClaims? claims = await svc.ReadRefreshAsync(refresh.Token);
 
         Assert.NotNull(claims);
-        Assert.Equal("198772043", claims.Identity.UserId);
+        Assert.Equal("198772043", claims.Identity.Subject);
         Assert.Equal("haru", claims.Identity.Username);
         Assert.Equal("Haru", claims.Identity.Display);
         Assert.Equal(["identify", "guilds"], claims.Identity.Scopes);
@@ -139,5 +138,69 @@ public class SessionTokenServiceTests
 
         Assert.Null(await mine.ReadRefreshAsync(theirs.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
         Assert.NotNull(await mine.ReadRefreshAsync(mine.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
+    }
+
+    // ── The identity a token carries is the provider's, not one provider ─────
+
+    [Fact]
+    public async Task ADiscordSubjectIsExactlyProviderColonId()
+    {
+        // The subject claim is `discord:<id>` and is also what a session row is keyed by on some
+        // surfaces. It is pinned here because a change to its spelling is a flag day — every live
+        // token stops validating and every stored row stops matching — and nothing else in the mint
+        // path would fail loudly enough to catch it.
+        SessionTokenService svc = Service();
+
+        RefreshClaims? claims = await svc.ReadRefreshAsync(
+            svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token);
+
+        Assert.NotNull(claims);
+        Assert.Equal("discord:198772043", claims.Identity.Handle);
+    }
+
+    [Fact]
+    public async Task AnIdentityFromAnotherProviderRoundTripsIntact()
+    {
+        // Nothing in the token layer is Discord's. A host signing people in elsewhere mints and reads
+        // the same way, and the provider survives the round trip rather than being assumed on the way
+        // back out.
+        SessionTokenService svc = Service();
+        var github = new KgsmIdentity("github", "u_9931", "heisen", "Heisen", null, ["read:user"]);
+
+        RefreshClaims? claims = await svc.ReadRefreshAsync(
+            svc.MintRefresh(github, KgsmTier.Operator, "sid_2").Token);
+
+        Assert.NotNull(claims);
+        Assert.Equal("github", claims.Identity.Provider);
+        Assert.Equal("u_9931", claims.Identity.Subject);
+        Assert.Equal("github:u_9931", claims.Identity.Handle);
+        Assert.Equal(KgsmTier.Operator, claims.Tier);
+    }
+
+    [Fact]
+    public async Task TwoProvidersHandingOutTheSameSubjectAreDifferentPeople()
+    {
+        // A subject is unique only within its provider. If the handle dropped the provider half, these
+        // two would collide into one account — and one of them would inherit the other's authority.
+        SessionTokenService svc = Service();
+        var a = new KgsmIdentity("discord", "12345", "a", "A", null, []);
+        var b = new KgsmIdentity("github", "12345", "b", "B", null, []);
+
+        RefreshClaims? ra = await svc.ReadRefreshAsync(svc.MintRefresh(a, KgsmTier.Viewer, "sid_a").Token);
+        RefreshClaims? rb = await svc.ReadRefreshAsync(svc.MintRefresh(b, KgsmTier.Viewer, "sid_b").Token);
+
+        Assert.NotEqual(ra!.Identity.Handle, rb!.Identity.Handle);
+    }
+
+    [Fact]
+    public async Task ASubjectThatNamesNoProviderIsNotAnIdentity()
+    {
+        // A bare subject cannot say who issued it, so it names nobody in particular. Reading it as an
+        // identity would invent a provider; the caller treats the request as unauthenticated instead.
+        var svc = new SessionTokenService(
+            new SessionTokenOptions("hotrod", "k", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
+        var unqualified = new KgsmIdentity("", "198772043", "haru", "Haru", null, []);
+
+        Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(unqualified, KgsmTier.Admin, "sid_1").Token));
     }
 }

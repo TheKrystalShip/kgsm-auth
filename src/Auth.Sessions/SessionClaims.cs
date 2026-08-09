@@ -1,7 +1,5 @@
 using System.Security.Claims;
 
-using TheKrystalShip.KGSM.Auth.Discord;
-
 namespace TheKrystalShip.KGSM.Auth.Sessions;
 
 /// <summary>
@@ -9,37 +7,38 @@ namespace TheKrystalShip.KGSM.Auth.Sessions;
 /// path and by anything answering "who is this caller".
 /// </summary>
 /// <remarks>
-/// The profile here is the snapshot taken at login, not a live read: no KGSM surface keeps a Discord
-/// token, so there is nothing to re-fetch with. A display name that changed on Discord after login
-/// stays stale until the next one, which is the honest consequence of not retaining the token and is
-/// preferable to holding one.
+/// The profile here is the snapshot taken at login, not a live read: no KGSM surface keeps an
+/// identity provider's token, so there is nothing to re-fetch with. A display name that changed at
+/// the provider after login stays stale until the next one, which is the honest consequence of not
+/// retaining the token and is preferable to holding one.
 /// </remarks>
 public static class SessionClaims
 {
-    private const string SubjectPrefix = KgsmActorProvider.Discord + ":";
-
     /// <summary>
-    /// The identity a token carries, or <see langword="null"/> when the subject is absent or not a
-    /// Discord one. A caller with no readable identity is treated as unauthenticated rather than as
-    /// an anonymous someone.
+    /// The identity a token carries, or <see langword="null"/> when the subject is absent or is not a
+    /// <c>provider:subject</c> handle. A caller with no readable identity is treated as
+    /// unauthenticated rather than as an anonymous someone.
     /// </summary>
-    public static DiscordIdentity? ReadIdentity(ClaimsIdentity ci)
+    /// <remarks>
+    /// The provider is read from the handle rather than matched against a list this build knows: a
+    /// token minted by a host configured with a provider this build predates still names a real
+    /// person, and refusing it would make adding a provider a synchronised upgrade across every
+    /// surface. Authority does not ride on the provider — that is the <c>tier</c> claim, checked
+    /// separately — so reading an unfamiliar one grants nothing.
+    /// </remarks>
+    public static KgsmIdentity? ReadIdentity(ClaimsIdentity ci)
     {
         string? sub = ci.FindFirst("sub")?.Value ?? ci.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (sub is null || !sub.StartsWith(SubjectPrefix, StringComparison.Ordinal))
+        if (!KgsmActor.TryParse(sub, out string provider, out string subject))
             return null;
 
-        string userId = sub[SubjectPrefix.Length..];
-        if (userId.Length == 0)
-            return null;
-
-        string username = ci.FindFirst(KgsmAuthClaims.Username)?.Value ?? userId;
+        string username = ci.FindFirst(KgsmAuthClaims.Username)?.Value ?? subject;
         string display = ci.FindFirst(KgsmAuthClaims.Display)?.Value ?? username;
         string? avatar = ci.FindFirst(KgsmAuthClaims.Avatar)?.Value;
         string scope = ci.FindFirst("scope")?.Value ?? "";
 
-        return new DiscordIdentity(
-            userId, username, display, avatar,
+        return new KgsmIdentity(
+            provider, subject, username, display, avatar,
             [.. scope.Split(' ', StringSplitOptions.RemoveEmptyEntries)]);
     }
 

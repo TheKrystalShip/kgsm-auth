@@ -39,16 +39,10 @@ public class KgsmTiersTests
 public class KgsmActorTests
 {
     [Fact]
-    public void DiscordActorPrefersTheHandle() =>
-        Assert.Equal("discord:haru", KgsmActor.Discord("haru", "385730677141929985"));
-
-    [Fact]
-    public void DiscordActorFallsBackToTheUserId()
+    public void FormatsAnActorForAnyProvider()
     {
-        // A handle is not guaranteed; the id always is. Falling back keeps the actor attributable
-        // rather than blank.
-        Assert.Equal("discord:385730677141929985", KgsmActor.Discord(null, "385730677141929985"));
-        Assert.Equal("discord:385730677141929985", KgsmActor.Discord("  ", "385730677141929985"));
+        Assert.Equal("discord:haru", KgsmActor.Format("discord", "haru"));
+        Assert.Equal("github:haru", KgsmActor.Format("github", "haru"));
     }
 
     [Theory]

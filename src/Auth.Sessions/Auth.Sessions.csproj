@@ -9,12 +9,13 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Sessions</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Description>
-      KGSM session tokens: HMAC-SHA256 access + refresh JWTs, a session id stable across rotation,
-      per-token jti with reuse detection, and the cached per-request validator. Storage is a seam
-      (ISessionRegistry) — what a session is and when it dies is shared, where the rows live is each
-      surface's own.
+      KGSM session tokens: HMAC-SHA256 access + refresh JWTs carrying a provider:subject identity, a
+      session id stable across rotation, per-token jti with reuse detection, and the cached
+      per-request validator. Identity-provider agnostic — it mints and reads whatever provider a host
+      signed someone in through. Storage is a seam (ISessionRegistry): what a session is and when it
+      dies is shared, where the rows live is each surface's own.
     </Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -22,7 +23,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../Auth/Auth.csproj" />
-    <ProjectReference Include="../Auth.Discord/Auth.Discord.csproj" />
   </ItemGroup>
 
   <ItemGroup>

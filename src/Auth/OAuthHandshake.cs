@@ -1,12 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace TheKrystalShip.KGSM.Auth.Discord;
+namespace TheKrystalShip.KGSM.Auth;
 
 /// <summary>
-/// The two secrets one in-flight Discord login carries between the authorize redirect and the
+/// The two secrets one in-flight OAuth login carries between the authorize redirect and the
 /// callback: a CSRF <c>state</c> and a PKCE <c>code_verifier</c>. Both live in a single HttpOnly
-/// cookie on the browser doing the login, and nothing is stored server-side.
+/// cookie on the browser doing the login, and nothing is stored server-side. Every provider's login
+/// uses the same handshake — the attacks it defends against are properties of the authorization-code
+/// flow, not of whoever is answering it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,6 +17,11 @@ namespace TheKrystalShip.KGSM.Auth.Discord;
 /// carrying the attacker's <c>code</c>, and the victim's browser is handed a session for the
 /// <em>attacker's</em> identity — everything they then do lands in the attacker's account. PKCE stops
 /// code interception: a <c>code</c> travels back through a URL, and a URL leaks.
+/// </para>
+/// <para>
+/// <b>Bound to one provider's login by the cookie the caller writes,</b> not by anything stored here.
+/// A surface offering several providers scopes or names the cookie per login, so a callback from one
+/// provider cannot satisfy a handshake started against another.
 /// </para>
 /// <para>
 /// <b>The state must be bound to the browser, and the cookie is what binds it.</b> Checking a
@@ -40,7 +47,7 @@ public sealed class OAuthHandshake
         CodeVerifier = codeVerifier;
     }
 
-    /// <summary>The CSRF nonce echoed back by Discord on the callback.</summary>
+    /// <summary>The CSRF nonce the provider echoes back on the callback.</summary>
     public string State { get; }
 
     /// <summary>The PKCE secret, presented at the token exchange and never sent to the browser's URL.</summary>
@@ -61,7 +68,7 @@ public sealed class OAuthHandshake
     /// <summary>
     /// The single cookie value carrying both halves. The caller writes it <c>HttpOnly</c>,
     /// <c>Secure</c> under https, and <c>SameSite=Lax</c> — <b>not</b> <c>Strict</c>, which suppresses
-    /// the cookie on the top-level redirect back from Discord and breaks every login.
+    /// the cookie on the top-level redirect back from the provider and breaks every login.
     /// </summary>
     public string ToCookieValue() => $"{State}{Separator}{CodeVerifier}";
 
@@ -89,7 +96,7 @@ public sealed class OAuthHandshake
     }
 
     /// <summary>
-    /// Whether the state Discord echoed back is the one this browser was issued. Compared in constant
+    /// Whether the state the provider echoed back is the one this browser was issued. Compared in constant
     /// time: the comparison is against a value an attacker supplies and can vary at will, which is the
     /// shape a timing oracle needs.
     /// </summary>

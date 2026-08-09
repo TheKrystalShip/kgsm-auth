@@ -5,32 +5,17 @@ using System.Text.Json;
 namespace TheKrystalShip.KGSM.Auth.Discord;
 
 /// <summary>
-/// A Discord identity verified once at login. The caller's OAuth token is used for exactly one call
-/// (<c>/users/@me</c>) and discarded — no KGSM surface retains a Discord token — so the profile here
-/// is a snapshot taken at login, not something that can be re-read later.
-/// </summary>
-public sealed record DiscordIdentity(
-    string UserId,
-    string Username,
-    string Display,
-    string? AvatarUrl,
-    IReadOnlyList<string> Scopes);
-
-/// <summary>
-/// The outcome of a login: the verified identity plus the tier this host grants it.
-/// <see cref="KgsmTier.None"/> means "we know who you are, and you have no access here" — a terminal
-/// denial, distinct from a failure to find out.
-/// </summary>
-public sealed record ResolvedPrincipal(DiscordIdentity Identity, KgsmTier Tier);
-
-/// <summary>
 /// Discord could not be reached, or answered in a way that leaves authority unknown. The caller
 /// surfaces this as an upstream error (<c>502</c>) and <b>never</b> as a denial or a default grant:
 /// "we could not ask" is a different fact from "the answer is no", and collapsing them either locks
 /// out a legitimate admin during an outage or, far worse, admits someone during one.
 /// </summary>
+/// <remarks>
+/// A <see cref="KgsmAuthProviderException"/>, so a caller that handles any provider's outage the same
+/// way catches the base type and needs to know nothing about Discord.
+/// </remarks>
 public sealed class DiscordAuthException(string message, Exception? inner = null)
-    : Exception(message, inner);
+    : KgsmAuthProviderException(message, inner);
 
 /// <summary>This surface's own OAuth endpoint details — not shared, because every surface has its own.</summary>
 /// <param name="RedirectUri">
@@ -46,49 +31,27 @@ public sealed record DiscordOAuthEndpoints(string RedirectUri, string Scopes = "
 /// The one chokepoint to <c>discord.com</c>. Everything a KGSM surface asks Discord goes through
 /// here, which is what makes the whole authorization surface — the callback verdict, the tier gate,
 /// the 401/403 matrix — testable in-process against a fake.
+/// <para>
+/// It answers both halves of a login for this provider: <see cref="IIdentityProvider"/> verifies who
+/// someone is by exchanging the OAuth code, and <see cref="IAuthorityProvider"/> says what they may
+/// do by reading their guild roles with the <b>bot token</b> — the only path to roles, because the
+/// <c>identify</c> scopes a user grants do not carry them. Implementing the two separately is what
+/// lets a host keep Discord as its login while taking authority from somewhere else.
+/// </para>
 /// </summary>
-public interface IDiscordDirectory
-{
-    /// <summary>
-    /// The authorize URL to send the browser to. <paramref name="codeChallenge"/> is the PKCE
-    /// challenge from <see cref="OAuthHandshake.CodeChallenge"/>; <paramref name="prompt"/> is
-    /// <c>none</c> for silent SSO or <c>consent</c> for the interactive fallback.
-    /// </summary>
-    string BuildAuthorizeUrl(string state, string codeChallenge, string prompt);
-
-    /// <summary>
-    /// Exchange the code for an identity and resolve the tier this host grants it.
-    /// <para>
-    /// Returns <see langword="null"/> when the code itself is bad — expired, replayed, or issued to
-    /// another client — which is a client-recoverable problem, not a server one. Throws
-    /// <see cref="DiscordAuthException"/> when Discord is unreachable or answers unusably. A
-    /// successful return may still carry <see cref="KgsmTier.None"/>: identity verified, no access
-    /// here.
-    /// </para>
-    /// </summary>
-    Task<ResolvedPrincipal?> ResolveAsync(string code, string codeVerifier, CancellationToken ct);
-
-    /// <summary>
-    /// The guild roles a user holds, by user id, read with the bot token. <see langword="null"/> means
-    /// <b>not a member of the guild</b>; an empty list means a member holding only <c>@everyone</c>.
-    /// Those are different answers and the tier depends on which it is.
-    /// </summary>
-    Task<IReadOnlyList<string>?> GetGuildRolesAsync(string userId, CancellationToken ct);
-}
-
-/// <summary>
-/// The real <see cref="IDiscordDirectory"/>. Exchanges the OAuth code, verifies identity once, then
-/// reads the member's roles with the <b>bot token</b> — the only path to roles, because the
-/// <c>identify</c> scopes a user grants do not carry them. Holding a bot token here is shared
-/// external configuration, not a dependency on whatever else uses the same application.
-/// </summary>
+/// <remarks>
+/// Holding a bot token here is shared external configuration, not a dependency on whatever else uses
+/// the same application.
+/// </remarks>
 public sealed class DiscordDirectory(
     HttpClient http,
     KgsmAuthOptions auth,
     DiscordOAuthEndpoints endpoints,
-    KgsmRoleMap roleMap) : IDiscordDirectory
+    KgsmRoleMap roleMap) : IIdentityProvider, IAuthorityProvider
 {
     private const string ApiBase = "https://discord.com/api";
+
+    public string Provider => KgsmActorProvider.Discord;
 
     public string BuildAuthorizeUrl(string state, string codeChallenge, string prompt)
     {
@@ -109,19 +72,30 @@ public sealed class DiscordDirectory(
         return $"{ApiBase}/oauth2/authorize?{encoded}";
     }
 
-    public async Task<ResolvedPrincipal?> ResolveAsync(string code, string codeVerifier, CancellationToken ct)
+    public async Task<KgsmIdentity?> VerifyAsync(string code, string codeVerifier, CancellationToken ct)
     {
         string? userToken = await ExchangeCodeAsync(code, codeVerifier, ct);
         if (userToken is null)
             return null;
 
         // The caller's token buys exactly one thing — a verified user id — and is then dropped.
-        DiscordIdentity identity = await FetchIdentityAsync(userToken, ct);
-
-        IReadOnlyList<string>? roles = await GetGuildRolesAsync(identity.UserId, ct);
-        return new ResolvedPrincipal(identity, roleMap.Resolve(roles));
+        return await FetchIdentityAsync(userToken, ct);
     }
 
+    /// <summary>
+    /// The tier this host grants, from the caller's guild roles. Not being a member of the guild is
+    /// the access gate and resolves to <see cref="KgsmTier.None"/>; a member holding only
+    /// <c>@everyone</c> floors at <see cref="KgsmTier.Viewer"/>. A lookup that fails throws rather
+    /// than returning either, so an outage is never read as a verdict.
+    /// </summary>
+    public async Task<KgsmTier> ResolveTierAsync(KgsmIdentity identity, CancellationToken ct) =>
+        roleMap.Resolve(await GetGuildRolesAsync(identity.Subject, ct));
+
+    /// <summary>
+    /// The guild roles a user holds, by user id, read with the bot token. <see langword="null"/> means
+    /// <b>not a member of the guild</b>; an empty list means a member holding only <c>@everyone</c>.
+    /// Those are different answers and the tier depends on which it is.
+    /// </summary>
     public async Task<IReadOnlyList<string>?> GetGuildRolesAsync(string userId, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(
@@ -204,7 +178,7 @@ public sealed class DiscordDirectory(
         }
     }
 
-    private async Task<DiscordIdentity> FetchIdentityAsync(string userToken, CancellationToken ct)
+    private async Task<KgsmIdentity> FetchIdentityAsync(string userToken, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/users/@me");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userToken);
@@ -234,7 +208,8 @@ public sealed class DiscordDirectory(
             string display = GetString(me, "global_name") ?? username;
             string? avatarHash = GetString(me, "avatar");
 
-            return new DiscordIdentity(
+            return new KgsmIdentity(
+                KgsmActorProvider.Discord,
                 userId,
                 username,
                 display,

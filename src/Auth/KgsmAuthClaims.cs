@@ -20,13 +20,13 @@ public static class KgsmAuthClaims
     /// </summary>
     public const string TokenKind = "tkn";
 
-    /// <summary>Discord username, a login-time profile snapshot.</summary>
+    /// <summary>The provider's username, a login-time profile snapshot.</summary>
     public const string Username = "uname";
 
-    /// <summary>Discord display name, a login-time profile snapshot.</summary>
+    /// <summary>The provider's display name, a login-time profile snapshot.</summary>
     public const string Display = "disp";
 
-    /// <summary>Discord avatar URL, a login-time profile snapshot. Optional.</summary>
+    /// <summary>The provider's avatar URL, a login-time profile snapshot. Optional.</summary>
     public const string Avatar = "avatar";
 
     /// <summary>
@@ -66,7 +66,11 @@ public static class KgsmRelayHeaders
     /// <summary>The shared secret proving the caller is the trusted relay.</summary>
     public const string Secret = "X-Relay-Secret";
 
-    /// <summary>The Discord user id the relay is acting on behalf of.</summary>
+    /// <summary>
+    /// The subject the relay is acting on behalf of — the identity provider's own id for that person,
+    /// unqualified. The receiver knows which provider its relay speaks for; the value is what that
+    /// surface already keys a user by.
+    /// </summary>
     public const string User = "X-Relay-User";
 
     /// <summary>That user's display name, for rendering only.</summary>
