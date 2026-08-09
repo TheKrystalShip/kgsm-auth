@@ -53,15 +53,22 @@ admin mid-incident.
 ## Configuration
 
 Bound from the `KgsmAuth` section. The package owns the section and property names, so every surface
-binds the same keys by construction and one file can point a whole host at one application:
+binds the same keys by construction and one file can point a whole host at the same applications:
 
 ```
-KgsmAuth__ClientId=…            # the OAuth application, for a surface that signs people in
-KgsmAuth__ClientSecret=…        # environment only
+KgsmAuth__Providers__discord__ClientId=…        # one OAuth application, at one provider
+KgsmAuth__Providers__discord__ClientSecret=…    # environment only
+KgsmAuth__Providers__github__ClientId=…         # a second provider is two more keys
+KgsmAuth__Providers__github__ClientSecret=…
 ```
 
-That is the whole section. A surface that signs people in needs the application and its own redirect
-URI; a surface that only authorizes needs neither, because the account store answers it.
+That is the whole section. Adding a provider to a host is a pair of keys and no code anywhere:
+`options.For("github")` answers with an unconfigured application when nobody wired one up, so a
+provider a host does not offer and a provider it has never heard of are one answer, and
+`ConfiguredProviders()` is the set a login page may draw a button for.
+
+A surface that signs people in needs an application and its own redirect URI; a surface that only
+authorizes needs neither, because the account store answers it.
 
 ## Why it is dependency-free
 

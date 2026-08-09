@@ -40,7 +40,7 @@ public sealed record DiscordOAuthEndpoints(string RedirectUri, string Scopes = "
 /// </summary>
 public sealed class DiscordDirectory(
     HttpClient http,
-    KgsmAuthOptions auth,
+    KgsmOAuthApplication application,
     DiscordOAuthEndpoints endpoints) : IIdentityProvider
 {
     private const string ApiBase = "https://discord.com/api";
@@ -51,7 +51,7 @@ public sealed class DiscordDirectory(
     {
         Dictionary<string, string?> query = new()
         {
-            ["client_id"] = auth.ClientId,
+            ["client_id"] = application.ClientId,
             ["redirect_uri"] = endpoints.RedirectUri,
             ["response_type"] = "code",
             ["scope"] = endpoints.Scopes,
@@ -80,8 +80,8 @@ public sealed class DiscordDirectory(
     {
         using var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["client_id"] = auth.ClientId,
-            ["client_secret"] = auth.ClientSecret,
+            ["client_id"] = application.ClientId,
+            ["client_secret"] = application.ClientSecret,
             ["grant_type"] = "authorization_code",
             ["code"] = code,
             ["redirect_uri"] = endpoints.RedirectUri,

@@ -43,7 +43,7 @@ public class DiscordDirectoryTests
 
     private static DiscordDirectory Directory(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
         new(new HttpClient(new StubHandler(respond)),
-            new KgsmAuthOptions { ClientId = "cid", ClientSecret = "secret" },
+            new KgsmOAuthApplication { ClientId = "cid", ClientSecret = "secret" },
             new DiscordOAuthEndpoints("https://host.test/callback"));
 
     // ── The authorize URL ────────────────────────────────────────────────────

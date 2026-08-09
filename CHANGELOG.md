@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`KgsmAuthOptions` holds a host's applications by provider name** (`Auth` 3.0.0, breaking):
+  `Providers["discord"].ClientId`, bound from `KgsmAuth__Providers__discord__ClientId`. Adding a
+  provider to a host is a pair of environment keys and no code anywhere, and nothing above the type
+  names one. `For(provider)` answers with an unconfigured application rather than null, so a provider
+  nobody wired up and a provider nobody has heard of are one answer and a caller needs no existence
+  check; `ConfiguredProviders()` is the set a login page may draw a button for. Lookup is
+  case-insensitive, because a provider name is written in an environment key, in a route and in a
+  credential handle.
+- **`DiscordDirectory` takes one `KgsmOAuthApplication`** (`Auth.Discord` 4.0.0, breaking) instead of
+  the host's whole set. It needs one application, and a composition that hands it one cannot hand it
+  another provider's by accident.
+
 ### Removed
 
 - **`KgsmRoleMap` is gone, and with it `KgsmAuthOptions.GuildId`, `BotToken`, `RoleAdminIds`,

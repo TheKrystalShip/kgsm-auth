@@ -76,11 +76,55 @@ public class KgsmAuthOptionsTests
     /// pointing two surfaces at two applications.
     /// </summary>
     [Fact]
-    public void TheOptionsCarryTheApplicationAndNothingElse()
+    public void TheOptionsCarryTheApplicationsAndNothingElse()
     {
         Assert.Equal("KgsmAuth", KgsmAuthOptions.Section);
+        Assert.Equal(["Providers"], typeof(KgsmAuthOptions).GetProperties().Select(p => p.Name).Order());
         Assert.Equal(
-            ["ClientId", "ClientSecret"],
-            typeof(KgsmAuthOptions).GetProperties().Select(p => p.Name).Order());
+            ["ClientId", "ClientSecret", "Configured"],
+            typeof(KgsmOAuthApplication).GetProperties().Select(p => p.Name).Order());
+    }
+
+    /// <summary>
+    /// A provider name is written in an environment key, in a route and in a credential handle. The
+    /// answer must not depend on which of those three a person capitalised.
+    /// </summary>
+    [Fact]
+    public void AProviderIsFoundWhateverItsCasing()
+    {
+        var options = new KgsmAuthOptions();
+        options.Providers["GitHub"] = new KgsmOAuthApplication { ClientId = "cid", ClientSecret = "sec" };
+
+        Assert.True(options.For("github").Configured);
+        Assert.True(options.For("GITHUB").Configured);
+    }
+
+    /// <summary>
+    /// A provider nobody wired up and a provider nobody has heard of are one answer, so a caller asks
+    /// whether it is configured and never whether it exists.
+    /// </summary>
+    [Fact]
+    public void AnUnwiredAndAnUnknownProviderAnswerTheSame()
+    {
+        var options = new KgsmAuthOptions();
+        options.Providers["discord"] = new KgsmOAuthApplication { ClientId = "cid" };  // no secret
+
+        Assert.False(options.For("discord").Configured);
+        Assert.False(options.For("nobody-has-heard-of-this").Configured);
+        Assert.Empty(options.ConfiguredProviders());
+    }
+
+    /// <summary>
+    /// The catalog a login page renders is the configured set — a button drawn for an unwired
+    /// provider is a bounce that 503s.
+    /// </summary>
+    [Fact]
+    public void OnlyWiredProvidersAreReported()
+    {
+        var options = new KgsmAuthOptions();
+        options.Providers["discord"] = new KgsmOAuthApplication { ClientId = "cid", ClientSecret = "sec" };
+        options.Providers["github"] = new KgsmOAuthApplication();
+
+        Assert.Equal(["discord"], options.ConfiguredProviders());
     }
 }

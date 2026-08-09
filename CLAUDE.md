@@ -42,17 +42,25 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
   is how the surfaces diverged in the first place.
 - **No surface derives authority from a group, a guild or a role.** `KgsmAuthOptions` carries the
-  Discord application and nothing else; the account store is what answers what anyone may do,
+  host's OAuth applications and nothing else; the account store is what answers what anyone may do,
   including for kgsm-bot, whose caller is a Discord account with no login behind it. Do not
   reintroduce a role map: an authority source that lives outside the account is exactly what made
   four surfaces able to disagree about one person.
 - **Parsing is fail-closed.** `KgsmTiers.Parse` maps anything unrecognised — absent, misspelled, or a
   tier invented by a newer peer — to `None`. Never add a permissive fallback.
+- **A provider is a key in a map, never a property.** `KgsmAuthOptions.Providers` is keyed by
+  provider name, so wiring a host to a new provider is a pair of environment keys and no code — and
+  no type above it names one. Do not add a per-provider property beside the map: an asymmetry there
+  is how one provider ends up with a login path the others do not have. `For()` returns an
+  unconfigured application rather than null on purpose, so an unwired provider and an unknown one are
+  one answer and no caller writes an existence check that could disagree with the configured check.
 
 ## `Auth.Discord` — locked decisions
 
 - **It answers who, and only who.** `DiscordDirectory` is an `IIdentityProvider` and stays the only
-  chokepoint to `discord.com`. It holds no guild, reads no role and takes no bot token: what a person
+  chokepoint to `discord.com`. It takes **one** `KgsmOAuthApplication`, not the host's set, so a
+  composition cannot hand it another provider's by accident. It holds no guild, reads no role and
+  takes no bot token: what a person
   may do is the account store's answer, and a login here proves one fact — that the caller holds this
   subject at Discord. `DiscordAuthException` derives from `KgsmAuthProviderException` so a caller
   handles any provider's outage identically.
