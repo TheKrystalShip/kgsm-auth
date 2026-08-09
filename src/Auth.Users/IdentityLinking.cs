@@ -22,6 +22,22 @@ public enum LinkOutcome
     AlreadyLinked,
 }
 
+/// <summary>What happened when a credential was detached from an account.</summary>
+public enum UnlinkOutcome
+{
+    /// <summary>The credential is gone; the account keeps another way in.</summary>
+    Unlinked,
+
+    /// <summary>No such credential on that account. Also the answer for one on somebody else's.</summary>
+    NotFound,
+
+    /// <summary>
+    /// It was the only thing that could prove the account, and detaching it would leave an account
+    /// nobody — including its holder — can ever sign in to.
+    /// </summary>
+    LastCredential,
+}
+
 /// <summary>The account an identity now proves, and how it came to.</summary>
 public readonly record struct LinkResult(LinkOutcome Outcome, KgsmUser? User)
 {
@@ -198,6 +214,40 @@ public sealed class IdentityLinkService(IUserStore store)
         }
 
         return new LinkResult(LinkOutcome.Provisioned, user);
+    }
+
+    /// <summary>
+    /// Detach a credential from the account it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Scoped to one account on purpose: the credential id is the whole of what a caller supplies, and
+    /// without the account to check it against, an id guessed or copied from somewhere else would
+    /// unlink a stranger's identity. One that belongs to another account is
+    /// <see cref="UnlinkOutcome.NotFound"/> — the same answer as one that does not exist, because
+    /// telling those apart would say whether an id is real.
+    /// </para>
+    /// <para>
+    /// The last credential is refused. The store itself does not refuse it (it reports what happened
+    /// and nothing more), but an account with nothing attached is one its own holder cannot sign in to
+    /// and only an admin can rescue, so the rule lives here where every caller gets it.
+    /// </para>
+    /// </remarks>
+    public async Task<UnlinkOutcome> UnlinkAsync(
+        string userId, string credentialId, CancellationToken ct = default)
+    {
+        IReadOnlyList<UserCredential> credentials =
+            await store.ListCredentialsAsync(userId, ct).ConfigureAwait(false);
+
+        if (!credentials.Any(c => c.CredentialId == credentialId))
+            return UnlinkOutcome.NotFound;
+
+        if (credentials.Count <= 1)
+            return UnlinkOutcome.LastCredential;
+
+        return await store.RemoveCredentialAsync(credentialId, ct).ConfigureAwait(false)
+            ? UnlinkOutcome.Unlinked
+            : UnlinkOutcome.NotFound;
     }
 
     /// <summary>How many unapproved accounts this host is holding.</summary>

@@ -8,8 +8,8 @@ assistant and the Discord bot alike.
 
 | package | contents | taken by |
 |---|---|---|
-| **`TheKrystalShip.KGSM.Auth`** | the tier model, the Discord role map, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
-| **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow, identity verification, and the bot-token role lookup. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
+| **`TheKrystalShip.KGSM.Auth`** | the tier model, the bot's guild-role map, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
+| **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm |
 
@@ -23,27 +23,28 @@ Three ordered tiers — a higher one subsumes the lower (`admin ⊇ operator ⊇
 | `operator` | acts: start, stop, restart, install, uninstall, backup, update |
 | `admin` | host settings, audit configuration, session revocation, reading other people's conversations |
 
-Two rules decide every request:
+One rule decides every request:
 
-- **Guild membership is the access gate.** Not a member ⇒ `none` ⇒ a terminal denial. Re-authenticating
-  cannot change the answer, so it is never retried.
-- **A verified member floors at `viewer`.** The admin and operator role ids elevate from there. There is
-  no viewer role list, because it would grant what every member already has.
+- **The KGSM account carries the tier**, and nothing outside it contributes. A provider proves you are
+  an account this host already has; an identity attached to no account holds `none`, whatever group or
+  guild it belongs to elsewhere.
 
 ```csharp
-KgsmRoleMap map = options.ToRoleMap();
-
-// A REST caller, roles fetched with the bot token. null == not a member.
-KgsmTier tier = map.Resolve(member?.Roles);
-
-// A gateway client that already holds the member object.
-KgsmTier tier = map.ResolveSnowflakes(guildUser?.Roles.Select(r => r.Id));
+KgsmTier tier = await authority.ResolveTierAsync(identity, ct);   // UserStoreAuthority, in production
 
 if (tier < KgsmTier.Operator)
     return Deny();
 ```
 
-`null` and an empty collection mean different things and must not be conflated: `null` is *not a
+**kgsm-bot is the exception, and it is one because it has no login.** A person typing a slash command
+has proved nothing but their Discord account, so the bot maps a guild role to a tier with
+`KgsmRoleMap`:
+
+```csharp
+KgsmTier tier = map.ResolveSnowflakes(guildUser?.Roles.Select(r => r.Id));
+```
+
+`null` and an empty collection mean different things there and must not be conflated: `null` is *not a
 member*, an empty collection is *a member holding only `@everyone`*. Never pass an empty collection to
 stand in for a failed lookup — that turns an outage into a silent grant. Report the failure and deny.
 
@@ -53,17 +54,16 @@ Bound from the `KgsmAuth` section. The package owns the section and property nam
 binds the same keys by construction and one file can configure all of them:
 
 ```
-KgsmAuth__GuildId=…
-KgsmAuth__ClientId=…
+KgsmAuth__ClientId=…            # the OAuth application, for a surface that signs people in
 KgsmAuth__ClientSecret=…        # environment only
-KgsmAuth__BotToken=…            # environment only
-KgsmAuth__RoleAdminIds=…        # comma-separated
-KgsmAuth__RoleOperatorIds=…     # comma-separated
+KgsmAuth__GuildId=…             # kgsm-bot only
+KgsmAuth__BotToken=…            # kgsm-bot only, environment only
+KgsmAuth__RoleAdminIds=…        # kgsm-bot only, comma-separated
+KgsmAuth__RoleOperatorIds=…     # kgsm-bot only, comma-separated
 ```
 
-Roles come from the **bot token** (`GET /guilds/{guild}/members/{user}`) — the only path to them, since
-the `identify guilds` user scopes do not carry roles. A surface that resolves authority therefore needs
-a bot token even when it runs no bot of its own.
+The guild, the bot token and the role ids configure the one surface that reads a guild role. A surface
+that signs people in needs the application and its own redirect URI, and nothing else.
 
 ## Why it is dependency-free
 
@@ -123,17 +123,18 @@ store**, so a login survives a restart and works across nodes.
 
 ## Honest failure
 
-The role lookup answers three different things and they must not be collapsed:
+A login answers three different things and they must not be collapsed:
 
-| Discord says | means | tier |
+| what happened | means | result |
 |---|---|---|
-| `404` on the member | not in the guild | `none` — a terminal denial |
-| member, `roles: []` | in the guild, no roles | `viewer` — the floor |
-| `429`, `5xx`, unreachable | **unknown** | `DiscordAuthException` |
+| the code exchanged, `users/@me` answered | a verified identity | the account it proves, or an unapproved one created for it |
+| `4xx` from the token endpoint | an expired, replayed or forged code | `null` — a `401`, start again |
+| `5xx`, unreachable, malformed | **unknown** | `DiscordAuthException` — a `502` |
 
 The third is the one that matters. "We could not ask" is not "the answer is no": a surface that reads
-an outage as an empty role list quietly demotes an admin mid-incident, and one that reads it as
-membership lets a stranger in. Both are worse than a `502`.
+an outage as a verdict either locks out someone who really does hold the role or admits someone who
+does not. The same rule holds one layer down — a store that cannot be read throws rather than
+resolving to `none`.
 
 ## Sessions
 

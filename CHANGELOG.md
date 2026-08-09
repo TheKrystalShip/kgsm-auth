@@ -7,8 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- **`DiscordDirectory` no longer implements `IAuthorityProvider`** (`Auth.Discord` 3.0.0, breaking).
+  Guild membership and guild roles are not an answer to what a person may do on a KGSM host, so the
+  provider answers who someone is and nothing else: `ResolveTierAsync`, `GetGuildRolesAsync`,
+  `GetGuildMemberAsync`, the `DiscordMember` record and the `KgsmRoleMap` constructor argument are
+  gone, and it no longer reads a guild id or a bot token. `KgsmRoleMap` and `KgsmAuthOptions` stay in
+  the zero-dependency core, where kgsm-bot — a Discord surface with no login of its own, and the only
+  consumer left — reads them.
+
 ### Added
 
+- **`IdentityLinkService.UnlinkAsync`** (`Auth.Users` 1.2.0) — detaching a credential, scoped to the
+  account it is on: an id copied from somewhere else is `NotFound`, the same answer as one that does
+  not exist, so the outcome never says whether an id is real. The last credential is refused, because
+  an account with nothing attached is one its own holder cannot sign in to.
 - **`IdentityLinkService`** — the step between a verified external identity and an account. It finds
   the account an identity proves, or creates an unapproved one for it to prove: signing in at a
   provider establishes who somebody is and never that they belong here, so a first arrival lands at

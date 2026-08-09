@@ -10,11 +10,11 @@ kgsm-llm and kgsm-bot, so a change here changes who can do what on every surface
 
 **Identity and authority are two seams, not one.** `IIdentityProvider` answers *who is this* (the
 OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they do* (the tier);
-`ISignInService`/`SignInService` composes them into one login. In production the two halves come from
-two different places: an identity provider answers the first, and `Auth.Users` answers the second for
-everyone, however they signed in. `DiscordDirectory` still implements both interfaces — its authority
-half is what a seeding command reads a guild role with — but nothing on a request path uses it for
-that. Nothing above the seams names a provider.
+`ISignInService`/`SignInService` composes them into one login. The two halves come from two different
+places: an identity provider answers the first, and `Auth.Users` answers the second for everyone,
+however they signed in. **`IAuthorityProvider` has exactly one implementation that ships: the account
+store.** A provider package implements the identity half and nothing else, which is what lets one be
+added with no authority story of its own. Nothing above the seams names a provider.
 
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
 its own with a password, and an external identity is a credential attached to it. So the two seams
@@ -41,10 +41,12 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   viewer requirement admit an operator. Do not add a tier between them without walking every
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
   is how the surfaces diverged in the first place.
+- **`KgsmRoleMap` is kgsm-bot's map, and lives here because kgsm-bot takes only this package.** A
+  Discord surface with no login of its own reads a guild role because it has nothing else to read; no
+  other surface consults it, and nothing here is on any request path but the bot's.
 - **`null` ≠ empty in `Resolve`.** `null` is *not a member of the guild*; an empty collection is *a
   member holding only `@everyone`* (the viewer floor). Collapsing them either misreads every plain
-  member or lets a failed lookup through as a grant. `KgsmRoleMap` is **seed input**, not a request-path
-  authority — it is what a one-shot command reads to decide what tier to write onto an account.
+  member or lets a failed lookup through as a grant.
 - **A failed role lookup is never passed in as empty.** The caller reports the failure and denies. This
   is the security analog of the ecosystem's never-fabricate-a-status rule: authorize on measured
   membership and roles, or deny.
@@ -57,18 +59,22 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
 
 ## `Auth.Discord` — locked decisions
 
-- **It implements both seams; nothing else may.** `DiscordDirectory` is `IIdentityProvider` +
-  `IAuthorityProvider`, and it stays the only chokepoint to `discord.com`. `DiscordAuthException`
-  derives from `KgsmAuthProviderException` so a caller handles any provider's outage identically.
+- **It answers who, and only who.** `DiscordDirectory` is an `IIdentityProvider` and stays the only
+  chokepoint to `discord.com`. It holds no guild, reads no role and takes no bot token: what a person
+  may do is the account store's answer, and a login here proves one fact — that the caller holds this
+  subject at Discord. `DiscordAuthException` derives from `KgsmAuthProviderException` so a caller
+  handles any provider's outage identically.
+- **The caller's token buys one thing and is dropped.** It is presented to `users/@me` and never
+  stored, so a completed login leaves the host holding no credential at Discord at all.
 - **Register it transient, and resolve it once per composition.** It is a typed `HttpClient`; holding
   one in a singleton pins a handler for the process lifetime and silently stops the factory rotating
   it, so DNS changes never land. The composition resolves the client once and hands the same instance
   to both halves, so one sign-in uses one client.
 
-- **The three lookup answers stay three answers.** `404` (not a member) ⇒ `null`, a member with no
-  roles ⇒ empty, and a failed lookup ⇒ `DiscordAuthException`. Never collapse the third into either of
-  the others: an outage read as "no roles" demotes an admin mid-incident, and read as "member" lets a
-  stranger in.
+- **A bad code is `null`; an outage throws.** A 4xx from the token endpoint is an expired or replayed
+  code — the caller's problem, a `401`, start again. A 5xx or an unreachable host is
+  `DiscordAuthException`, which is a `502`. Collapsing them reports one as the other and sends a
+  browser round a retry loop that cannot succeed.
 - **`OAuthHandshake` is in the core, not here.** The state+PKCE pair is a property of the
   authorization-code flow, not of Discord, and every provider's login uses it unchanged.
 - **`state` and PKCE ride one cookie and neither is optional.** `state` stops login CSRF and only
@@ -147,6 +153,12 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   covers a pending account (which authenticates at `None`). Its cache TTL is the staleness bound on a
   demotion; a read failure throws and is never cached, or a moment of unavailability becomes a
   full-TTL lockout for somebody who really does hold the role.
+- **Linking is scoped to an account, and the last credential is refused.** `UnlinkAsync` takes the
+  account as well as the credential id, because the id is the whole of what a caller supplies and an
+  unscoped one copied from elsewhere would detach a stranger's identity — "not yours" and "not real"
+  are one answer for the same reason. An account with nothing attached is one its own holder cannot
+  sign in to, so the rule lives here rather than in each caller; the store itself refuses nothing and
+  only reports what happened.
 - **An arriving identity is provisioned unapproved, never auto-linked.** `IdentityLinkService` creates
   a `Pending`/`None` account for a subject nobody has claimed. It never matches on an email or a
   username: providers disagree about what "verified" means, and matching on one is a documented

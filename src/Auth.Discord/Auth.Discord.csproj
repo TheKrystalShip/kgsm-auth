@@ -17,7 +17,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Discord</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>2.1.0</Version>
+    <Version>3.0.0</Version>
     <Description>
       The KGSM ecosystem's single chokepoint to discord.com, and its Discord identity/authority
       provider: the OAuth login flow, identity verification, and the bot-token guild-role lookup that

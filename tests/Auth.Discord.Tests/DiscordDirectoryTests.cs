@@ -7,14 +7,21 @@ using TheKrystalShip.KGSM.Auth.Discord;
 namespace TheKrystalShip.KGSM.Auth.Discord.Tests;
 
 /// <summary>
-/// A whole login through the Discord provider. The directory answers both halves — who someone is and
-/// what they may do — so composing it with itself is the real production wiring, not a test shortcut:
-/// a host that took authority from elsewhere would pass a different second argument and nothing else
-/// about the login would move.
+/// A whole login through the Discord provider. The directory answers one half — who someone is — and
+/// the second argument answers the other, which in production is the KGSM account store. A guild role
+/// is not in this picture anywhere: composing an identity provider with an authority that knows
+/// nothing about Discord is the real wiring.
 /// </summary>
 internal static class DiscordSignIn
 {
-    public static SignInService SignIn(this DiscordDirectory directory) => new(directory, directory);
+    private sealed class FixedAuthority(KgsmTier tier) : IAuthorityProvider
+    {
+        public Task<KgsmTier> ResolveTierAsync(KgsmIdentity identity, CancellationToken ct) =>
+            Task.FromResult(tier);
+    }
+
+    public static SignInService SignIn(this DiscordDirectory directory, KgsmTier tier = KgsmTier.Viewer) =>
+        new(directory, new FixedAuthority(tier));
 }
 
 /// <summary>
@@ -23,9 +30,6 @@ internal static class DiscordSignIn
 /// </summary>
 public class DiscordDirectoryTests
 {
-    private const string AdminRole = "1520175931828867193";
-    private const string OperatorRole = "1520175983880179804";
-
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
         : HttpMessageHandler
     {
@@ -39,9 +43,8 @@ public class DiscordDirectoryTests
 
     private static DiscordDirectory Directory(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
         new(new HttpClient(new StubHandler(respond)),
-            new KgsmAuthOptions { ClientId = "cid", ClientSecret = "secret", BotToken = "bot", GuildId = "g1" },
-            new DiscordOAuthEndpoints("https://host.test/callback"),
-            new KgsmRoleMap([AdminRole], [OperatorRole]));
+            new KgsmAuthOptions { ClientId = "cid", ClientSecret = "secret" },
+            new DiscordOAuthEndpoints("https://host.test/callback"));
 
     // ── The authorize URL ────────────────────────────────────────────────────
 
@@ -67,71 +70,21 @@ public class DiscordDirectoryTests
         Assert.Contains(expected, Directory(_ => new HttpResponseMessage())
             .BuildAuthorizeUrl("s", "c", prompt));
 
-    // ── Role lookup: the three answers that are not the same answer ──────────
-
-    [Fact]
-    public async Task NotAMember_IsNull_NotEmpty()
-    {
-        // 404 means no member object. Returning an empty list instead would floor a stranger at
-        // viewer and hand them every read on the host.
-        IReadOnlyList<string>? roles = await Directory(_ => new HttpResponseMessage(HttpStatusCode.NotFound))
-            .GetGuildRolesAsync("u1", default);
-
-        Assert.Null(roles);
-    }
-
-    [Fact]
-    public async Task MemberWithNoRoles_IsEmpty_NotNull()
-    {
-        IReadOnlyList<string>? roles = await Directory(_ => Json(HttpStatusCode.OK, """{"roles":[]}"""))
-            .GetGuildRolesAsync("u1", default);
-
-        Assert.NotNull(roles);
-        Assert.Empty(roles);
-    }
-
-    [Fact]
-    public async Task RateLimited_Throws_NeverReadsAsNoRoles()
-    {
-        // A 429 says nothing about who this person is. Answering "no roles" would silently demote an
-        // admin mid-incident; answering "member" would be worse.
-        await Assert.ThrowsAsync<DiscordAuthException>(() =>
-            Directory(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests))
-                .GetGuildRolesAsync("u1", default));
-    }
-
-    [Fact]
-    public async Task Unreachable_Throws()
-    {
-        await Assert.ThrowsAsync<DiscordAuthException>(() =>
-            Directory(_ => throw new HttpRequestException("no route"))
-                .GetGuildRolesAsync("u1", default));
-    }
-
-    [Fact]
-    public async Task MalformedJson_Throws()
-    {
-        await Assert.ThrowsAsync<DiscordAuthException>(() =>
-            Directory(_ => Json(HttpStatusCode.OK, "{not json"))
-                .GetGuildRolesAsync("u1", default));
-    }
-
     // ── The full resolve ─────────────────────────────────────────────────────
 
-    private static HttpResponseMessage Route(HttpRequestMessage req, string rolesJson) =>
+    private static HttpResponseMessage Route(HttpRequestMessage req) =>
         req.RequestUri!.AbsolutePath switch
         {
             "/api/oauth2/token" => Json(HttpStatusCode.OK, """{"access_token":"user-token"}"""),
-            "/api/users/@me" => Json(HttpStatusCode.OK,
+            _ => Json(HttpStatusCode.OK,
                 """{"id":"42","username":"haru","global_name":"Haru","avatar":"abc"}"""),
-            _ => Json(HttpStatusCode.OK, rolesJson),
         };
 
     [Fact]
-    public async Task ResolvesIdentityAndTier()
+    public async Task ResolvesTheIdentity()
     {
-        ResolvedPrincipal? principal = await Directory(r => Route(r, $$"""{"roles":["{{OperatorRole}}"]}"""))
-            .SignIn().ResolveAsync("code", "verifier", default);
+        ResolvedPrincipal? principal = await Directory(Route)
+            .SignIn(KgsmTier.Operator).ResolveAsync("code", "verifier", default);
 
         Assert.NotNull(principal);
         Assert.Equal("42", principal.Identity.Subject);
@@ -142,15 +95,12 @@ public class DiscordDirectoryTests
     }
 
     [Fact]
-    public async Task VerifiedButNotAMember_ResolvesToNone_NotAnError()
+    public async Task TheTierComesFromTheAuthority_NeverFromDiscord()
     {
-        // "We know who you are and you have no access" is a real, final answer — the caller turns it
-        // into a 403, not a retry.
-        ResolvedPrincipal? principal = await Directory(r =>
-                r.RequestUri!.AbsolutePath.Contains("/members/")
-                    ? new HttpResponseMessage(HttpStatusCode.NotFound)
-                    : Route(r, "{}"))
-            .SignIn().ResolveAsync("code", "verifier", default);
+        // Nothing Discord answers moves this. The directory asks discord.com exactly one question —
+        // who is holding this code — and the tier is decided by a seam that never heard of a guild.
+        ResolvedPrincipal? principal = await Directory(Route)
+            .SignIn(KgsmTier.None).ResolveAsync("code", "verifier", default);
 
         Assert.NotNull(principal);
         Assert.Equal("42", principal.Identity.Subject);
@@ -165,7 +115,7 @@ public class DiscordDirectoryTests
         ResolvedPrincipal? principal = await Directory(r =>
                 r.RequestUri!.AbsolutePath == "/api/oauth2/token"
                     ? new HttpResponseMessage(HttpStatusCode.BadRequest)
-                    : Route(r, "{}"))
+                    : Route(r))
             .SignIn().ResolveAsync("stale-code", "verifier", default);
 
         Assert.Null(principal);
@@ -177,7 +127,7 @@ public class DiscordDirectoryTests
         await Assert.ThrowsAsync<DiscordAuthException>(() =>
             Directory(r => r.RequestUri!.AbsolutePath == "/api/oauth2/token"
                     ? new HttpResponseMessage(HttpStatusCode.BadGateway)
-                    : Route(r, "{}"))
+                    : Route(r))
                 .SignIn().ResolveAsync("code", "verifier", default));
     }
 
@@ -189,7 +139,7 @@ public class DiscordDirectoryTests
         {
             if (r.RequestUri!.AbsolutePath == "/api/oauth2/token")
                 sent = r.Content!.ReadAsStringAsync().Result;
-            return Route(r, "{}");
+            return Route(r);
         });
 
         await directory.SignIn().ResolveAsync("code", "the-verifier", default);
@@ -199,20 +149,20 @@ public class DiscordDirectoryTests
     }
 
     [Fact]
-    public async Task RolesAreReadWithTheBotTokenNotTheCallersToken()
+    public async Task TheCallersTokenBuysExactlyOneThing()
     {
-        // The caller's scopes never carry roles, so a surface that asked with the user's token would
-        // read an empty set and quietly floor everyone at viewer.
-        string? memberAuth = null;
+        // The user token is presented to users/@me and then dropped. Nothing else is asked with it and
+        // nothing is stored, so a login leaves this host holding no credential at Discord at all.
+        string? meAuth = null;
         DiscordDirectory directory = Directory(r =>
         {
-            if (r.RequestUri!.AbsolutePath.Contains("/members/"))
-                memberAuth = r.Headers.Authorization?.ToString();
-            return Route(r, $$"""{"roles":["{{AdminRole}}"]}""");
+            if (r.RequestUri!.AbsolutePath == "/api/users/@me")
+                meAuth = r.Headers.Authorization?.ToString();
+            return Route(r);
         });
 
         await directory.SignIn().ResolveAsync("code", "verifier", default);
 
-        Assert.Equal("Bot bot", memberAuth);
+        Assert.Equal("Bearer user-token", meAuth);
     }
 }

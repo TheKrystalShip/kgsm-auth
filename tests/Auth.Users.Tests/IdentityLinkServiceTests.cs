@@ -225,6 +225,64 @@ public sealed class IdentityLinkServiceTests
         Assert.Equal(LinkOutcome.Existing, again.Outcome);
         Assert.Single(await temp.Store.ListCredentialsAsync(user.UserId));
     }
+
+    // ── Unlinking ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DetachingOneOfTwoCredentialsLeavesTheOtherAndTheAccount()
+    {
+        using TempStore temp = new();
+        KgsmUser user = Make.User();
+        await temp.Store.CreateAsync(user);
+        await temp.Store.AddCredentialAsync(Make.Identity(user.UserId, "local:" + user.UserId));
+        await temp.Store.AddCredentialAsync(Make.Identity(user.UserId, "discord:1001"));
+        UserCredential discord = (await temp.Store.FindCredentialAsync("discord:1001"))!;
+        IdentityLinkService linking = new(temp.Store);
+
+        UnlinkOutcome outcome = await linking.UnlinkAsync(user.UserId, discord.CredentialId);
+
+        Assert.Equal(UnlinkOutcome.Unlinked, outcome);
+        Assert.Single(await temp.Store.ListCredentialsAsync(user.UserId));
+        Assert.NotNull(await temp.Store.FindByIdAsync(user.UserId));
+    }
+
+    [Fact]
+    public async Task TheLastCredentialIsRefused_NotSilentlyLeavingAnAccountNobodyCanSignInTo()
+    {
+        using TempStore temp = new();
+        KgsmUser user = Make.User();
+        await temp.Store.CreateAsync(user);
+        await temp.Store.AddCredentialAsync(Make.Identity(user.UserId, "discord:1001"));
+        UserCredential only = (await temp.Store.FindCredentialAsync("discord:1001"))!;
+        IdentityLinkService linking = new(temp.Store);
+
+        UnlinkOutcome outcome = await linking.UnlinkAsync(user.UserId, only.CredentialId);
+
+        Assert.Equal(UnlinkOutcome.LastCredential, outcome);
+        Assert.Single(await temp.Store.ListCredentialsAsync(user.UserId));
+    }
+
+    [Fact]
+    public async Task SomebodyElsesCredentialIsNotFound_AndStays()
+    {
+        // The id is the whole of what a caller supplies. Unscoped, one copied from another account's
+        // record would detach a stranger's identity — so the account it is on decides, and "not yours"
+        // and "not real" are one answer.
+        using TempStore temp = new();
+        KgsmUser mine = Make.User("haru");
+        KgsmUser theirs = Make.User("kaito");
+        await temp.Store.CreateAsync(mine);
+        await temp.Store.CreateAsync(theirs);
+        await temp.Store.AddCredentialAsync(Make.Identity(theirs.UserId, "discord:2002"));
+        await temp.Store.AddCredentialAsync(Make.Identity(theirs.UserId, "local:" + theirs.UserId));
+        UserCredential theirDiscord = (await temp.Store.FindCredentialAsync("discord:2002"))!;
+        IdentityLinkService linking = new(temp.Store);
+
+        UnlinkOutcome outcome = await linking.UnlinkAsync(mine.UserId, theirDiscord.CredentialId);
+
+        Assert.Equal(UnlinkOutcome.NotFound, outcome);
+        Assert.Equal(2, (await temp.Store.ListCredentialsAsync(theirs.UserId)).Count);
+    }
 }
 
 /// <summary>

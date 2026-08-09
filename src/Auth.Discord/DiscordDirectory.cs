@@ -22,50 +22,26 @@ public sealed class DiscordAuthException(string message, Exception? inner = null
 /// Where Discord returns the browser. Must match a redirect registered on the application exactly.
 /// </param>
 /// <param name="Scopes">
-/// What sign-in asks for. <c>identify</c> is enough: roles are never in the user's token and are read
-/// with the bot token instead.
+/// What sign-in asks for. <c>identify</c> is enough: a login establishes who someone is and nothing
+/// else, and no scope Discord can grant says what they may do on a KGSM host.
 /// </param>
 public sealed record DiscordOAuthEndpoints(string RedirectUri, string Scopes = "identify");
-
-/// <summary>
-/// A member of this host's guild, as the bot sees them: who they are, and the roles they hold.
-/// </summary>
-/// <remarks>
-/// The member object Discord returns carries the user it belongs to, so one lookup answers both
-/// questions. Nothing here is authority — it is what a seed reads once to decide what tier to write
-/// onto a KGSM account.
-/// </remarks>
-/// <param name="UserId">The Discord snowflake, as a string.</param>
-/// <param name="Username">Their Discord username.</param>
-/// <param name="Display">Their global display name, falling back to the username.</param>
-/// <param name="Roles">
-/// The role ids they hold. Empty means a member with only <c>@everyone</c> — a member that is
-/// <em>not</em> in the guild is a null <see cref="DiscordMember"/>, never an empty role list.
-/// </param>
-public sealed record DiscordMember(
-    string UserId, string Username, string Display, IReadOnlyList<string> Roles);
 
 /// <summary>
 /// The one chokepoint to <c>discord.com</c>. Everything a KGSM surface asks Discord goes through
 /// here, which is what makes the whole authorization surface — the callback verdict, the tier gate,
 /// the 401/403 matrix — testable in-process against a fake.
 /// <para>
-/// It answers both halves of a login for this provider: <see cref="IIdentityProvider"/> verifies who
-/// someone is by exchanging the OAuth code, and <see cref="IAuthorityProvider"/> says what they may
-/// do by reading their guild roles with the <b>bot token</b> — the only path to roles, because the
-/// <c>identify</c> scopes a user grants do not carry them. Implementing the two separately is what
-/// lets a host keep Discord as its login while taking authority from somewhere else.
+/// It answers <b>one</b> half of a login: <see cref="IIdentityProvider"/> verifies who someone is by
+/// exchanging the OAuth code. What they may do is the account store's answer and only its answer, so
+/// a Discord account here is one way to prove you are a KGSM account — the same thing a password is,
+/// and the same thing every other provider will be.
 /// </para>
 /// </summary>
-/// <remarks>
-/// Holding a bot token here is shared external configuration, not a dependency on whatever else uses
-/// the same application.
-/// </remarks>
 public sealed class DiscordDirectory(
     HttpClient http,
     KgsmAuthOptions auth,
-    DiscordOAuthEndpoints endpoints,
-    KgsmRoleMap roleMap) : IIdentityProvider, IAuthorityProvider
+    DiscordOAuthEndpoints endpoints) : IIdentityProvider
 {
     private const string ApiBase = "https://discord.com/api";
 
@@ -98,77 +74,6 @@ public sealed class DiscordDirectory(
 
         // The caller's token buys exactly one thing — a verified user id — and is then dropped.
         return await FetchIdentityAsync(userToken, ct);
-    }
-
-    /// <summary>
-    /// The tier this host grants, from the caller's guild roles. Not being a member of the guild is
-    /// the access gate and resolves to <see cref="KgsmTier.None"/>; a member holding only
-    /// <c>@everyone</c> floors at <see cref="KgsmTier.Viewer"/>. A lookup that fails throws rather
-    /// than returning either, so an outage is never read as a verdict.
-    /// </summary>
-    public async Task<KgsmTier> ResolveTierAsync(KgsmIdentity identity, CancellationToken ct) =>
-        roleMap.Resolve(await GetGuildRolesAsync(identity.Subject, ct));
-
-    /// <summary>
-    /// The guild roles a user holds, by user id, read with the bot token. <see langword="null"/> means
-    /// <b>not a member of the guild</b>; an empty list means a member holding only <c>@everyone</c>.
-    /// Those are different answers and the tier depends on which it is.
-    /// </summary>
-    public async Task<IReadOnlyList<string>?> GetGuildRolesAsync(string userId, CancellationToken ct) =>
-        (await GetGuildMemberAsync(userId, ct))?.Roles;
-
-    /// <summary>
-    /// The guild member behind a user id, read with the bot token: their name and the roles they
-    /// hold. <see langword="null"/> means <b>not a member of the guild</b>; a member with no roles
-    /// carries an empty list. A lookup that fails throws.
-    /// </summary>
-    public async Task<DiscordMember?> GetGuildMemberAsync(string userId, CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get, $"{ApiBase}/guilds/{auth.GuildId}/members/{userId}");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bot", auth.BotToken);
-
-        HttpResponseMessage response;
-        try
-        {
-            response = await http.SendAsync(request, ct);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            throw new DiscordAuthException("Discord guild-member endpoint unreachable.", ex);
-        }
-
-        using (response)
-        {
-            // Not a member of this guild. A real verdict, not an error — and deliberately NOT the same
-            // as a member with an empty roles array, which floors at viewer.
-            if (response.StatusCode is HttpStatusCode.NotFound)
-                return null;
-
-            // Rate-limited, or anything else unexpected: authority is unknown. Throwing keeps the
-            // caller from reading a failure as an absence of roles and quietly granting the floor.
-            if (!response.IsSuccessStatusCode)
-                throw new DiscordAuthException(
-                    $"Discord guild-member lookup returned {(int)response.StatusCode}.");
-
-            string json = await response.Content.ReadAsStringAsync(ct);
-            using JsonDocument doc = SafeParse(json);
-            JsonElement member = doc.RootElement;
-
-            IReadOnlyList<string> roles =
-                member.TryGetProperty("roles", out JsonElement ids) && ids.ValueKind == JsonValueKind.Array
-                    ? [.. ids.EnumerateArray()
-                        .Select(r => r.GetString())
-                        .Where(s => !string.IsNullOrEmpty(s))
-                        .Select(s => s!)]
-                    : [];
-
-            JsonElement user = member.TryGetProperty("user", out JsonElement u) ? u : default;
-            string username = (user.ValueKind == JsonValueKind.Object ? GetString(user, "username") : null) ?? userId;
-            string display = (user.ValueKind == JsonValueKind.Object ? GetString(user, "global_name") : null) ?? username;
-
-            return new DiscordMember(userId, username, display, roles);
-        }
     }
 
     private async Task<string?> ExchangeCodeAsync(string code, string codeVerifier, CancellationToken ct)
