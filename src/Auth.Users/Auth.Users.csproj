@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TheKrystalShip.KGSM.Auth.Users</RootNamespace>
+    <AssemblyName>TheKrystalShip.KGSM.Auth.Users</AssemblyName>
+
+    <PackageId>TheKrystalShip.KGSM.Auth.Users</PackageId>
+    <Authors>Heisenberg</Authors>
+    <Version>1.0.0</Version>
+    <Description>
+      The KGSM user store: local accounts with passwords, the credentials that prove them (a local
+      password, a linked external identity), and the tier each account holds. A user exists on its
+      own — an external provider is one way to prove you are a user KGSM already knows about, never
+      the source of one. Backed by a host-level SQLite file both the Control Panel API and the
+      assistant read directly, so neither depends on the other to authenticate anyone.
+    </Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Auth/Auth.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Raw ADO, not EF: kgsm-api sits on EF and kgsm-llm does not, and the store has to be the
+         same file read the same way from both. Microsoft.Data.Sqlite is what EF's provider itself
+         sits on, so the two surfaces share one native SQLite rather than stacking a second. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
+    <!-- PasswordHasher<T> only: a versioned, reviewed PBKDF2 with rehash-on-upgrade built in. The
+         UserManager/EF Identity stack above it is deliberately not taken — this package owns its
+         own schema and its own store. -->
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Scoped NuGet-audit suppression, same advisory and same reasoning as kgsm-api's: a native
+         SQLite lib (SQLitePCLRaw.lib.e_sqlite3 2.1.11) pulled transitively, where 2.1.11 is the
+         latest published build and there is nothing to move to. This store holds no untrusted SQL
+         and is never network-reachable — it is a local file on one host. Delete this the moment a
+         patched SQLitePCLRaw bundle ships. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The on-disk spelling of the store's enums and timestamps is internal — it is a file format,
+         not a contract a consumer writes against — and the tests that pin it need to see it. -->
+    <InternalsVisibleTo Include="TheKrystalShip.KGSM.Auth.Users.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

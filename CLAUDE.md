@@ -14,7 +14,13 @@ OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they
 the only pair wired today — but a host can replace either half alone, which is the entire point of
 their being separate. Nothing above the seams names a provider.
 
-Authority for the wider effort: **`../auth-unification-plan.md`**.
+**KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
+its own with a password, and an external identity is a credential attached to it. So the two seams
+have two different sources — a provider verifies who someone is, and the account store alone says
+what they may do.
+
+Authority for the wider effort: **`../auth-unification-plan.md`** and
+**`../auth-internal-users-plan.md`**.
 
 ## Locked decisions (do not relitigate)
 
@@ -89,6 +95,47 @@ Authority for the wider effort: **`../auth-unification-plan.md`**.
 - **A per-surface switch belongs at composition, not in the package.** kgsm-api's inert-sessions mode
   is a validator it substitutes and a worker it does not register — the shared types know nothing
   about a flag one surface has.
+
+## `Auth.Users` — locked decisions
+
+- **The account is the primary object; a credential only identifies.** A `KgsmUser` exists on its
+  own and carries the tier. A password, a Discord subject and a GitHub subject are all just
+  credentials attached to one. Nothing outside the account contributes to authority — that is what
+  lets a provider be added with no authority story of its own, and it is the rule to check any
+  change here against.
+- **A credential handle is unique across the whole table, and that constraint is load-bearing.** It
+  is simultaneously "an external identity belongs to exactly one account" and "an account has at
+  most one password" (a password is filed under `local:<user id>`). Both rules are enforced by the
+  database rather than by a check a second service could be written without.
+- **Keyed by the opaque `usr_` id, never by the username.** A username is renameable and
+  enumerable; keying on one detaches a person from their own sessions, links and audit trail the day
+  they change it.
+- **Additive-only schema, and the version is a floor.** The ecosystem's `EnsureCreated`-and-wipe rule
+  does not apply to this one file: wiping it is every account and every password, and two
+  independently deployed services share it, so one is routinely a version ahead. Add tables, add
+  nullable columns, add indexes — never drop, rename, or repurpose. A file newer than the build
+  opening it is **refused**, because half-understood accounts is the failure mode here that grants
+  access quietly.
+- **`0600`, set before WAL is enabled.** SQLite stamps `-wal`/`-shm` with the mode the database had
+  when it created them, so chmod-after would leave two world-readable files carrying the same pages.
+- **An unknown username and a wrong password are one outcome at one cost.** Distinguishable answers
+  are a username oracle and so is a faster one — the unmatched path still spends a hash verification
+  against a decoy. Do not add a "no such user" result for the sake of a nicer error.
+- **The store fails closed on every parse**, the same rule as `KgsmTiers.Parse`: an unrecognised
+  status reads as `disabled`, an unrecognised provenance as `derived`, an unrecognised credential
+  kind as `identity`. Enums are stored as words, never ordinals, so reordering one cannot silently
+  repoint every row.
+- **A store that cannot be read throws, and never resolves to `None`.** Same rule as a failed Discord
+  role lookup: "we could not ask" is not "the answer is no".
+- **Lockout is exponential from a threshold, never a hard cap.** A hard cap hands anyone who knows a
+  username a denial of service against its owner. The policy is a value applied inside the same
+  transaction that records the failure, so the count and the lock it implies cannot disagree.
+- **`PasswordHasher<T>` from `Microsoft.Extensions.Identity.Core`, behind `IUserPasswordHasher`.**
+  Do not hand-roll, and do not reach for `UserManager`/EF Identity — this package owns its own schema
+  and its own store. The seam plus the rehash-on-upgrade path is what lets the format be replaced
+  later with no forced reset.
+- **No SMTP, and no password reset by email.** A mail dependency in the package whose purpose is
+  removing outside dependencies would be self-defeating. Resets are admin-initiated.
 
 ## Conventions
 

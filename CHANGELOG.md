@@ -7,6 +7,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`TheKrystalShip.KGSM.Auth.Users`** — KGSM owns identity. A local account is the primary object:
+  it exists on its own, carries the tier, and an external provider becomes one way to prove you are
+  an account KGSM already knows about rather than the source of one.
+  - `KgsmUser` / `UserStatus` / `TierSource`: the account, whether it may be used, and whether its
+    tier was granted by an admin or derived from a mapping. An account that is not active resolves
+    to `None` whatever is written on it.
+  - `UserCredential` / `CredentialKind`: what proves an account — a local password, a linked
+    external identity, and a typed column so a third kind costs a row rather than a migration. One
+    unique index on the handle both stops an identity being linked to two accounts and holds an
+    account to a single password.
+  - `IUserStore` / `SqliteUserStore`: a host-level SQLite file at `/var/lib/kgsm/auth/users.db`, `0600`,
+    WAL with a busy timeout, read and written directly by every surface on the host so no leaf
+    depends on a sibling to authenticate anyone. Schema changes are additive only, the file carries
+    a `schema_version`, and a store written by a newer build is refused rather than half read.
+  - `LocalSignInService`: username and password, with an unknown username and a wrong password
+    giving one answer at one cost, exponential per-account lockout, and rehash-on-upgrade so a
+    change of hash format migrates accounts as their owners sign in.
+  - `UserStoreAuthority`: the `IAuthorityProvider` that answers from the account. An identity linked
+    to nobody holds nothing; a store that cannot be read is an outage and never a denial.
+  - `IUserPasswordHasher` / `IdentityPasswordHasher`: `PasswordHasher<T>` behind a seam, so the hash
+    format can be replaced without a forced reset.
+
 ### Changed
 
 - **Identity is provider-agnostic.** `KgsmIdentity(Provider, Subject, …)` replaces `DiscordIdentity`

@@ -11,6 +11,7 @@ assistant and the Discord bot alike.
 | **`TheKrystalShip.KGSM.Auth`** | the tier model, the Discord role map, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow, identity verification, and the bot-token role lookup. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
+| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm |
 
 ## The model
 
@@ -178,3 +179,55 @@ evicts, making the kill immediate; the TTL is the backstop for what cannot evict
 **absolute, never sliding** — a sliding window is extended by every hit, so the busiest session, the
 one most worth revoking, would be the one that never re-checks. A "no" is cached too, because a
 revoked session still presenting its token is exactly what a stolen one does.
+
+## Accounts
+
+**KGSM owns users.** An account exists on its own — a local password is enough to sign in, with no
+external provider configured at all. A Discord, GitHub or Google identity is one *credential attached
+to* an account, never the source of one, and never a source of authority.
+
+```csharp
+var store  = new SqliteUserStore(new UserStoreOptions());          // /var/lib/kgsm/auth/users.db
+var signIn = new LocalSignInService(store, new IdentityPasswordHasher(), new UserStoreAuthority(store));
+
+LocalSignInResult result = await signIn.SignInAsync(username, password, DateTimeOffset.UtcNow);
+if (result.Outcome == LocalSignInOutcome.Success)
+    Mint(result.Principal!.Identity, result.Principal.Tier);
+```
+
+**A credential answers "which account is this"; the account answers "what may they do".** Nothing
+else contributes. That is what lets a provider be added with no authority story of its own, and it is
+why `UserStoreAuthority` is an `IAuthorityProvider` like any other — the login path does not change
+shape when the source of authority does.
+
+**One file, several services, all of them direct.** The Control Panel API and the assistant each open
+`/var/lib/kgsm/auth/users.db` themselves. It is a shared host *resource*, in the same category as
+`/var/lib/kgsm/leaves/` — not a service, so nothing here can be down, and no leaf ends up
+authenticating through a sibling.
+
+### The schema rule is the opposite of everywhere else
+
+Elsewhere in the ecosystem a schema change means wiping the database. **That cannot apply here**:
+wiping this one is every account, every password and every link, with nothing to re-derive them from.
+Two services also deploy separately, so at any moment one may be a version ahead of the other.
+
+So changes are **additive only** — add tables, add nullable columns, add indexes; never drop, rename,
+or change what a stored value means. The file carries a `schema_version`, and a store written by a
+build newer than the one opening it is **refused outright** rather than half read.
+
+### What a password costs
+
+- **An unknown username and a wrong password are one outcome at one cost.** Distinguishable answers
+  are a username oracle, and so is a faster one — an unmatched username still spends a hash
+  verification against a decoy.
+- **Lockout is exponential from a threshold, not a hard cap.** A hard cap hands anyone who knows a
+  username a denial of service against its owner; doubling delays cost an attacker orders of
+  magnitude within a handful of attempts.
+- **The file is `0600`, and `-wal`/`-shm` with it.** SQLite gives those two the mode the database had
+  when it created them, so the store sets the mode *before* enabling WAL.
+- **It lives in a directory the service user owns**, not directly under the root-owned
+  `/var/lib/kgsm/`. SQLite writes `-wal` and `-shm` *beside* the database, so WAL needs write
+  permission on the **directory**, not just the file — the same reason `events/` and `leaves/` are
+  their own directories.
+- **No SMTP, anywhere.** A reset is admin-initiated. Adding a mail dependency to the thing whose
+  purpose is removing outside dependencies would be self-defeating.
