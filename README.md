@@ -82,12 +82,12 @@ those live in sibling packages that only the surfaces needing them take.
 ```bash
 dotnet build kgsm-auth.slnx
 dotnet test kgsm-auth.slnx
-dotnet pack src/Auth/Auth.csproj -c Release
-cp src/Auth/bin/Release/TheKrystalShip.KGSM.Auth.<v>.nupkg /home/heisen/local-nuget/
+../scripts/publish-packages.sh kgsm-auth     # pack + push to the org's GitHub Packages feed
 ```
 
-A consumer pins a version from the local feed, so a change here needs a repack and a version bump on
-both sides — a same-version repack is served stale from the NuGet cache, which is keyed by id+version.
+A consumer pins a version from that feed, so a change here needs a version bump, a publish, and then
+the pin moved on the consumer. A published version is immutable — pushing one again is a `409` the
+script reports as already published — so the change a consumer restores is always the one you built.
 
 ## The login flow
 

@@ -176,8 +176,9 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
 - **Version source:** `<Version>` in `src/Auth/Auth.csproj`.
 - Bump on any user-facing change; patch for fixes, minor for additions, major for a breaking change.
 - Update `CHANGELOG.md` under `## [Unreleased]`.
-- Consumers pin a version from `/home/heisen/local-nuget`, so shipping a change means **repack + bump
-  on both sides** — a same-version repack is served stale from the NuGet cache (keyed by id+version).
+- Consumers pin a version from the org's GitHub Packages feed, so shipping a change means **bump the
+  version, publish, then bump the pin** — `../scripts/publish-packages.sh kgsm-auth`. A published
+  version is immutable, so there is no same-version republish to get wrong.
 
 ## Gotchas
 
