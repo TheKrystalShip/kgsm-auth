@@ -164,7 +164,13 @@ Authority for the wider effort: **`../auth-unification-plan.md`** and
   username: providers disagree about what "verified" means, and matching on one is a documented
   account-takeover route. Provisioning is reachable by anyone who can complete a login at a configured
   provider, so `PendingPolicy` caps it and expires what nobody looks at — and expiry only ever removes
-  an account that arrived this way, is still unapproved, and has no password.
+  an account that arrived on its own and is still unapproved. Provenance is what it reads, not whether
+  a password is set: an account an admin created or approved carries `TierSource.Granted` and is
+  spared however long it waits, while a self-registered one holds a password and must still expire,
+  or the cap fills with a queue nobody can drain.
+- **A password is at least `Passwords.MinLength` characters, and length is the whole rule.** Every
+  door that sets one — registration, an admin reset, a holder changing their own — reads the same
+  constant, because a floor checked in three callers is three places for it to drift low.
 
 ## Conventions
 

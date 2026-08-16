@@ -7,6 +7,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — `Passwords`, the one password floor (`Auth.Users` 1.3.0)
+
+`Passwords.MinLength` (12) and `Passwords.IsAcceptable`. Every door that sets a password reads the
+same constant — registration, an admin resetting one, and a holder changing their own — because a
+floor checked separately in three callers is three places for it to drift low. Length is the whole
+rule: a composition requirement measures a shape rather than an amount of guessing.
+
+### Changed — the pending sweep reads provenance, not whether a password is set (`Auth.Users` 1.3.0)
+
+`IdentityLinkService.ExpirePendingAsync` removes an unapproved account past the TTL when its tier is
+`TierSource.Derived` — it arrived on its own. An account an admin created or approved carries
+`TierSource.Granted` and is spared however long it waits.
+
+⚠ **This changes what gets swept.** An account that holds a password is no longer spared for that
+reason alone. A self-registered account has one and no admin has ever looked at it, so sparing every
+password-bearing account would let self-registrations accumulate against `PendingPolicy.Cap` until
+the host refuses every new arrival — a queue nobody can drain, indistinguishable from outside from a
+host that is simply closed. A host running with self-registration open should size
+`PendingUserTtlDays` to how long an admin may reasonably take to look.
+
 ### Changed — package license metadata is GPL-3.0-or-later
 
 `PackageLicenseExpression` now matches the repo's own `LICENSE` on every published package. Already

@@ -127,8 +127,13 @@ public sealed class IdentityLinkServiceTests
         Assert.Null(await temp.Store.FindByCredentialAsync("discord:1"));
     }
 
+    /// <summary>
+    /// Somebody who registers themselves holds a password, and is still an arrival nobody has
+    /// looked at. Sparing it would let self-registrations pile up against the cap until the host
+    /// refuses every new one — which from outside is indistinguishable from a host that is closed.
+    /// </summary>
     [Fact]
-    public async Task ExpiryNeverTakesAnAccountSomebodyWasGivenAPasswordFor()
+    public async Task ExpiryTakesASelfRegisteredAccountEvenThoughItHoldsAPassword()
     {
         using TempStore temp = new();
         IdentityLinkService linking = new(temp.Store);
@@ -140,8 +145,27 @@ public sealed class IdentityLinkServiceTests
 
         int removed = await linking.ExpirePendingAsync(PendingPolicy.Default, Make.Now.AddDays(90));
 
+        Assert.Equal(1, removed);
+        Assert.Null(await temp.Store.FindByIdAsync(arrival.User.UserId));
+    }
+
+    /// <summary>
+    /// An admin creating an account is deliberate work, and provenance is what says so: the tier
+    /// was granted rather than derived. It waits as long as it waits.
+    /// </summary>
+    [Fact]
+    public async Task ExpiryNeverTakesAnAccountAnAdminMadeByHand()
+    {
+        using TempStore temp = new();
+        IdentityLinkService linking = new(temp.Store);
+
+        LinkResult made = await linking.ProvisionAsync(
+            Discord("1"), KgsmTier.Viewer, TierSource.Granted, UserStatus.Pending, Make.Now);
+
+        int removed = await linking.ExpirePendingAsync(PendingPolicy.Default, Make.Now.AddDays(90));
+
         Assert.Equal(0, removed);
-        Assert.NotNull(await temp.Store.FindByIdAsync(arrival.User.UserId));
+        Assert.NotNull(await temp.Store.FindByIdAsync(made.User!.UserId));
     }
 
     [Fact]

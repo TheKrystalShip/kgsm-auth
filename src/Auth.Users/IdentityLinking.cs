@@ -58,8 +58,8 @@ public readonly record struct LinkResult(LinkOutcome Outcome, KgsmUser? User)
 /// <para>
 /// <see cref="Ttl"/> is what keeps the cap from becoming a lockout: without it, one burst of
 /// arrivals fills the cap permanently and the next real person is refused. Expiry only ever removes
-/// an account that arrived this way, is still unapproved, and has no password — never one an admin
-/// created or approved.
+/// an account that arrived on its own and is still unapproved — never one an admin created or
+/// approved, which carries <see cref="TierSource.Granted"/> and is spared however long it waits.
 /// </para>
 /// </remarks>
 /// <param name="Cap">The most unapproved accounts to hold at once.</param>
@@ -267,10 +267,21 @@ public sealed class IdentityLinkService(IUserStore store)
     /// many went.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately narrow. An account is only swept when all three hold: it is still
-    /// <see cref="UserStatus.Pending"/>, it has no password (so nobody was ever given a way into it),
-    /// and it is older than the policy's TTL. An account an admin created, approved, or set a
-    /// password on fails one of those and stays.
+    /// <see cref="UserStatus.Pending"/>, it is older than the policy's TTL, and its tier is
+    /// <see cref="TierSource.Derived"/> — it arrived on its own rather than being made by hand. An
+    /// account an admin created or approved carries <see cref="TierSource.Granted"/> and stays
+    /// however long it waits, because deleting deliberate work is a different act from tidying up
+    /// after someone who signed up and never came back.
+    /// </para>
+    /// <para>
+    /// Provenance is the discriminator rather than whether the account holds a password, because a
+    /// self-registered account has one and no admin has ever looked at it. Sparing every
+    /// password-bearing account would let self-registrations accumulate against
+    /// <see cref="PendingPolicy.Cap"/> until the host refuses every new arrival — a queue nobody
+    /// can drain being indistinguishable, from outside, from a host that is simply closed.
+    /// </para>
     /// </remarks>
     public async Task<int> ExpirePendingAsync(
         PendingPolicy policy, DateTimeOffset now, CancellationToken ct = default)
@@ -286,9 +297,7 @@ public sealed class IdentityLinkService(IUserStore store)
             if (user.Status != UserStatus.Pending || user.Created > cutoff)
                 continue;
 
-            IReadOnlyList<UserCredential> credentials =
-                await store.ListCredentialsAsync(user.UserId, ct).ConfigureAwait(false);
-            if (credentials.Any(c => c.Kind == CredentialKind.Password))
+            if (user.TierSource == TierSource.Granted)
                 continue;
 
             if (await store.DeleteAsync(user.UserId, ct).ConfigureAwait(false))
