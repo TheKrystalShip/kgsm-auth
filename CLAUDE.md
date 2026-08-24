@@ -21,7 +21,7 @@ its own with a password, and an external identity is a credential attached to it
 have two different sources — a provider verifies who someone is, and the account store alone says
 what they may do.
 
-Authority for the wider effort: **`../auth-unification-plan.md`** and
+This file is the authority for the auth design; the account-store design is also covered by
 **`../auth-internal-users-plan.md`**.
 
 ## Locked decisions (do not relitigate)
