@@ -40,12 +40,12 @@ This file is the authority for the auth design; the account-store design is also
 - **Three ordered tiers, and the ordering is load-bearing.** `admin ⊇ operator ⊇ viewer` is what lets a
   viewer requirement admit an operator. Do not add a tier between them without walking every
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
-  is how the surfaces diverged in the first place.
+  lets surfaces answer the same question differently.
 - **No surface derives authority from a group, a guild or a role.** `KgsmAuthOptions` carries the
-  host's OAuth applications and nothing else; the account store is what answers what anyone may do,
-  including for kgsm-bot, whose caller is a Discord account with no login behind it. Do not
-  reintroduce a role map: an authority source that lives outside the account is exactly what made
-  four surfaces able to disagree about one person.
+  host's OAuth applications and nothing else; the account store is the single authority on what
+  anyone may do, including for kgsm-bot, whose caller is a Discord account with no login behind it.
+  Do not add a role map: an authority source that lives outside the account lets surfaces disagree
+  about one person.
 - **Parsing is fail-closed.** `KgsmTiers.Parse` maps anything unrecognised — absent, misspelled, or a
   tier invented by a newer peer — to `None`. Never add a permissive fallback.
 - **A provider is a key in a map, never a property.** `KgsmAuthOptions.Providers` is keyed by
@@ -89,7 +89,7 @@ This file is the authority for the auth design; the account-store design is also
 ## `Auth.Sessions` — locked decisions
 
 - **The token layer knows nothing about providers.** It mints and reads whatever `provider:subject`
-  it is handed. A Discord login still produces the subject `discord:<id>` exactly as it always has —
+  it is handed. A Discord login produces the subject `discord:<id>` —
   `SessionTokenServiceTests` pins that string, because changing its spelling is a flag day that
   invalidates every live token and orphans every stored session row at once.
 - **The registry is a seam, not an implementation.** Two surfaces storing sessions differently behind
@@ -134,8 +134,8 @@ This file is the authority for the auth design; the account-store design is also
   status reads as `disabled`, an unrecognised provenance as `derived`, an unrecognised credential
   kind as `identity`. Enums are stored as words, never ordinals, so reordering one cannot silently
   repoint every row.
-- **A store that cannot be read throws, and never resolves to `None`.** Same rule as a failed Discord
-  role lookup: "we could not ask" is not "the answer is no".
+- **A store that cannot be read throws, and never resolves to `None`.** "We could not ask" is not
+  "the answer is no".
 - **Lockout is exponential from a threshold, never a hard cap.** A hard cap hands anyone who knows a
   username a denial of service against its owner. The policy is a value applied inside the same
   transaction that records the failure, so the count and the lock it implies cannot disagree.
@@ -211,6 +211,12 @@ history; never duplicate it into docs or code.
   survive it: *"temporary shim for the rework"*, *"added to satisfy the new requirement"*,
   milestone/phase labels (*"per M2"*, *"the Phase 1 step"*). If a line's justification is the work
   that produced it rather than the system as it now stands, it goes.
+- **No volatile numbers.** Counts and versions that drift — how many projects/files/tests/
+  partials exist, a dependency's pinned version, a file's line count — never go in prose: they are
+  stale the moment anything changes, and nothing fails to remind anyone. Name the authoritative
+  source instead (the csproj, the directory, the barrel file). A number belongs in prose only when
+  it *is* the contract (a port, a timeout, a cap) or a measured fact that is itself the reason a
+  design exists.
 - **Edits are replacements, not appends.** When changing an existing feature, rewrite the affected
   doc/comment fresh as if writing it for the first time — never append a correction under the
   stale version, and never leave the stale version standing beside the new. The current revision
