@@ -20,7 +20,7 @@ rule: a composition requirement measures a shape rather than an amount of guessi
 `TierSource.Derived` — it arrived on its own. An account an admin created or approved carries
 `TierSource.Granted` and is spared however long it waits.
 
-⚠ **This changes what gets swept.** An account that holds a password is no longer spared for that
+**This changes what gets swept.** An account that holds a password is no longer spared for that
 reason alone. A self-registered account has one and no admin has ever looked at it, so sparing every
 password-bearing account would let self-registrations accumulate against `PendingPolicy.Cap` until
 the host refuses every new arrival — a queue nobody can drain, indistinguishable from outside from a
