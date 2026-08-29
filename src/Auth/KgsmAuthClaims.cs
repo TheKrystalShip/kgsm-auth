@@ -79,3 +79,122 @@ public static class KgsmRelayHeaders
     /// <summary>The tier the relay resolved for that user, as a <see cref="KgsmTiers"/> wire string.</summary>
     public const string Tier = "X-Relay-Tier";
 }
+
+/// <summary>
+/// The host-local secret a trusted relay proves itself with, and where every surface on a host finds
+/// it. The value authenticates the <em>relay</em>, never a person: the identity and authority a relay
+/// forwards are always the asking person's, carried in <see cref="KgsmRelayHeaders"/>.
+/// </summary>
+/// <remarks>
+/// <para><b>The host mints it, not a person.</b> It is shared between processes that already run as
+/// the same account on the same machine, so there is nothing for an operator to obtain, transcribe or
+/// keep in step across three files. The first surface to look for it creates it; the rest read what
+/// it wrote. Creation is <c>O_CREAT|O_EXCL</c>, so two services starting at once cannot mint two
+/// different secrets — the loser reads the winner's.</para>
+/// <para><b>Fail-closed.</b> Any failure to read or create yields an empty secret, which every
+/// consumer already treats as "the relay path is off" rather than as "no secret required".</para>
+/// </remarks>
+public static class KgsmRelaySecret
+{
+    /// <summary>
+    /// The file the host's relay secret lives in. In the shared KGSM state tree rather than one
+    /// surface's own directory, because no single surface owns it: the assistant checks it, and the
+    /// Control Panel API and the Discord bot present it.
+    /// </summary>
+    /// <remarks>
+    /// Beside the account store rather than one level up, for the reason the account store is a
+    /// directory: <c>/var/lib/kgsm</c> itself is root-owned on a host provisioned from a checkout, so
+    /// a service account can read it and create nothing in it. <c>auth/</c> is owned by that account
+    /// on every host — a package's tmpfiles declares it, a deploy script creates it — which makes it
+    /// the one place in the shared tree these surfaces can actually mint into.
+    /// </remarks>
+    public const string DefaultPath = "/var/lib/kgsm/auth/relay-secret";
+
+    /// <summary>
+    /// The secret this host's relays use: <paramref name="configured"/> when a host pinned one
+    /// deliberately, otherwise the file's contents, minting it if it is not there yet. Returns an
+    /// empty string when the secret can be neither read nor created — the relay path stays off.
+    /// </summary>
+    public static string Resolve(string? configured, string? path = null)
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+
+        string file = string.IsNullOrWhiteSpace(path) ? DefaultPath : path.Trim();
+
+        // Read before minting: on every start after the first this is the whole of it.
+        if (TryRead(file, out string existing))
+            return existing;
+
+        return TryMint(file, out string minted) ? minted : "";
+    }
+
+    private static bool TryRead(string file, out string secret)
+    {
+        secret = "";
+        try
+        {
+            if (!File.Exists(file))
+                return false;
+            string value = File.ReadAllText(file).Trim();
+            if (value.Length == 0)
+                return false;
+            secret = value;
+            return true;
+        }
+        catch
+        {
+            // Unreadable is not empty: the caller falls through to minting, which fails the same way
+            // and lands on the fail-closed empty secret.
+            return false;
+        }
+    }
+
+    private static bool TryMint(string file, out string secret)
+    {
+        secret = "";
+        string value = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+
+        try
+        {
+            string? dir = Path.GetDirectoryName(file);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
+            // Exclusive create is what makes concurrent starts safe: exactly one process writes.
+            // The mode is set AT creation rather than after it: a chmod on the following line leaves
+            // a window in which the secret is world-readable, and a secret is only ever as private as
+            // its least private instant. Owner-only is the whole of it — the surfaces sharing this run
+            // as the same account, and nothing else on the host has any business presenting it.
+            // CA1416 flags UnixCreateMode as unsupported on Windows. Every KGSM host is Linux — the
+            // path above is a Linux one and each surface sharing this secret is a systemd unit — so
+            // the platform the analyzer is guarding against is not one this ever runs on.
+#pragma warning disable CA1416
+            var options = new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+                UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+            };
+#pragma warning restore CA1416
+
+            using (var writer = new StreamWriter(new FileStream(file, options)))
+            {
+                writer.Write(value);
+            }
+
+            secret = value;
+            return true;
+        }
+        catch (IOException)
+        {
+            // Lost the create race — the winner's secret is the host's.
+            return TryRead(file, out secret);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

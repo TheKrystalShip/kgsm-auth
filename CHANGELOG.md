@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — `KgsmRelaySecret`, the secret a host mints for itself (`Auth` 3.2.0)
+
+`KgsmRelaySecret.Resolve(configured, path?)` returns the secret a trusted relay proves itself with:
+a value the host pinned deliberately, or the contents of `/var/lib/kgsm/auth/relay-secret`, minting
+that file when it is not there yet. It sits beside the account store because `/var/lib/kgsm` itself is
+root-owned on a host provisioned from a checkout — `auth/` is the directory in the shared tree these
+surfaces own on every host, and therefore the only one they can mint into. The first surface to ask creates it and the rest read what it wrote,
+so the assistant, the Control Panel API and the Discord bot hold the same string with nothing asked
+of an operator.
+
+Creation is exclusive and the file is owner-only from the instant it exists, so concurrent first
+starts cannot mint two different secrets and the value is never world-readable for an instant.
+Every failure path yields an empty secret, which each consumer already reads as "the relay path is
+off" rather than as "no secret required".
+
 ### Added — `Passwords`, the one password floor (`Auth.Users` 1.3.0)
 
 `Passwords.MinLength` (12) and `Passwords.IsAcceptable`. Every door that sets a password reads the

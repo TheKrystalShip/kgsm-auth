@@ -8,7 +8,7 @@ assistant and the Discord bot alike.
 
 | package | contents | taken by |
 |---|---|---|
-| **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity and authority seams, claim and relay-header names, the actor convention. **No I/O, no dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
+| **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity and authority seams, claim and relay-header names, the host's relay secret, the actor convention. **No dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot |
