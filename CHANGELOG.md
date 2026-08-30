@@ -7,6 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a public vhost, and loopback for the daemon itself (`1.2.0`)
+
+A person signs in against the anchor directly, once, for the whole cluster — so unlike a leaf's unix
+socket this is a public surface and needs a name a browser can reach. `deploy/nginx/kgsm-auth-anchor.conf`
+is that vhost, installed by `setup.sh` alongside the polkit grant and skipped cleanly on a host with
+no nginx. The anchor owns its vhost and nothing else: the `:80` ACME block and the certificate
+lifecycle stay host-level, because a component that claimed them would make every other one on the
+box depend on it.
+
+**The daemon now listens on `127.0.0.1` rather than every interface.** TLS is terminated by the proxy
+in front of it, which is where the certificate lives; binding the world would put an unencrypted
+sign-in on the network beside the encrypted one.
+
+`Anchor__PublicBaseUrl` states the address browsers and other members reach it at. A daemon behind a
+proxy sees only the loopback hop and cannot work this out for itself, and it is what the cluster
+roster carries — so an unset or wrong value means members pinning an address that answers nobody.
+
+
 ### Added — the anchor is a cluster member (`1.1.0`)
 
 `kgsm-auth-anchor` consumes `TheKrystalShip.KGSM.Cluster` and joins a cluster as a member of kind

@@ -13,9 +13,15 @@ Group=kgsm
 # Native-AOT single-file binary (publish: dotnet publish src/Auth.Anchor -c Release -r linux-x64).
 ExecStart=/opt/kgsm-auth-anchor/kgsm-auth-anchor
 
-# Where a browser reaches this anchor. A person signs in here directly, once, for the whole
-# cluster, so unlike a leaf's unix socket this is a TCP surface.
-Environment=Anchor__ListenAddress=http://0.0.0.0:8098
+# Loopback only. A person signs in here directly, so this is a public surface — but it is published
+# by the reverse proxy in front of it, which terminates TLS and is where the certificate lives.
+# Binding the world here would put an unencrypted sign-in on the network beside the encrypted one.
+Environment=Anchor__ListenAddress=http://127.0.0.1:8098
+
+# The address other members and browsers reach this anchor at. It cannot be worked out from the
+# inside — behind a proxy the daemon sees only the loopback hop — so it is stated, and it is what the
+# roster carries and what a panel redirects a person to when they sign in.
+# Environment=Anchor__PublicBaseUrl=https://auth.example
 
 # The account store — the same file every other KGSM surface on this host reads.
 Environment=Anchor__UserStorePath=/var/lib/kgsm/auth/users.db

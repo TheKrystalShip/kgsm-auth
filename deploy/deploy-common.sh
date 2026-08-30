@@ -76,7 +76,27 @@ health_probe() {
 # ownership is that package's answer and not this one's.
 CLUSTER_SHARED_DIR="${KGSM_CLUSTER_SHARED_DIR:-/var/lib/kgsm/cluster}"
 
+# This anchor's own nginx server block, if the host runs nginx as its public multiplexer. A person
+# signs in here directly, so unlike a leaf it needs a name a browser can reach. The :80 ACME block and
+# the certificate lifecycle stay host-level: a component that claimed those would make every other one
+# on the box depend on it. Skipped cleanly where nginx is not installed.
+NGINX_FRAGMENT="${REPO_DIR}/deploy/nginx/${PROJECT}.conf"
+
 setup_project_extras() {
+    if [[ -n "${NGINX_FRAGMENT:-}" && -f "$NGINX_FRAGMENT" && -d /etc/nginx/conf.d ]]; then
+        log "installing the nginx vhost → /etc/nginx/conf.d/$(basename "$NGINX_FRAGMENT")"
+        $SUDO install -m 0644 -o root -g root "$NGINX_FRAGMENT" "/etc/nginx/conf.d/$(basename "$NGINX_FRAGMENT")"
+        # Validated before reloading: a bad fragment must fail here, loudly, rather than at the next
+        # reload for an unrelated reason — by which point nobody would connect the two.
+        if $SUDO nginx -t > /dev/null 2>&1; then
+            $SUDO systemctl reload nginx 2>/dev/null || true
+        else
+            warn "nginx -t failed after installing the fragment — NOT reloading; run 'sudo nginx -t' to see why"
+        fi
+    elif [[ -n "${NGINX_FRAGMENT:-}" && -f "$NGINX_FRAGMENT" ]]; then
+        log "nginx is not installed on this host — skipping the vhost fragment"
+    fi
+
     if [[ -d "$CLUSTER_SHARED_DIR" ]]; then
         log "shared cluster directory ${CLUSTER_SHARED_DIR} already exists — leaving its ownership alone"
         return 0
