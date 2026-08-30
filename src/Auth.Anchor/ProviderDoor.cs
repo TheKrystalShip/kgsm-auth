@@ -159,8 +159,15 @@ internal static class ProviderEndpoints
         OAuthHandshake handshake = OAuthHandshake.Create();
         ctx.Response.Cookies.Append(StateCookie, handshake.ToCookieValue(), CookieOptions(ctx));
 
+        // Honoured from the query, because a caller asking for a screen and silently not getting one
+        // is a door that lies about what it did. The default matches the one every other KGSM sign-in
+        // uses, so a person meets the same provider screen wherever they arrive.
+        string prompt = ctx.Request.Query["prompt"].ToString();
+        if (string.IsNullOrWhiteSpace(prompt))
+            prompt = "none";
+
         // Only the challenge travels — the verifier stays in the cookie, never in a URL.
-        ctx.Response.Redirect(identity.BuildAuthorizeUrl(handshake.State, handshake.CodeChallenge, "none"));
+        ctx.Response.Redirect(identity.BuildAuthorizeUrl(handshake.State, handshake.CodeChallenge, prompt));
         return Task.CompletedTask;
     }
 

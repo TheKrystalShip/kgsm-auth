@@ -36,6 +36,9 @@ travels in a URL, and the CSRF gate runs before any exchange is attempted. `Same
 would break every sign-in. A browser is handed its session in the URL **fragment**, which is never
 sent to a server, so it stays out of access logs and out of the Referer header.
 
+The `prompt` a caller asks for is the one the provider is sent. A door that takes an explicit request
+for a screen and silently sends the opposite is wrong however the provider happens to treat it.
+
 A member standing by starts no sign-in it could not finish. A provider nobody wired up and a provider
 nobody has heard of are one answer, so the set a build knows about cannot be probed.
 

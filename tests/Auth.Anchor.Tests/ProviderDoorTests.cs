@@ -107,6 +107,22 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
         Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("", "none")]
+    [InlineData("consent", "consent")]
+    [InlineData("none", "none")]
+    public async Task The_prompt_a_caller_asks_for_is_the_prompt_it_gets(string asked, string expected)
+    {
+        using HttpClient client = anchor.Following();
+        string query = asked.Length == 0 ? "" : $"?prompt={asked}";
+
+        HttpResponseMessage response = await client.GetAsync($"/auth/discord/start{query}");
+
+        // A door that takes an explicit request for a screen and silently sends the opposite is
+        // wrong however the provider happens to treat it.
+        Assert.Contains($"prompt={expected}", response.Headers.Location!.ToString(), StringComparison.Ordinal);
+    }
+
     // ── The CSRF gate, which runs before any exchange ─────────────────────────
 
     [Fact]
