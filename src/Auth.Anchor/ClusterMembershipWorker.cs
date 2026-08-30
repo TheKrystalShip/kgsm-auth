@@ -34,9 +34,6 @@ internal sealed class ClusterMembershipWorker(
     AnchorRole role,
     ILogger<ClusterMembershipWorker> logger) : BackgroundService
 {
-    /// <summary>The fact an anchor states about itself: the keys its sessions can be verified with.</summary>
-    internal const string PublicKeyFact = "auth.publickey";
-
     // The key file is reconciled every pass, so what is said about it has to be said once. These
     // reset on the way down, which is what makes a re-publish after a promotion audible again.
     private bool _saidPublished;
@@ -77,7 +74,22 @@ internal sealed class ClusterMembershipWorker(
         // never consulted — and having stated it already is what lets a promotion need no restart
         // anywhere. The file below is the opposite case and is gated, because a path says nothing
         // about who wrote it.
-        publications.Publish(PublicKeyFact, signer.PublicKeysJson);
+        publications.Publish(ClusterAuthFacts.PublicKey, signer.PublicKeysJson);
+
+        // What a member needs to accept a session it cannot mint: the keys that verify the signature,
+        // and the audience and issuer the token has to carry to be this cluster's. Both are stated
+        // rather than agreed by convention — every surface stamps an issuer of its own, and a member
+        // that assumed they matched would refuse every session with nothing saying why.
+        publications.Publish(ClusterAuthFacts.Audience, options.ClusterId);
+        publications.Publish(ClusterAuthFacts.Issuer, options.Issuer);
+
+        // Where a browser goes, which is a different question from where members reach this anchor
+        // even though one address answers both here. Stated rather than inferred from the roster:
+        // an anchor on a LAN address for member traffic behind a public vhost for browsers has two
+        // answers, and sending a browser to the first one sends it somewhere it cannot reach.
+        // Blank states nothing, and a reader falls back to the address members learned.
+        if (options.PublicBaseUrl is { Length: > 0 } browserUrl)
+            publications.Publish(ClusterAuthFacts.SignInUrl, browserUrl);
 
         using var timer = new PeriodicTimer(Interval);
         try

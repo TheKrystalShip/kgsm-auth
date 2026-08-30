@@ -131,7 +131,9 @@ builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
     sp.GetRequiredService<IMemoryCache>(),
     TimeSpan.FromSeconds(5)));
 builder.Services.AddSingleton<AnchorAuth>();
+builder.Services.AddSingleton<MemberTargets>();
 builder.Services.AddSingleton<AccountBroadcast>();
+builder.Services.AddSingleton<SessionBroadcast>();
 
 // Deletes rows already past their cap. Housekeeping — it ends no session that is still alive.
 builder.Services.AddHostedService(sp => new SessionCleanupWorker(

@@ -41,6 +41,9 @@ public sealed class AnchorFixture : IDisposable
     /// <summary>This anchor's own identity as a member of that cluster.</summary>
     public const string MemberId = "test-anchor";
 
+    /// <summary>Where this anchor says it is reached, as a deployment behind a proxy has to.</summary>
+    public const string SignInUrl = "https://auth.test";
+
     public AnchorFixture()
     {
         Root = Path.Combine(Path.GetTempPath(), "kgsm-auth-anchor-tests", Guid.NewGuid().ToString("N"));
@@ -56,6 +59,7 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__ClusterId", ClusterId);
         Environment.SetEnvironmentVariable("Anchor__AllowedOrigins", "https://panel.test");
         Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
+        Environment.SetEnvironmentVariable("Anchor__PublicBaseUrl", SignInUrl);
 
         // A real secret, so this anchor is a real member: it mints service tokens another member
         // would present, and it claims the auth capability on start exactly as a deployed one does.
@@ -86,6 +90,9 @@ public sealed class AnchorFixture : IDisposable
 
     /// <summary>A client onto the running anchor.</summary>
     public HttpClient Client { get; }
+
+    /// <summary>Something out of the running daemon's own service graph.</summary>
+    public T Service<T>() => (T)_factory.Services.GetService(typeof(T))!;
 
     /// <summary>
     /// Run <paramref name="body"/> with the anchor standing by, as a second install in a cluster

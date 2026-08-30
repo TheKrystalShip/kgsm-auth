@@ -1,3 +1,4 @@
+using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
@@ -146,5 +147,52 @@ public sealed class PublishedKeyFileTests : IDisposable
     public void Dispose()
     {
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+    }
+}
+
+/// <summary>
+/// What an anchor states about itself, which is everything a member needs to accept a session it
+/// cannot mint and everything a browser needs to find the door.
+/// </summary>
+[Collection(AnchorCollection.Name)]
+public sealed class PublishedFactTests(AnchorFixture anchor)
+{
+    private IReadOnlyDictionary<string, string> Facts =>
+        anchor.Service<SelfPublications>().Current;
+
+    [Fact]
+    public void The_verification_keys_are_published()
+    {
+        Assert.True(Facts.TryGetValue(ClusterAuthFacts.PublicKey, out string? published));
+
+        SessionJwks? keys = EcdsaSessionSigner.ReadKeys(published!);
+        Assert.NotNull(keys);
+        Assert.NotEmpty(keys.Keys);
+
+        // The published document carries the public half and nothing else. A private parameter here
+        // would hand every member in the cluster the ability to mint what it is meant only to check.
+        Assert.DoesNotContain("\"d\"", published);
+    }
+
+    [Fact]
+    public void The_audience_is_published()
+    {
+        // Without it a member holds keys it cannot decide what to accept with, and refuses every
+        // session rather than guessing which cluster one was minted for.
+        Assert.Equal(AnchorFixture.ClusterId, Facts[ClusterAuthFacts.Audience]);
+    }
+
+    [Fact]
+    public void The_issuer_is_published()
+    {
+        // Every surface stamps its own, and a member holding only its own would refuse every session
+        // the anchor mints while reporting nothing more specific than an invalid token.
+        Assert.Equal("kgsm", Facts[ClusterAuthFacts.Issuer]);
+    }
+
+    [Fact]
+    public void The_browser_address_is_published()
+    {
+        Assert.Equal(AnchorFixture.SignInUrl, Facts[ClusterAuthFacts.SignInUrl]);
     }
 }

@@ -1,6 +1,4 @@
 using TheKrystalShip.KGSM.Auth.Users;
-using TheKrystalShip.KGSM.Cluster;
-using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
@@ -25,8 +23,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 internal sealed class AccountBroadcast(
     IClusterBus bus,
-    MembersStore members,
-    ClusterOptions cluster,
+    MemberTargets members,
     IUserStore store,
     ILogger<AccountBroadcast> logger)
 {
@@ -39,7 +36,7 @@ internal sealed class AccountBroadcast(
     /// <summary>Announce an account's new state at the version just assigned to it.</summary>
     internal async Task PublishAsync(KgsmUser user, long version, CancellationToken ct)
     {
-        IReadOnlyList<ClusterTarget> targets = await TargetsAsync(ct).ConfigureAwait(false);
+        IReadOnlyList<ClusterTarget> targets = await members.ResolveAsync(ct).ConfigureAwait(false);
         if (targets.Count == 0)
             return;
 
@@ -57,7 +54,7 @@ internal sealed class AccountBroadcast(
     /// <summary>Announce that an account is gone, at the version that says so.</summary>
     internal async Task PublishRemovalAsync(string userId, long version, CancellationToken ct)
     {
-        IReadOnlyList<ClusterTarget> targets = await TargetsAsync(ct).ConfigureAwait(false);
+        IReadOnlyList<ClusterTarget> targets = await members.ResolveAsync(ct).ConfigureAwait(false);
         if (targets.Count == 0)
             return;
 
@@ -67,29 +64,6 @@ internal sealed class AccountBroadcast(
             () => bus.EnqueueAsync(
                 RemovedType, removal, AccountReplicationJson.Default.AccountRemoval, targets, ct),
             RemovedType, userId, targets.Count).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Every member that should hear about it: enabled, and not this one.
-    /// </summary>
-    /// <remarks>
-    /// State is deliberately not filtered on. A member that is unreachable right now is exactly what
-    /// the outbox exists for — dropping it here would turn "deliver when it returns" into "never",
-    /// which is the failure withdrawal travelling durably is meant to prevent. A member an admin has
-    /// <em>disabled</em> is a different thing and is left out: it is not part of this cluster's
-    /// answer to anything until somebody turns it back on.
-    /// </remarks>
-    private async Task<IReadOnlyList<ClusterTarget>> TargetsAsync(CancellationToken ct)
-    {
-        IReadOnlyList<MemberRow> rows = await members.ListEnabledAsync(ct).ConfigureAwait(false);
-
-        return
-        [
-            .. rows
-                .Where(r => !string.Equals(r.MemberId, cluster.MemberId, StringComparison.Ordinal))
-                .Where(r => !string.IsNullOrWhiteSpace(r.Url))
-                .Select(r => new ClusterTarget(r.MemberId, r.Url)),
-        ];
     }
 
     /// <summary>

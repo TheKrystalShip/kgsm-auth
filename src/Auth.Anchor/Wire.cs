@@ -125,6 +125,18 @@ internal sealed record AccountPatchRequest(string? Tier, string? Status);
 internal sealed record AccountChanged(AccountRecord Account, long Version);
 
 /// <summary>
+/// One session is over, told to every other member.
+/// </summary>
+/// <remarks>
+/// The shape a member's <c>session.revoke</c> handler already reads. <paramref name="Scope"/> names
+/// what is being ended and decides which other field is meaningful; a member that does not recognise
+/// a scope acknowledges and does nothing, rather than guessing at a destructive reading of it.
+/// </remarks>
+/// <param name="Scope">Always <c>sid</c> here: one named session, not a person and not a host.</param>
+/// <param name="Sid">The session, as both its tokens carry it.</param>
+internal sealed record SessionRevoke(string Scope, string Sid);
+
+/// <summary>
 /// Serializer metadata for everything this anchor puts on the wire.
 /// </summary>
 /// <remarks>
@@ -143,4 +155,5 @@ internal sealed record AccountChanged(AccountRecord Account, long Version);
 [JsonSerializable(typeof(AccountsPage))]
 [JsonSerializable(typeof(AccountPatchRequest))]
 [JsonSerializable(typeof(AccountChanged))]
+[JsonSerializable(typeof(SessionRevoke))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

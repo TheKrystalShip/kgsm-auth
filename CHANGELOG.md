@@ -7,6 +7,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — one session, verified where it cannot be minted (`1.5.0`, `sessions-2.2.0-dev.2`)
+
+`ClusterSessionValidation.Accepting` widens a surface's own validation rules so it accepts two kinds
+of session at one door: the ones it minted for itself, and the ones its cluster's auth anchor minted
+for everybody. That is what makes signing in once real — a member with the published key can check a
+session it had no part in issuing, and cannot produce one.
+
+The two kinds are told apart by the **algorithm**, which is the only part of a presented token
+decided by who signed it rather than by who presents it, and each is pinned to its own audience and
+its own issuer: a symmetric signature is the surface's own and carries the surface's values, an ECDSA
+one is the anchor's and carries the cluster's. No cross-pairing is accepted, so a combination nothing
+currently mints cannot become useful later. The published key offered as an HMAC secret is refused,
+which is the attack the pin exists for: that key is one every member holds.
+
+Knowing nothing fails closed. A surface with no cluster, one that has not heard who holds the
+accounts, or one whose holder states no audience or issuer accepts no cluster session at all and goes
+on serving its own — guessing either would accept a token minted for a different cluster.
+
+### Added — what an anchor states about itself (`1.5.0`)
+
+Beside the verification keys, an anchor publishes the **audience** and the **issuer** its sessions
+carry, and the **address a browser signs in at**. A member with keys and neither of the first two
+cannot decide what to accept — and every surface stamps an issuer of its own, so a member assuming
+they matched would refuse every session with nothing saying why. A browser holding nothing needs
+somewhere to be sent. The address is stated rather than inferred from
+the address members reach the anchor at — an anchor on a LAN address behind a public vhost has two,
+and only one of them is a browser's.
+
+### Added — signing out reaches the whole cluster (`1.5.0`)
+
+A cluster session is accepted on every member and has a row on exactly one of them, so ending it at
+the anchor ended it nowhere else. Sign-out, and the revoke a withdrawn account's refusal performs,
+now announce `session.revoke` on the durable bus. A member that is down when somebody signs out
+learns of it when it returns.
+
 ### Added — a member's snapshot of the accounts, and the fan-out that keeps it current (`1.4.0`)
 
 `GET /auth/cluster/snapshot` hands another member every account with the version it is at — what a

@@ -220,9 +220,12 @@ internal static class Endpoints
         if (answer.Outcome != AuthorityOutcome.Ok)
         {
             // A withdrawn account keeps no session. Killing the row here is what stops the remaining
-            // access bearer from being refreshed into a new one for its whole lifetime.
+            // access bearer from being refreshed into a new one for its whole lifetime, and telling
+            // the other members is what stops that bearer from being spent on them meanwhile.
             await registry.RevokeAsync(claims.SessionId, ctx.RequestAborted);
             validator.Evict(claims.SessionId);
+            await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
+                .RevokedAsync(claims.SessionId, ctx.RequestAborted);
 
             await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
                 "This account has been switched off.");
@@ -301,6 +304,12 @@ internal static class Endpoints
         {
             await registry.RevokeAsync(sessionId, ctx.RequestAborted);
             validator.Evict(sessionId);
+
+            // The row is here and the session is accepted everywhere. Ending it locally without
+            // saying so leaves somebody signed out on the door they used and signed in on every
+            // other one.
+            await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
+                .RevokedAsync(sessionId, ctx.RequestAborted);
         }
 
         ctx.Response.StatusCode = StatusCodes.Status204NoContent;
