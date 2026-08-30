@@ -101,6 +101,9 @@ internal static class Endpoints
             return;
         }
 
+        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.SignIn");
+
         switch (result.Outcome)
         {
             case LocalSignInOutcome.LockedOut:
@@ -111,20 +114,34 @@ internal static class Endpoints
                     int seconds = (int)Math.Max(1, Math.Ceiling((until - now).TotalSeconds));
                     ctx.Response.Headers.RetryAfter = seconds.ToString();
                 }
+                logger.LogWarning(
+                    "sign-in refused for '{Username}': locked out until {Until}",
+                    body.Username, result.RetryAfter);
                 await Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
                     "Too many failed attempts. Try again shortly.");
                 return;
 
             case LocalSignInOutcome.Disabled:
+                logger.LogWarning("sign-in refused for '{Username}': the account is switched off", body.Username);
                 await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
                     "This account has been switched off.");
                 return;
 
             case LocalSignInOutcome.Success when result.Principal is { } principal && result.User is { } user:
+                logger.LogInformation(
+                    "'{Username}' signed in with a password at {Tier}",
+                    user.Username, KgsmTiers.ToWire(principal.Tier));
                 await MintSession(ctx, principal.Identity, principal.Tier, user, now);
                 return;
 
             default:
+                // The attempted name and nothing else. It is what an operator needs to tell one
+                // person mistyping from somebody working through a list, and the answer to the
+                // CALLER stays one outcome at one cost either way — this journal is not reachable
+                // by whoever is guessing.
+                logger.LogWarning(
+                    "sign-in refused for '{Username}': no account matched that name and password",
+                    body.Username);
                 await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_credentials",
                     "That username and password do not match an account.");
                 return;

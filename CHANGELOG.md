@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a refused sign-in says so (`1.7.2`)
+
+A wrong password, a forged callback and a refused registration were all silent. A browser was the only
+witness to a failed sign-in and it cannot be asked afterwards, so the first person unable to get in
+was a person nobody could help.
+
+Every refusal at every door is now audible at warning level with enough to act on: which account was
+attempted, whether it was locked out or switched off, and which provider refusal it was. A successful
+password sign-in says so too, so an operator can see the door working rather than infer it from
+silence.
+
+The attempted username is recorded and the answer to the caller is unchanged — one outcome at one
+cost, whether or not the name exists. This journal is not reachable by whoever is guessing, and
+telling one person mistyping from somebody working through a list is exactly what it is for.
+
 ### Added — a sign-in page can tell what this cluster offers (`1.7.1`)
 
 `GET /auth/providers` reports `registration` beside `redirects`. Whether somebody may make an account

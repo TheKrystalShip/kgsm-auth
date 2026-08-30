@@ -364,6 +364,21 @@ public sealed class RegisterTests(AnchorFixture anchor)
     }
 
     [Fact]
+    public async Task A_registration_this_cluster_will_not_take_is_still_a_frozen_envelope()
+    {
+        // The refusal a panel renders as its own state rather than as a generic failure, so its
+        // code is part of the contract rather than an implementation detail.
+        string name = "capped" + Guid.NewGuid().ToString("N")[..8];
+        HttpResponseMessage response = await anchor.Client.PostAsync("/auth/register", Body(name, "short"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        JsonElement body = await Json(response);
+        Assert.True(body.TryGetProperty("error", out JsonElement error));
+        Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("code").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("message").GetString()));
+    }
+
+    [Fact]
     public void A_cluster_that_has_not_decided_to_take_strangers_does_not()
     {
         // Off unless a cluster says otherwise. It is an unauthenticated write, and a default that

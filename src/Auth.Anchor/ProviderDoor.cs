@@ -123,6 +123,7 @@ internal static class RegisterEndpoint
 
         if (!options.AllowSelfRegistration)
         {
+            logger.LogWarning("registration refused: this cluster does not take accounts people create themselves");
             await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "registration_closed",
                 "This cluster does not take accounts people create for themselves. Ask an administrator for one.");
             return;
@@ -214,6 +215,7 @@ internal static class RegisterEndpoint
         }
         catch (DuplicateUsernameException)
         {
+            logger.LogInformation("registration refused: '{Username}' is already taken", username);
             await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "username_taken",
                 $"'{username}' is already taken on this cluster.");
             return;
@@ -483,6 +485,13 @@ internal static class ProviderEndpoints
     private static Task Fail(
         HttpContext ctx, AnchorOptions options, int status, string code, string message)
     {
+        // Said out loud, because the alternative is a person staring at a panel that says something
+        // went wrong while this daemon knows exactly what and tells nobody. A browser is the only
+        // other witness to a failed sign-in and it cannot be asked afterwards.
+        ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.ProviderEndpoints")
+            .LogWarning("provider sign-in refused: {Code} — {Message}", code, message);
+
         if (!options.RedirectsToPanel)
             return Endpoints.Refuse(ctx, status, code, message);
 
