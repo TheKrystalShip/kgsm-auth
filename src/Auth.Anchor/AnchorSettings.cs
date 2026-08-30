@@ -51,6 +51,26 @@ internal sealed class AnchorSettings
     [LeafField("listenAddress", "Listen address", Group = "network", Risk = LeafRisk.Wiring)]
     public string ListenAddress { get; set; } = "http://0.0.0.0:8098";
 
+    /// <summary>
+    /// This anchor's identity as a cluster member. Blank derives one from the machine name.
+    /// </summary>
+    /// <panel>The name other members of the cluster know this anchor by. A machine can run more than
+    /// one member — a node and an anchor are two members with two names — so this is not the machine's
+    /// name. Blank derives one from it.</panel>
+    [LeafField("memberId", "Cluster member id", Group = "network", Risk = LeafRisk.Wiring,
+        NoDefault = true)]
+    public string MemberId { get; set; } = "";
+
+    /// <summary>
+    /// The address other members reach this anchor at, when it has one a person can state. Blank
+    /// leaves it to the addresses the join exchange reflects back.
+    /// </summary>
+    /// <panel>The address other members of the cluster reach this anchor at. Set it when this machine
+    /// sits behind a reverse proxy and cannot see its own public address; otherwise leave it blank and
+    /// the addresses are learned when a member joins.</panel>
+    [LeafField("publicBaseUrl", "Public address", Group = "network", Risk = LeafRisk.Wiring)]
+    public string PublicBaseUrl { get; set; } = "";
+
     /// <summary>The cluster a session is scoped to, and the token audience.</summary>
     /// <panel>The cluster this anchor holds the accounts for. A session it mints is valid on every
     /// member of this cluster and on nothing else. Changing it signs everybody out.</panel>

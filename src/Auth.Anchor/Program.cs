@@ -4,6 +4,8 @@ using TheKrystalShip.KGSM.Auth;
 using TheKrystalShip.KGSM.Auth.Anchor;
 using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.KGSM.Cluster;
+using TheKrystalShip.KGSM.Cluster.Membership;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -89,6 +91,33 @@ builder.Services.AddSingleton<ISessionTokenService>(sp => new SessionTokenServic
     sp.GetRequiredService<ILogger<SessionTokenService>>(),
     signer));
 
+// Cluster membership. Registered unconditionally and inert without a secret: a host that is not part
+// of a cluster starts no worker and answers its inbox to nobody, which is the state a standalone
+// install is in and not a misconfiguration. The secret is read through ClusterConfiguration so every
+// member on the machine spells the key identically — one that spelled it differently would read a
+// blank from a file that is not empty and quietly report itself standalone.
+//
+// The store is named from this member's own database inside its own StateDirectory=. Two members
+// sharing one would share a roster and an outbox, which nothing notices until one of them disables
+// somebody on the other's behalf.
+var clusterOptions = new ClusterOptions
+{
+    MemberId = options.MemberId,
+    Kind = MemberKind.Anchor,
+    Secret = ClusterConfiguration.Secret(builder.Configuration),
+    SecretPrevious = ClusterConfiguration.SecretPrevious(builder.Configuration),
+    StorePath = Path.Combine(
+        Path.GetDirectoryName(Path.GetFullPath(options.SessionStorePath)) ?? ".", "cluster.db"),
+    PublicBaseUrl = options.PublicBaseUrl,
+};
+builder.Services.AddKgsmCluster(clusterOptions);
+
+// An anchor registers no card source of its own. What it has to say about itself — its id, its kind,
+// its addresses, its incarnation — is entirely what the package already holds; the node block exists
+// for facts an anchor does not have.
+builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>()));
+builder.Services.AddHostedService<ClusterMembershipWorker>();
+
 builder.Services.AddSingleton<ISessionRegistry>(_ => new SqliteSessionRegistry(options.SessionStorePath));
 builder.Services.AddSingleton<IMemoryCache>(_ => new MemoryCache(new MemoryCacheOptions()));
 builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
@@ -110,6 +139,10 @@ WebApplication app = builder.Build();
 
 app.UseMiddleware<CorsMiddleware>();
 
+// The member-to-member wire, served by the package. One implementation of the status codes, the size
+// cap, the token check and the spoof guard, so two members cannot disagree about what the protocol is.
+app.MapClusterEndpoints();
+
 // Unified ecosystem liveness probe: 200 means this anchor is up and serving.
 app.MapGet("/health", () => Results.Text("ok\n"));
 
@@ -125,31 +158,11 @@ app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapGet("/auth/cluster/public-key", (EcdsaSessionSigner keys) =>
     Results.Text(keys.PublicKeysJson, "application/json"));
 
-// The public half, where members on this machine read it. Written after the host is up so a failure
-// here is reported by a daemon that is already serving, rather than one that never started.
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    if (options.PublishedKeyPath is not { } path)
-        return;
-
-    try
-    {
-        if (SigningKeyStore.Publish(path, signer.PublicKeysJson))
-            app.Logger.LogInformation("published the session verification key to {Path}", path);
-        else
-            app.Logger.LogInformation(
-                "no shared cluster directory at {Path} — the verification key is served over HTTP only", path);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "could not publish the session verification key to {Path}", path);
-    }
-});
-
 app.Logger.LogInformation(
-    "kgsm-auth-anchor listening on {Address} for cluster {Cluster} — accounts {Store}, signing key {Key} ({Origin})",
-    options.ListenAddress, options.ClusterId, options.UserStorePath, options.SigningKeyPath,
-    keyOrigin == SigningKeyStore.Origin.Generated ? "generated" : "loaded");
+    "kgsm-auth-anchor listening on {Address} as member {Member} for cluster {Cluster} — accounts {Store}, "
+    + "signing key {Key} ({Origin})",
+    options.ListenAddress, options.MemberId, options.ClusterId, options.UserStorePath,
+    options.SigningKeyPath, keyOrigin == SigningKeyStore.Origin.Generated ? "generated" : "loaded");
 
 app.Run();
 

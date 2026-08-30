@@ -11,7 +11,9 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// A value below its floor is raised rather than refused — a daemon that will not start because a
 /// number is one below a bound is worse than one that starts and says what it used.
 /// </remarks>
+/// <param name="MemberId">This anchor's identity as a cluster member.</param>
 /// <param name="ListenAddress">Where Kestrel binds.</param>
+/// <param name="PublicBaseUrl">Where other members reach it, when it cannot see its own address.</param>
 /// <param name="ClusterId">The token audience: the cluster a session is valid on.</param>
 /// <param name="Issuer">The <c>iss</c> claim.</param>
 /// <param name="UserStorePath">The account store.</param>
@@ -23,7 +25,9 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="AllowedOrigins">Browser origins allowed to call this anchor.</param>
 /// <param name="SessionCleanup">How often expired session rows are swept.</param>
 internal sealed record AnchorOptions(
+    string MemberId,
     string ListenAddress,
+    string PublicBaseUrl,
     string ClusterId,
     string Issuer,
     string UserStorePath,
@@ -38,7 +42,11 @@ internal sealed record AnchorOptions(
     public static AnchorOptions FromSettings(AnchorSettings s)
     {
         return new AnchorOptions(
+            MemberId: DeriveMemberId(s.MemberId),
             ListenAddress: Text(s.ListenAddress, "http://0.0.0.0:8098"),
+            // Blank is the ordinary case, not a gap: a machine that can see its own address has one
+            // reflected back to it when a member joins.
+            PublicBaseUrl: s.PublicBaseUrl?.Trim() ?? "",
             ClusterId: Text(s.ClusterId, "kgsm-cluster"),
             Issuer: Text(s.Issuer, "kgsm"),
             UserStorePath: Text(s.UserStorePath, UserStoreOptions.DefaultPath),
@@ -55,6 +63,19 @@ internal sealed record AnchorOptions(
             SessionCleanup: TimeSpan.FromMinutes(
                 AtLeast(s.SessionCleanupMinutes ?? 60, AnchorSettings.Floors.SessionCleanupMinutes)));
     }
+
+    /// <summary>
+    /// This anchor's cluster identity, derived from the machine name when none is configured.
+    /// </summary>
+    /// <remarks>
+    /// Suffixed rather than taken bare, because a machine can run more than one member and two
+    /// members sharing an id are one member counted twice — the roster's unique index would collapse
+    /// a node and the anchor beside it into a single row.
+    /// </remarks>
+    private static string DeriveMemberId(string? configured) =>
+        string.IsNullOrWhiteSpace(configured)
+            ? Environment.MachineName.Trim().ToLowerInvariant() + "-auth"
+            : configured.Trim();
 
     private static string Text(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();

@@ -32,6 +32,40 @@ internal static class Endpoints
     /// </remarks>
     private const int MaxBodyBytes = 8 * 1024;
 
+    /// <summary>
+    /// Whether this anchor may answer as the cluster's account authority, with the refusal already
+    /// written when it may not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A member standing by is not broken and not denying anybody — it is not the authority, and the
+    /// sessions it could mint would be signed with a key no member verifies against. So it answers
+    /// <c>503</c> and names the holder, which reads as an outage with a cause rather than as a
+    /// denial, and tells an operator where to go.
+    /// </para>
+    /// <para>
+    /// A standalone install never reaches this: with no cluster there is no assignment, this anchor
+    /// holds the machine's accounts, and every door is open exactly as it was.
+    /// </para>
+    /// </remarks>
+    private static async Task<bool> RequireAuthorityAsync(HttpContext ctx)
+    {
+        var role = ctx.RequestServices.GetRequiredService<AnchorRole>();
+        if (role.IsAuthority)
+            return true;
+
+        // Named so a client can route to the member that can actually answer, rather than retrying
+        // against one that never will.
+        if (role.Holder is { Length: > 0 } holder)
+            ctx.Response.Headers["X-Kgsm-Auth-Holder"] = holder;
+
+        await Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_the_anchor",
+            role.Holder is { Length: > 0 } h
+                ? $"This member does not hold the cluster's accounts. {h} does."
+                : "No member holds the cluster's accounts yet.");
+        return false;
+    }
+
     // ── Sign in ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -43,6 +77,9 @@ internal static class Endpoints
     /// </remarks>
     internal static async Task SignIn(HttpContext ctx)
     {
+        if (!await RequireAuthorityAsync(ctx))
+            return;
+
         SignInRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.SignInRequest);
         if (body is null)
         {
@@ -142,6 +179,11 @@ internal static class Endpoints
     /// </remarks>
     internal static async Task Refresh(HttpContext ctx)
     {
+        // Refusing here as well as at sign-in is what stops a member that has stood down from
+        // extending the sessions it minted while it still believed it was the authority.
+        if (!await RequireAuthorityAsync(ctx))
+            return;
+
         RefreshRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.RefreshRequest);
         if (body?.Refresh is not { Length: > 0 } presented)
         {
@@ -220,6 +262,12 @@ internal static class Endpoints
     /// Answers 204 whether or not there was something to end. A signed-out caller wants to be signed
     /// out, and reporting "there was no such session" would tell a stranger holding a stolen token
     /// whether it was still live.
+    /// <para>
+    /// Not gated on holding the capability, unlike every other door here. Ending a session takes
+    /// authority away rather than granting it, and a member that has stood down still holds the rows
+    /// for sessions it minted — refusing would strand somebody signed in to a member that has since
+    /// become a candidate.
+    /// </para>
     /// </remarks>
     internal static async Task SignOut(HttpContext ctx)
     {
@@ -263,6 +311,9 @@ internal static class Endpoints
     /// <summary>Who the caller is, resolved against the store rather than read off their token.</summary>
     internal static async Task Session(HttpContext ctx)
     {
+        if (!await RequireAuthorityAsync(ctx))
+            return;
+
         Caller? maybe = await RequireCaller(ctx, KgsmTier.None);
         if (maybe is not { } caller || caller.User is not { } user)
             return;
@@ -282,6 +333,9 @@ internal static class Endpoints
     /// <summary>Every account the anchor holds. Never carries a secret in any form.</summary>
     internal static async Task Accounts(HttpContext ctx)
     {
+        if (!await RequireAuthorityAsync(ctx))
+            return;
+
         if (await RequireCaller(ctx, KgsmTier.Admin) is null)
             return;
 

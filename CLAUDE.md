@@ -208,6 +208,21 @@ This file is the authority for the auth design; the account-store design is also
 - **The package is preset-disabled.** A cluster has one anchor and which machine holds it is an
   administrator's decision. A second machine with the package installed and the unit stopped is a
   promotion candidate, not a second authority.
+- **Three standings, and collapsing the first into the third breaks every standalone install.** A
+  machine with no cluster secret is not "not the holder" — there is no assignment to read, its
+  accounts are its own, and it serves everything. `AnchorRole` is where that lives, and a clustered
+  anchor starts at `StandingBy` rather than assuming it holds the capability until told otherwise:
+  the optimistic default would make it the authority for exactly the window in which it does not know
+  whether it is one.
+- **`TryClaimAsync` returning true is not holding it.** It is compare-and-set against what *this*
+  member currently knows, so two isolated anchors both succeed; the tie resolves when their gossip
+  meets. Every claim is followed by a re-read, and a member that finds itself not the holder stands
+  down. Measured: a second anchor claims, publishes, then stands down within one gossip round.
+- **Only the holder writes `/var/lib/kgsm/cluster/auth-public-key.json`, and it reconciles rather
+  than writes once.** The gossiped fact is scoped by its reader, which resolves the holder first; a
+  filesystem path is scoped by nothing. A member withdraws only a file whose contents are its own
+  key — one holding a different key belongs to whoever holds the capability, and removing it would
+  break every member reading it.
 - **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
   no default store, and sessions are not accounts: a member replicating the cluster's accounts
   replicates none of the sign-ins.

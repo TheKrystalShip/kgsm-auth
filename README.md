@@ -245,6 +245,37 @@ from a different origin; without an entry in `Anchor__AllowedOrigins` the browse
 anchor's answer before the sign-in code reads it. There is deliberately no wildcard — this surface
 mints credentials.
 
+### One member of a cluster
+
+The anchor joins a cluster **directly** — not through a node, not through an API — as a member of
+kind `anchor`. It needs the shared secret in `/etc/kgsm/kgsm-cluster.env` and nothing else; a machine
+with no secret is not part of a cluster, which is a state rather than a misconfiguration.
+
+**Which member holds the accounts is cluster state, not configuration.** The first anchor in a cluster
+that has no holder claims it; only an admin's reassignment moves it afterwards. Nothing promotes
+itself — an anchor that did so during a partition would produce two members issuing conflicting
+statements about who may do what.
+
+That gives an anchor three standings, and the first is what leaves a standalone install alone:
+
+| standing | when | what it serves |
+|---|---|---|
+| **standalone** | no cluster secret | everything. Its accounts are this machine's and there is no assignment to read |
+| **holder** | the assignment names it | everything |
+| **standing by** | the assignment names somebody else, or nobody yet | `503 not_the_anchor`, naming the holder in the message and on an `X-Kgsm-Auth-Holder` header |
+
+A member standing by is a **promotion candidate, not a second authority**: the sessions it could mint
+would be signed with a key no member verifies against. Signing out stays open even then — it takes
+authority away rather than granting it, and refusing would strand whoever is signed in to a member
+that has since become a candidate.
+
+**The key reaches other members two ways, and they are scoped differently.** It is gossiped as a fact
+the anchor publishes about itself, which a reader resolves *through the holder* — so a key stated by a
+member that does not hold the capability is never consulted. It is also written to
+`/var/lib/kgsm/cluster/auth-public-key.json` for the members sharing the machine, and **only the
+holder writes there**, because a filesystem path carries no statement about who wrote it. A member
+withdraws only a file whose contents are its own key, and the holder reconciles it on every pass.
+
 ### Running one
 
 ```bash

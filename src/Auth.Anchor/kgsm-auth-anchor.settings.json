@@ -16,6 +16,16 @@
     // member's is.
     "ListenAddress": "http://0.0.0.0:8098",
 
+    // The name other members know this anchor by. A machine can run more than one member — a node
+    // and an anchor are two members with two names — so this is deliberately not the machine's name.
+    // Blank derives one from it, which is why no default is published for this key: an empty string
+    // is not what the anchor falls back to.
+    "MemberId": "",
+
+    // The address other members reach this anchor at. Blank leaves it to the addresses the join
+    // exchange reflects back, which is the right answer on a machine that can see its own.
+    "PublicBaseUrl": "",
+
     // The cluster a session is scoped to. It is the token audience: a session minted here is valid
     // on every member of THIS cluster and on nothing else. Changing it invalidates every token
     // already issued, so a running cluster keeps the value it started with.

@@ -61,6 +61,30 @@ public sealed class AnchorFixture : IDisposable
     /// <summary>A client onto the running anchor.</summary>
     public HttpClient Client { get; }
 
+    /// <summary>
+    /// Run <paramref name="body"/> with the anchor standing by, as a second install in a cluster
+    /// somebody else holds would be, and put it back afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The running host's own singleton is moved rather than a second anchor stood up beside this
+    /// one: the daemon is configured through process environment variables, so two of them in one
+    /// test process would each set them for the other. What is under test is the endpoints' reaction
+    /// to the standing, and this drives the real pipeline into it.
+    /// </remarks>
+    public async Task StandingBy(string holder, Func<Task> body)
+    {
+        var role = (AnchorRole)_factory.Services.GetService(typeof(AnchorRole))!;
+        role.Update(AnchorStanding.StandingBy, holder);
+        try
+        {
+            await body();
+        }
+        finally
+        {
+            role.Update(AnchorStanding.Standalone, null);
+        }
+    }
+
     /// <summary>An account with a password, as an admin would have created it.</summary>
     public async Task<KgsmUser> SeedAsync(
         string username, string password, KgsmTier tier, UserStatus status = UserStatus.Active)

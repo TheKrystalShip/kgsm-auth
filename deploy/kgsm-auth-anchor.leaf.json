@@ -54,6 +54,25 @@
       "risk": "wiring"
     },
     {
+      "key": "memberId",
+      "env": "Anchor__MemberId",
+      "label": "Cluster member id",
+      "description": "The name other members of the cluster know this anchor by. A machine can run more than one member — a node and an anchor are two members with two names — so this is not the machine's name. Blank derives one from it.",
+      "group": "network",
+      "type": "string",
+      "risk": "wiring"
+    },
+    {
+      "key": "publicBaseUrl",
+      "env": "Anchor__PublicBaseUrl",
+      "label": "Public address",
+      "description": "The address other members of the cluster reach this anchor at. Set it when this machine sits behind a reverse proxy and cannot see its own public address; otherwise leave it blank and the addresses are learned when a member joins.",
+      "group": "network",
+      "type": "string",
+      "default": "",
+      "risk": "wiring"
+    },
+    {
       "key": "clusterId",
       "env": "Anchor__ClusterId",
       "label": "Cluster id",

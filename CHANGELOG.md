@@ -7,6 +7,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the anchor is a cluster member (`1.1.0`)
+
+`kgsm-auth-anchor` consumes `TheKrystalShip.KGSM.Cluster` and joins a cluster as a member of kind
+`anchor` — directly, needing no kgsm-api on its machine. Its roster, outbox and inbox live under its
+own `StateDirectory=`, so a node and an anchor on one machine share nothing that would make one's
+membership depend on the other's process.
+
+Which member holds the cluster's accounts is **cluster state**, not configuration. The first anchor in
+a cluster with none claims it set-if-absent; only an admin's versioned reassignment overwrites one
+that exists. Nothing promotes itself, because an anchor that did so during a partition would produce
+two members issuing conflicting statements about who may do what.
+
+The key members verify sessions with is a **fact the anchor publishes about itself**, gossiped with
+its card. A reader resolves the holder first and takes the fact off that member alone, so a key stated
+by a member that does not hold the capability is never consulted.
+
+**Three standings, and the first is what leaves a standalone install untouched.** A machine with no
+cluster secret has no assignment to read, holds its own accounts, and serves everything as before.
+A member the assignment names serves everything. A member it does not name **stands down**: it mints
+no session, extends none and answers for no account, replying `503 not_the_anchor` with the holder
+named in the message and on an `X-Kgsm-Auth-Holder` header. Signing out stays open — it takes
+authority away rather than granting it, and refusing would strand whoever is signed in to a member
+that has since become a candidate.
+
+`Anchor__MemberId` names this anchor to the cluster, deriving one from the machine name when blank —
+a machine can run more than one member, so it is deliberately not the machine's name.
+`Anchor__PublicBaseUrl` states an address for a machine that cannot see its own.
+
+### Fixed — only the holder writes the shared verification key
+
+`/var/lib/kgsm/cluster/auth-public-key.json` is written by the member holding the capability and by
+nobody else. A filesystem path carries no statement about who wrote it — unlike the gossiped fact,
+which a reader scopes to the holder — so an anchor standing by that wrote there would hand every
+member on that machine a key verifying nothing anybody signed with.
+
+A member withdraws only a file whose contents are its own key, never one holding somebody else's, and
+the holder reconciles the file on every pass rather than writing it once. That is what closes the
+window a second anchor on the same machine opens: it claims while isolated, publishes, then learns the
+holder, stands down and withdraws its own key, and the holder restores the file within one gossip
+interval.
+
+
 ### Added — `kgsm-auth-anchor`, the daemon that holds a cluster's accounts (`1.0.0`)
 
 The first deployable this repo produces. It serves the account store the libraries already own — one

@@ -331,3 +331,84 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
         Assert.False(no.Headers.Contains("Access-Control-Allow-Origin"));
     }
 }
+
+/// <summary>
+/// What a second anchor serves when the cluster names somebody else: nothing that mints or extends a
+/// credential, and nothing that answers as the account authority.
+/// </summary>
+[Collection(AnchorCollection.Name)]
+public sealed class AnchorStandDownTests(AnchorFixture anchor)
+{
+    private static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public async Task A_member_that_does_not_hold_the_accounts_mints_nothing_and_names_the_one_that_does()
+    {
+        string username = "standdown-" + Guid.NewGuid().ToString("N")[..8];
+        await anchor.SeedAsync(username, "a perfectly good password", KgsmTier.Admin);
+
+        // It works while this member is the authority.
+        HttpResponseMessage before = await anchor.Client.PostAsJsonAsync(
+            "/auth/sign-in", new { username, password = "a perfectly good password" }, Wire);
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        string bearer = (await before.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("token").GetString()!;
+
+        await anchor.StandingBy("hotbox-auth", async () =>
+        {
+            // 503 and not 403: this is an outage with a named cause, not a denial of the person.
+            HttpResponseMessage refused = await anchor.Client.PostAsJsonAsync(
+                "/auth/sign-in", new { username, password = "a perfectly good password" }, Wire);
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+            JsonElement body = await refused.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("not_the_anchor", body.GetProperty("error").GetProperty("code").GetString());
+            Assert.Contains("hotbox-auth", body.GetProperty("error").GetProperty("message").GetString());
+
+            // And the holder is on a header, so a client can route rather than retry.
+            Assert.Equal("hotbox-auth", refused.Headers.GetValues("X-Kgsm-Auth-Holder").Single());
+
+            // A session it minted before standing down buys nothing further from it.
+            using var whoami = new HttpRequestMessage(HttpMethod.Get, "/auth/session");
+            whoami.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await anchor.Client.SendAsync(whoami)).StatusCode);
+
+            using var accounts = new HttpRequestMessage(HttpMethod.Get, "/auth/cluster/users");
+            accounts.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await anchor.Client.SendAsync(accounts)).StatusCode);
+        });
+    }
+
+    [Fact]
+    public async Task Standing_by_still_answers_health_and_still_publishes_its_key()
+    {
+        await anchor.StandingBy("hotbox-auth", async () =>
+        {
+            // A candidate is a running daemon, not a broken one — and its key stays discoverable so
+            // a later promotion needs no restart anywhere.
+            Assert.Equal(HttpStatusCode.OK, (await anchor.Client.GetAsync("/health")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK,
+                (await anchor.Client.GetAsync("/auth/cluster/public-key")).StatusCode);
+        });
+    }
+
+    [Fact]
+    public async Task Signing_out_works_even_from_a_member_that_has_stood_down()
+    {
+        string username = "leaving-standby-" + Guid.NewGuid().ToString("N")[..8];
+        await anchor.SeedAsync(username, "sign me out regardless", KgsmTier.Viewer);
+
+        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
+            "/auth/sign-in", new { username, password = "sign me out regardless" }, Wire);
+        JsonElement session = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        await anchor.StandingBy("hotbox-auth", async () =>
+        {
+            // Ending a session takes authority away rather than granting it, and this member still
+            // holds the row. Refusing would strand whoever is signed in to it.
+            HttpResponseMessage out1 = await anchor.Client.PostAsJsonAsync(
+                "/auth/session/sign-out", new { refresh = session.GetProperty("refresh").GetString() }, Wire);
+            Assert.Equal(HttpStatusCode.NoContent, out1.StatusCode);
+        });
+    }
+}
