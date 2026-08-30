@@ -412,3 +412,161 @@ public sealed class AnchorStandDownTests(AnchorFixture anchor)
         });
     }
 }
+
+/// <summary>
+/// The single write path for what a person may do, and the version every member orders by.
+/// </summary>
+[Collection(AnchorCollection.Name)]
+public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
+{
+    private static readonly JsonSerializerOptions Wire = new(JsonSerializerDefaults.Web);
+
+    private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
+
+    private async Task<string> AdminBearerAsync()
+    {
+        string username = Unique("writer-admin-");
+        await anchor.SeedAsync(username, "an admin who can write", KgsmTier.Admin);
+        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
+            "/auth/sign-in", new { username, password = "an admin who can write" }, Wire);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+    }
+
+    private async Task<HttpResponseMessage> PatchAsync(string bearer, string userId, object body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, "/auth/cluster/users/" + userId)
+        {
+            Content = JsonContent.Create(body, options: Wire),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+        return await anchor.Client.SendAsync(request);
+    }
+
+    [Fact]
+    public async Task A_change_takes_a_version_and_every_change_takes_a_higher_one()
+    {
+        string bearer = await AdminBearerAsync();
+        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer);
+
+        JsonElement first = await (await PatchAsync(bearer, subject.UserId, new { tier = "operator" }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        JsonElement second = await (await PatchAsync(bearer, subject.UserId, new { tier = "viewer" }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        // The version is the whole guarantee: a member that has not applied the second yet will
+        // refuse the first if it arrives afterwards.
+        Assert.True(second.GetProperty("version").GetInt64() > first.GetProperty("version").GetInt64());
+        Assert.Equal("viewer", second.GetProperty("account").GetProperty("tier").GetString());
+    }
+
+    [Fact]
+    public async Task An_absent_field_is_left_alone()
+    {
+        string bearer = await AdminBearerAsync();
+        KgsmUser subject = await anchor.SeedAsync(
+            Unique("partial-"), "a password", KgsmTier.Operator, UserStatus.Pending);
+
+        JsonElement changed = await (await PatchAsync(bearer, subject.UserId, new { status = "active" }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        // Changing a status must not require restating a tier, or a caller that omits one silently
+        // reverts whatever somebody else just set.
+        JsonElement account = changed.GetProperty("account");
+        Assert.Equal("active", account.GetProperty("status").GetString());
+        Assert.Equal("operator", account.GetProperty("tier").GetString());
+    }
+
+    [Fact]
+    public async Task A_tier_nobody_recognises_is_refused_rather_than_read_as_none()
+    {
+        string bearer = await AdminBearerAsync();
+        KgsmUser subject = await anchor.SeedAsync(Unique("typo-"), "a password", KgsmTier.Operator);
+
+        HttpResponseMessage response = await PatchAsync(bearer, subject.UserId, new { tier = "opreator" });
+
+        // Everywhere else an unreadable tier grants nothing, which is the safe reading of a value
+        // somebody else wrote. Here it is what the caller asked for, and reading a typo as "none"
+        // would demote the person the admin meant to promote.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        JsonElement body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid_tier", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(KgsmTier.Operator, (await anchor.Store.FindByIdAsync(subject.UserId))!.Tier);
+    }
+
+    [Fact]
+    public async Task None_is_a_tier_somebody_can_actually_ask_for()
+    {
+        string bearer = await AdminBearerAsync();
+        KgsmUser subject = await anchor.SeedAsync(Unique("revoked-"), "a password", KgsmTier.Admin);
+
+        HttpResponseMessage response = await PatchAsync(bearer, subject.UserId, new { tier = "none" });
+
+        // Refusing everything that parses to None would make withdrawing authority impossible.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(KgsmTier.None, (await anchor.Store.FindByIdAsync(subject.UserId))!.Tier);
+    }
+
+    [Fact]
+    public async Task An_admin_cannot_remove_the_cluster_s_last_administrator()
+    {
+        // A fresh store for this one: the rule is about there being no other admin anywhere, and the
+        // shared fixture's store accumulates them.
+        string root = Path.Combine(anchor.Root, "last-admin-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(root);
+
+        string username = Unique("only-admin-");
+        KgsmUser only = await anchor.SeedAsync(username, "the only admin", KgsmTier.Admin);
+
+        // Every other admin in the shared store stands down first, so this really is the last one.
+        var others = (await anchor.Store.ListAsync())
+            .Where(u => u.UserId != only.UserId && u.EffectiveTier == KgsmTier.Admin).ToList();
+        foreach (KgsmUser other in others)
+            await anchor.Store.UpdateAsync(other with { Tier = KgsmTier.Viewer });
+
+        try
+        {
+            HttpResponseMessage signIn = await anchor.Client.PostAsJsonAsync(
+                "/auth/sign-in", new { username, password = "the only admin" }, Wire);
+            string bearer = (await signIn.Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("token").GetString()!;
+
+            HttpResponseMessage refused = await PatchAsync(bearer, only.UserId, new { tier = "viewer" });
+
+            // One account store for the whole cluster means this is not "no admin on this machine" —
+            // it is nobody, anywhere, able to undo it through any surface.
+            Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+            JsonElement body = await refused.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("last_admin", body.GetProperty("error").GetProperty("code").GetString());
+            Assert.Equal(KgsmTier.Admin, (await anchor.Store.FindByIdAsync(only.UserId))!.Tier);
+        }
+        finally
+        {
+            foreach (KgsmUser other in others)
+                await anchor.Store.UpdateAsync(other);
+        }
+    }
+
+    [Fact]
+    public async Task Writing_is_admin_only()
+    {
+        string username = Unique("nosy-writer-");
+        await anchor.SeedAsync(username, "not enough tier", KgsmTier.Operator);
+        HttpResponseMessage signIn = await anchor.Client.PostAsJsonAsync(
+            "/auth/sign-in", new { username, password = "not enough tier" }, Wire);
+        string bearer = (await signIn.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("token").GetString()!;
+
+        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer);
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await PatchAsync(bearer, subject.UserId, new { tier = "admin" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task An_account_that_does_not_exist_is_a_404()
+    {
+        string bearer = await AdminBearerAsync();
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await PatchAsync(bearer, "usr_nothing", new { tier = "viewer" })).StatusCode);
+    }
+}

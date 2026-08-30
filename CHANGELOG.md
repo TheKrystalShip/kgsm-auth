@@ -7,6 +7,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the single write path for what a person may do (`1.3.0`)
+
+`PATCH /auth/cluster/users/{userId}` changes an account's tier, its status, or both. An absent field
+is left alone, so changing a status does not require restating a tier and cannot silently revert one
+somebody else just set.
+
+**Every change takes a version, and the version is returned.** It is what every other member orders
+by, so a demotion and a re-promotion delivered out of order still settle on whichever was issued
+last — and a caller holding the version knows its change is the newest statement about that account.
+
+**A tier the caller misspells is refused, not read as `none`.** Everywhere else in the ecosystem an
+unrecognised tier grants nothing, which is the safe reading of a value somebody else wrote. Here it
+is what the caller asked for, and reading `opreator` as "no authority" would demote the person the
+admin meant to promote. `none` itself stays askable, or withdrawing authority would be impossible.
+
+**The last administrator cannot remove their own authority.** One account store serves the whole
+cluster, so this is not "no admin on this machine" — it is nobody, anywhere, able to undo it through
+any surface, with the only way back being an edit by hand on the machine holding the accounts.
+
+
 ### Added — the replica: a member's own copy of the cluster's accounts (`Auth.Users` 1.4.0-dev.1)
 
 `AccountReplica` applies what the member holding the accounts publishes, and `IAccountVersions` is

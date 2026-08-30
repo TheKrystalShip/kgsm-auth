@@ -349,21 +349,146 @@ internal static class Endpoints
             IReadOnlyList<UserCredential> credentials =
                 await store.ListCredentialsAsync(user.UserId, ctx.RequestAborted);
 
-            records.Add(new AccountRecord(
-                Id: user.UserId,
-                Username: user.Username,
-                DisplayName: user.DisplayName,
-                Tier: KgsmTiers.ToWire(user.Tier),
-                TierSource: TierSources.ToWire(user.TierSource),
-                Status: UserStatuses.ToWire(user.Status),
-                HasPassword: credentials.Any(c => c.Kind == CredentialKind.Password),
-                Identities: [.. credentials.Where(c => c.Kind == CredentialKind.Identity).Select(c => c.Handle)],
-                Created: user.Created,
-                Updated: user.Updated));
+            records.Add(ToRecord(user, credentials));
         }
 
         await WriteJson(ctx, StatusCodes.Status200OK, new AccountsPage(records),
             AnchorJsonContext.Default.AccountsPage);
+    }
+
+    /// <summary>
+    /// Change an account's tier or status. The single write path for what a person may do.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every change takes a version from this member's counter, and that version is what every other
+    /// member orders by — so a demotion and a re-promotion delivered out of order still settle on
+    /// whichever this member issued last. It is returned, because a caller that has it knows its
+    /// change is the newest statement about the account.
+    /// </para>
+    /// <para>
+    /// <b>An account cannot lower itself out of being able to fix this.</b> An admin removing their
+    /// own last admin tier leaves the cluster with an account store nobody can administer, and the
+    /// only way back is editing the file by hand on the machine holding it.
+    /// </para>
+    /// </remarks>
+    internal static async Task PatchAccount(HttpContext ctx)
+    {
+        if (!await RequireAuthorityAsync(ctx))
+            return;
+
+        Caller? maybe = await RequireCaller(ctx, KgsmTier.Admin);
+        if (maybe is not { } caller)
+            return;
+
+        string? userId = ctx.Request.RouteValues["userId"] as string;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            await Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_user", "A user id is required.");
+            return;
+        }
+
+        AccountPatchRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.AccountPatchRequest);
+        if (body is null)
+        {
+            await Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request", "The request body is not readable.");
+            return;
+        }
+
+        var store = ctx.RequestServices.GetRequiredService<IUserStore>();
+        KgsmUser? user = await store.FindByIdAsync(userId, ctx.RequestAborted);
+        if (user is null)
+        {
+            await Refuse(ctx, StatusCodes.Status404NotFound, "no_such_account", "No account has that id.");
+            return;
+        }
+
+        // Parsed strictly here rather than fail-closed. Everywhere else an unreadable tier means
+        // "grants nothing", which is the safe reading of a value somebody else wrote; here it is what
+        // the caller is asking for, and silently granting None instead of refusing a typo would
+        // demote somebody the admin meant to promote.
+        KgsmTier tier = user.Tier;
+        if (body.Tier is { Length: > 0 } wantedTier)
+        {
+            if (!TryReadTier(wantedTier, out tier))
+            {
+                await Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_tier",
+                    $"'{wantedTier}' is not a tier. Use admin, operator, viewer or none.");
+                return;
+            }
+        }
+
+        UserStatus status = user.Status;
+        if (body.Status is { Length: > 0 } wantedStatus)
+        {
+            if (!TryReadStatus(wantedStatus, out status))
+            {
+                await Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_status",
+                    $"'{wantedStatus}' is not a status. Use active, pending or disabled.");
+                return;
+            }
+        }
+
+        // The last-admin rule, and it is about the CLUSTER rather than a machine: there is one
+        // account store, so an admin who demotes or disables themselves while holding the only admin
+        // tier leaves nobody able to undo it through any surface.
+        bool losesAdmin = user.Tier == KgsmTier.Admin
+            && (tier != KgsmTier.Admin || status != UserStatus.Active);
+        if (losesAdmin && caller.User?.UserId == user.UserId && !await AnotherAdminExistsAsync(store, user.UserId, ctx.RequestAborted))
+        {
+            await Refuse(ctx, StatusCodes.Status409Conflict, "last_admin",
+                "This is the only administrator the cluster has. Promote somebody else first.");
+            return;
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var updated = user with
+        {
+            Tier = tier,
+            // An admin choosing a tier is exactly what provenance records, so a change here is
+            // always deliberate rather than seeded from a mapping.
+            TierSource = TierSource.Granted,
+            Status = status,
+            Updated = now,
+        };
+
+        await store.UpdateAsync(updated, ctx.RequestAborted);
+
+        var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();
+        long version = await versions.NextAsync(updated.UserId, now, ctx.RequestAborted);
+
+        IReadOnlyList<UserCredential> credentials =
+            await store.ListCredentialsAsync(updated.UserId, ctx.RequestAborted);
+
+        await WriteJson(ctx, StatusCodes.Status200OK,
+            new AccountChanged(ToRecord(updated, credentials), version),
+            AnchorJsonContext.Default.AccountChanged);
+    }
+
+    /// <summary>Whether any other account is a usable administrator.</summary>
+    private static async Task<bool> AnotherAdminExistsAsync(
+        IUserStore store, string excluding, CancellationToken ct)
+    {
+        IReadOnlyList<KgsmUser> all = await store.ListAsync(ct);
+        return all.Any(u =>
+            !string.Equals(u.UserId, excluding, StringComparison.Ordinal)
+            && u.EffectiveTier == KgsmTier.Admin);
+    }
+
+    /// <summary>A tier a caller asked for, refusing anything that is not one.</summary>
+    private static bool TryReadTier(string wire, out KgsmTier tier)
+    {
+        tier = KgsmTiers.Parse(wire);
+        return tier != KgsmTier.None
+            || string.Equals(wire.Trim(), KgsmTiers.None, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A status a caller asked for, refusing anything that is not one.</summary>
+    private static bool TryReadStatus(string wire, out UserStatus status)
+    {
+        status = UserStatuses.Parse(wire);
+        return status != UserStatus.Disabled
+            || string.Equals(wire.Trim(), UserStatuses.Disabled, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Shared ────────────────────────────────────────────────────────────────
@@ -429,6 +554,20 @@ internal static class Endpoints
     private static Task Unavailable(HttpContext ctx) =>
         Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
             "The account store could not be read.");
+
+    /// <summary>An account as this surface renders one. Never carries a secret in any form.</summary>
+    private static AccountRecord ToRecord(KgsmUser user, IReadOnlyList<UserCredential> credentials) =>
+        new(
+            Id: user.UserId,
+            Username: user.Username,
+            DisplayName: user.DisplayName,
+            Tier: KgsmTiers.ToWire(user.Tier),
+            TierSource: TierSources.ToWire(user.TierSource),
+            Status: UserStatuses.ToWire(user.Status),
+            HasPassword: credentials.Any(c => c.Kind == CredentialKind.Password),
+            Identities: [.. credentials.Where(c => c.Kind == CredentialKind.Identity).Select(c => c.Handle)],
+            Created: user.Created,
+            Updated: user.Updated);
 
     private static Task Refuse(HttpContext ctx, int status, string code, string message) =>
         WriteJson(ctx, status, new ErrorEnvelope(new ErrorBody(code, message)),

@@ -104,6 +104,27 @@ internal sealed record AccountRecord(
 internal sealed record AccountsPage(IReadOnlyList<AccountRecord> Data);
 
 /// <summary>
+/// An admin's change to an account: its tier, its status, or both.
+/// </summary>
+/// <remarks>
+/// Both fields are optional and an absent one is left alone, so changing a tier does not require
+/// restating a status and cannot silently revert one somebody else just set.
+/// </remarks>
+/// <param name="Tier">The tier to grant, or null to leave it.</param>
+/// <param name="Status">The standing to set, or null to leave it.</param>
+internal sealed record AccountPatchRequest(string? Tier, string? Status);
+
+/// <summary>
+/// An account after a change, and the version the cluster will order that change by.
+/// </summary>
+/// <remarks>
+/// The version is returned rather than left implicit because it is the whole guarantee: a caller that
+/// sees it knows the change is the newest statement about this account, and every member that has not
+/// applied it yet will refuse anything older.
+/// </remarks>
+internal sealed record AccountChanged(AccountRecord Account, long Version);
+
+/// <summary>
 /// Serializer metadata for everything this anchor puts on the wire.
 /// </summary>
 /// <remarks>
@@ -120,4 +141,6 @@ internal sealed record AccountsPage(IReadOnlyList<AccountRecord> Data);
 [JsonSerializable(typeof(RefreshResult))]
 [JsonSerializable(typeof(WhoAmI))]
 [JsonSerializable(typeof(AccountsPage))]
+[JsonSerializable(typeof(AccountPatchRequest))]
+[JsonSerializable(typeof(AccountChanged))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

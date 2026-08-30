@@ -68,6 +68,12 @@ builder.Services.AddSingleton<IUserStore>(_ => new SqliteUserStore(
     new UserStoreOptions { Path = options.UserStorePath }));
 builder.Services.AddSingleton<IUserPasswordHasher, IdentityPasswordHasher>();
 
+// The counter every account change is ordered by, cluster-wide. It lives beside the accounts, in a
+// table older builds of the store have never heard of — so a surface pinned to an earlier version
+// goes on reading accounts exactly as it did.
+builder.Services.AddSingleton<IAccountVersions>(_ => new SqliteAccountVersions(
+    new UserStoreOptions { Path = options.UserStorePath }));
+
 // The staleness bound on a demotion. Short, because the read behind it is a local point query and
 // there is nothing to buy by keeping it long.
 builder.Services.AddSingleton(sp => new UserStoreAuthority(
@@ -151,6 +157,7 @@ app.MapPost("/auth/session/refresh", Endpoints.Refresh);
 app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
 app.MapGet("/auth/session", Endpoints.Session);
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
+app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);
 
 // The verification key, unauthenticated because publishing it is the point: every member has to hold
 // it to check a session, and holding it grants nothing — it verifies a signature and cannot produce
