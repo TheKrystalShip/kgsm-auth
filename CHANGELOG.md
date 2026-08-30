@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a fact this anchor states now reaches every member (`1.5.1`)
+
+A member's incarnation rose only to refute a report that it was suspect or dead, so an anchor that
+restarted and stayed reachable gossiped an incarnation its peers already held and everything it
+stated was ignored — silently, every round. The audience, the issuer and the browser address this
+anchor publishes could not reach anybody, and neither could a rotated signing key.
+
+Measured after the fix: the three facts arrived at a separate member within one gossip round of a
+redeploy, and this anchor's incarnation settled rather than climbing once per round.
+
 ### Added — one session, verified where it cannot be minted (`1.5.0`, `sessions-2.2.0-dev.2`)
 
 `ClusterSessionValidation.Accepting` widens a surface's own validation rules so it accepts two kinds
