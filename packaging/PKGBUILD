@@ -11,7 +11,7 @@
 # the one deployable built from them, and it is what this ships.
 
 pkgname=kgsm-auth-anchor
-pkgver=1.3.0
+pkgver=1.4.0
 pkgrel=1
 pkgdesc="KGSM auth anchor — the cluster's account store and its one sign-in"
 arch=('x86_64')

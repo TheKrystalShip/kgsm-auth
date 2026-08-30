@@ -457,6 +457,12 @@ internal static class Endpoints
         var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();
         long version = await versions.NextAsync(updated.UserId, now, ctx.RequestAborted);
 
+        // Announced after the local write has committed, so nothing tells another member about a
+        // change that did not land here. A failure to announce is logged and does not fail the
+        // request: the change is real, and reporting it as failed would invite the admin to repeat it.
+        var broadcast = ctx.RequestServices.GetRequiredService<AccountBroadcast>();
+        await broadcast.PublishAsync(updated, version, ctx.RequestAborted);
+
         IReadOnlyList<UserCredential> credentials =
             await store.ListCredentialsAsync(updated.UserId, ctx.RequestAborted);
 

@@ -131,6 +131,7 @@ builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
     sp.GetRequiredService<IMemoryCache>(),
     TimeSpan.FromSeconds(5)));
 builder.Services.AddSingleton<AnchorAuth>();
+builder.Services.AddSingleton<AccountBroadcast>();
 
 // Deletes rows already past their cap. Housekeeping — it ends no session that is still alive.
 builder.Services.AddHostedService(sp => new SessionCleanupWorker(
@@ -158,6 +159,10 @@ app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
 app.MapGet("/auth/session", Endpoints.Session);
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);
+
+// What this anchor serves to other MEMBERS: the accounts, so each can answer for itself who somebody
+// is and what they may do. Authenticated by a member service token, never by a person's session.
+app.MapGet("/auth/cluster/snapshot", MemberEndpoints.Snapshot);
 
 // The verification key, unauthenticated because publishing it is the point: every member has to hold
 // it to check a session, and holding it grants nothing — it verifies a signature and cannot produce

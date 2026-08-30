@@ -7,6 +7,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a member's snapshot of the accounts, and the fan-out that keeps it current (`1.4.0`)
+
+`GET /auth/cluster/snapshot` hands another member every account with the version it is at — what a
+member takes before it follows the stream, so one added on Tuesday is not missing what happened on
+Monday. Authenticated by a member service token through the cluster package's own check, never by a
+person's session: an admin is a person, and this door answers to members.
+
+Every change is then announced on the durable bus as `account.changed`, and a removal as
+`account.removed`. Withdrawal has to travel as reliably as granting, which is why it rides the outbox
+rather than a best-effort notification — a member that is down when somebody is disabled gets the
+change when it returns, not never.
+
+The announcement is not in the same transaction as the change it announces, so a crash in the gap
+leaves the change applied here and never told. The change is never lost, only the telling of it, and
+a member repairs it by taking a snapshot — which is the path that already exists for joining rather
+than a second mechanism for a narrow window.
+
 ### Added — the single write path for what a person may do (`1.3.0`)
 
 `PATCH /auth/cluster/users/{userId}` changes an account's tier, its status, or both. An absent field
@@ -27,7 +44,7 @@ cluster, so this is not "no admin on this machine" — it is nobody, anywhere, a
 any surface, with the only way back being an edit by hand on the machine holding the accounts.
 
 
-### Added — the replica: a member's own copy of the cluster's accounts (`Auth.Users` 1.4.0-dev.1)
+### Added — the replica: a member's own copy of the cluster's accounts (`Auth.Users` 1.4.0-dev.2)
 
 `AccountReplica` applies what the member holding the accounts publishes, and `IAccountVersions` is
 the counter that orders it. A member can then answer *who is this and what may they do* without

@@ -242,3 +242,21 @@ public sealed class AccountReplica(IUserStore store, IAccountVersions versions)
         }
     }
 }
+
+/// <summary>
+/// Serializer metadata for what travels between members.
+/// </summary>
+/// <remarks>
+/// In this package because both ends need the identical shape: the member holding the accounts
+/// writes it and every replica reads it, and a second declaration is a second thing to drift. It is
+/// source-generated because every member other than the Control Panel API is Native AOT, where a
+/// type nobody generated metadata for throws at runtime rather than failing a build.
+/// </remarks>
+[System.Text.Json.Serialization.JsonSourceGenerationOptions(
+    PropertyNamingPolicy = System.Text.Json.Serialization.JsonKnownNamingPolicy.CamelCase)]
+[System.Text.Json.Serialization.JsonSerializable(typeof(ReplicatedIdentity))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(ReplicatedAccount))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(AccountChange))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(AccountRemoval))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(AccountSnapshot))]
+public sealed partial class AccountReplicationJson : System.Text.Json.Serialization.JsonSerializerContext;

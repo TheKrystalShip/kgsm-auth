@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 
 using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.KGSM.Cluster.Identity;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
@@ -37,6 +38,9 @@ public sealed class AnchorFixture : IDisposable
     /// <summary>The cluster this anchor mints sessions for.</summary>
     public const string ClusterId = "test-cluster";
 
+    /// <summary>This anchor's own identity as a member of that cluster.</summary>
+    public const string MemberId = "test-anchor";
+
     public AnchorFixture()
     {
         Root = Path.Combine(Path.GetTempPath(), "kgsm-auth-anchor-tests", Guid.NewGuid().ToString("N"));
@@ -51,11 +55,33 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__PublishedKeyPath", Path.Combine(Root, "cluster", "key.json"));
         Environment.SetEnvironmentVariable("Anchor__ClusterId", ClusterId);
         Environment.SetEnvironmentVariable("Anchor__AllowedOrigins", "https://panel.test");
+        Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
+
+        // A real secret, so this anchor is a real member: it mints service tokens another member
+        // would present, and it claims the auth capability on start exactly as a deployed one does.
+        // Without it the daemon is standalone — which is also a state worth testing, but not one in
+        // which any member-to-member door can be opened at all.
+        Environment.SetEnvironmentVariable("Cluster__Secret", "a shared secret for the test cluster");
 
         Store = new SqliteUserStore(new UserStoreOptions { Path = Path.Combine(Root, "users.db") });
 
         _factory = new WebApplicationFactory<Program>();
         Client = _factory.CreateClient();
+
+        // A clustered anchor starts standing by and becomes the holder once it has read the
+        // assignment — deliberately, so it is never the authority during the window in which it does
+        // not know whether it is one. Waited out here rather than raced by every test.
+        WaitUntilHolding();
+    }
+
+    private void WaitUntilHolding()
+    {
+        var role = (AnchorRole)_factory.Services.GetService(typeof(AnchorRole))!;
+        for (int attempt = 0; attempt < 100 && !role.IsAuthority; attempt++)
+            Thread.Sleep(100);
+
+        if (!role.IsAuthority)
+            throw new InvalidOperationException("the anchor never took the auth capability");
     }
 
     /// <summary>A client onto the running anchor.</summary>
@@ -81,7 +107,7 @@ public sealed class AnchorFixture : IDisposable
         }
         finally
         {
-            role.Update(AnchorStanding.Standalone, null);
+            role.Update(AnchorStanding.Holder, MemberId);
         }
     }
 
@@ -101,6 +127,18 @@ public sealed class AnchorFixture : IDisposable
 
         return user;
     }
+
+    /// <summary>
+    /// A service token as another member of this cluster would present one.
+    /// </summary>
+    /// <remarks>
+    /// Minted through the running anchor's own token service, so what the test presents is what a
+    /// real member presents — signed with the same secret, and validated by the same code.
+    /// Members share one secret, so a token bearing another member's id is exactly what a real one
+    /// is: attribution, not isolation.
+    /// </remarks>
+    public string MintMemberToken() =>
+        ((IClusterTokenService)_factory.Services.GetService(typeof(IClusterTokenService))!).Mint().Token;
 
     public void Dispose()
     {
