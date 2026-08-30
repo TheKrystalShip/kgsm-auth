@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a sign-in page can tell what this cluster offers (`1.7.1`)
+
+`GET /auth/providers` reports `registration` beside `redirects`. Whether somebody may make an account
+here is a fact a sign-up card has to know before it draws itself, and the only other way to find out
+is to attempt one — an attempt is not a probe. A panel that assumes draws a door that cannot open on
+a cluster with registration switched off.
+
 ### Added — a person with no account can make one (`1.7.0`)
 
 `POST /auth/register` creates an account from a username, a password and optionally a name to be

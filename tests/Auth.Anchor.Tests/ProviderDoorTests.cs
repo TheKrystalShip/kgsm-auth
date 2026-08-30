@@ -60,6 +60,10 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
             "discord",
             body.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
         Assert.True(body.GetProperty("redirects").GetBoolean());
+
+        // Whether a sign-up card should be drawn at all. The only other way to find out is to
+        // attempt a registration, and an attempt is not a probe.
+        Assert.True(body.GetProperty("registration").GetBoolean());
     }
 
     // ── The bounce ────────────────────────────────────────────────────────────

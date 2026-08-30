@@ -283,7 +283,7 @@ internal static class ProviderEndpoints
         // Unauthenticated on purpose: a sign-in page has to draw its buttons before anybody has
         // signed in, and what it learns is which doors exist rather than anything behind them.
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
-            new ProvidersResult(catalog.Configured, options.RedirectsToPanel),
+            new ProvidersResult(catalog.Configured, options.RedirectsToPanel, options.AllowSelfRegistration),
             AnchorJsonContext.Default.ProvidersResult);
     }
 

@@ -141,7 +141,13 @@ internal sealed record AccountChanged(AccountRecord Account, long Version);
 /// Whether a provider sign-in sends the browser back to a panel. False means the callback answers
 /// with the session itself, which is what a caller that is not a browser wants.
 /// </param>
-internal sealed record ProvidersResult(IReadOnlyList<string> Providers, bool Redirects);
+/// <param name="Registration">
+/// Whether somebody with no account may make one here. Reported rather than left to be discovered,
+/// because the only other way to find out is to attempt it — and a sign-up card drawn on an
+/// assumption is a door that cannot open on a cluster that has this switched off.
+/// </param>
+internal sealed record ProvidersResult(
+    IReadOnlyList<string> Providers, bool Redirects, bool Registration);
 
 /// <summary>
 /// One session is over, told to every other member.
