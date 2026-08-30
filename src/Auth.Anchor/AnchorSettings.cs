@@ -45,6 +45,31 @@ internal sealed class AnchorSettings
         public const int SessionCleanupMinutes = 1;
     }
 
+    /// <summary>
+    /// Where the browser is sent back to after signing in with a provider. Blank answers the callback
+    /// as JSON instead, which is what a client that is not a browser wants.
+    /// </summary>
+    /// <panel>The Control Panel address a person lands back on after signing in with an external
+    /// account. Blank means the sign-in answers with the session directly instead of sending a
+    /// browser anywhere.</panel>
+    [LeafField("frontendUrl", "Panel address", Group = "network", Risk = LeafRisk.Wiring)]
+    public string? FrontendUrl { get; set; }
+
+    /// <summary>How many accounts may be awaiting approval at once.</summary>
+    /// <panel>How many accounts that arrived on their own may be waiting for approval at one time.
+    /// Signing in with an external account nobody has approved creates one, so this bounds what a
+    /// stranger can fill up.</panel>
+    [LeafField("pendingCap", "Unapproved account limit", Group = "sessions", Risk = LeafRisk.Safe,
+        Min = 0)]
+    public int? PendingCap { get; set; }
+
+    /// <summary>How long an unapproved account survives before it is removed.</summary>
+    /// <panel>How long an account that arrived on its own and was never approved is kept before it is
+    /// removed. It only ever removes an account nobody granted anything to.</panel>
+    [LeafField("pendingTtlDays", "Unapproved account lifetime", Group = "sessions",
+        Risk = LeafRisk.Safe, Min = 1, Unit = "days")]
+    public int? PendingTtlDays { get; set; }
+
     /// <summary>Where Kestrel listens. TCP, because a browser signs in here directly.</summary>
     /// <panel>The address a person's browser reaches this anchor at. Sign-in happens here directly,
     /// once, for the whole cluster.</panel>

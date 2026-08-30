@@ -7,6 +7,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — signing in with an account you already have (`1.6.0`)
+
+The anchor authenticated by KGSM password and by nothing else, so on a cluster where most people are
+known by an external identity it was a door almost nobody could use. It now takes them too:
+`GET /auth/providers`, `GET /auth/{provider}/start`, `GET /auth/{provider}/callback`.
+
+**A provider is a route value resolved against a catalog**, and the catalog is the only place this
+daemon names one — wiring up another is an entry there and nothing else. The application is the
+**host's**, read from the shared `KgsmAuth` configuration every KGSM surface on the machine binds, so
+a person signing in here and signing in beside it goes through one application rather than two. It is
+read by explicit key rather than bound, because a reflective binder is what an ahead-of-time compiled
+daemon cannot do.
+
+**The provider answers who, and contributes nothing else.** No group, no guild, no role is consulted;
+what somebody may do is on their KGSM account. So an identity that already belongs to an account
+resolves to that account with the tier it already has, and one that belongs to none provisions an
+unapproved account holding nothing — never matched on a username or an email, which is the documented
+route to handing one person another's access.
+
+What this door mints is what the password door mints: a session audienced to the **cluster**, signed
+with the private key, that every member verifies offline and none can produce. The two differ in what
+proves a person and in nothing after that.
+
+`state` and PKCE ride one short-lived `HttpOnly` cookie and neither is optional — the verifier never
+travels in a URL, and the CSRF gate runs before any exchange is attempted. `SameSite=Lax` rather than
+`Strict`, because Strict suppresses the cookie on the top-level redirect back from the provider and
+would break every sign-in. A browser is handed its session in the URL **fragment**, which is never
+sent to a server, so it stays out of access logs and out of the Referer header.
+
+A member standing by starts no sign-in it could not finish. A provider nobody wired up and a provider
+nobody has heard of are one answer, so the set a build knows about cannot be probed.
+
 ### Fixed — a member can say who a session it verified belongs to (`users-1.4.0-dev.3`)
 
 A session names its holder by the handle of whatever proved them: `discord:123` for an external

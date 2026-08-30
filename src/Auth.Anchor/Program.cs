@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 
 using TheKrystalShip.KGSM.Auth;
+using TheKrystalShip.KGSM.Auth.Discord;
 using TheKrystalShip.KGSM.Auth.Anchor;
 using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
@@ -131,6 +132,17 @@ builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
     sp.GetRequiredService<IMemoryCache>(),
     TimeSpan.FromSeconds(5)));
 builder.Services.AddSingleton<AnchorAuth>();
+
+// Signing in with an account somebody already holds elsewhere. The provider answers WHO, and the
+// account store answers what they may do — so a provider is added with no authority story of its own.
+// Transient like the typed HttpClient underneath it: holding one for the process lifetime pins its
+// handler and silently stops the factory rotating it, so DNS changes never land.
+builder.Services.AddHttpClient(nameof(DiscordDirectory), c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddTransient(sp => new ProviderCatalog(
+    sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<IHttpClientFactory>(),
+    sp.GetRequiredService<AnchorOptions>()));
+builder.Services.AddSingleton(sp => new IdentityLinkService(sp.GetRequiredService<IUserStore>()));
 builder.Services.AddSingleton<MemberTargets>();
 builder.Services.AddSingleton<AccountBroadcast>();
 builder.Services.AddSingleton<SessionBroadcast>();
@@ -154,6 +166,10 @@ app.MapClusterEndpoints();
 
 // Unified ecosystem liveness probe: 200 means this anchor is up and serving.
 app.MapGet("/health", () => Results.Text("ok\n"));
+
+app.MapGet("/auth/providers", ProviderEndpoints.Providers);
+app.MapGet("/auth/{provider}/start", ProviderEndpoints.Start);
+app.MapGet("/auth/{provider}/callback", ProviderEndpoints.Callback);
 
 app.MapPost("/auth/sign-in", Endpoints.SignIn);
 app.MapPost("/auth/session/refresh", Endpoints.Refresh);

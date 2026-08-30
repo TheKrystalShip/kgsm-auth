@@ -26,6 +26,12 @@
     // exchange reflects back, which is the right answer on a machine that can see its own.
     "PublicBaseUrl": "",
 
+    // Where a browser is sent back to after signing in with an external provider — the Control
+    // Panel's own address. The session rides the URL fragment, which is never sent to a server, so
+    // it stays out of access logs and out of the Referer header. Blank answers the callback with
+    // the session itself instead, which is what a caller that is not a browser wants.
+    "FrontendUrl": "",
+
     // The cluster a session is scoped to. It is the token audience: a session minted here is valid
     // on every member of THIS cluster and on nothing else. Changing it invalidates every token
     // already issued, so a running cluster keeps the value it started with.
@@ -64,6 +70,15 @@
     // Control Panel, which is served from a different origin, so without an entry the browser
     // refuses the response before any code here sees it. Blank allows none.
     "AllowedOrigins": "",
+
+    // How many accounts that arrived on their own may await approval at once. Signing in with an
+    // external account nobody has approved creates one, and that door is open to anyone who can
+    // complete a login at a configured provider — so this bounds what a stranger can fill up.
+    "PendingCap": 25,
+
+    // How long an unapproved account that arrived on its own survives before it is removed. It only
+    // ever removes an account nobody has granted anything to.
+    "PendingTtlDays": 14,
 
     // How often dead session rows are swept. The sweep only deletes what is already past its cap;
     // it is housekeeping, not revocation.

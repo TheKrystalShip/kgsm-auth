@@ -44,6 +44,9 @@ public sealed class AnchorFixture : IDisposable
     /// <summary>Where this anchor says it is reached, as a deployment behind a proxy has to.</summary>
     public const string SignInUrl = "https://auth.test";
 
+    /// <summary>Where a browser is sent back to after a provider sign-in.</summary>
+    public const string PanelUrl = "https://panel.test";
+
     public AnchorFixture()
     {
         Root = Path.Combine(Path.GetTempPath(), "kgsm-auth-anchor-tests", Guid.NewGuid().ToString("N"));
@@ -60,6 +63,13 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__AllowedOrigins", "https://panel.test");
         Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
         Environment.SetEnvironmentVariable("Anchor__PublicBaseUrl", SignInUrl);
+        Environment.SetEnvironmentVariable("Anchor__FrontendUrl", PanelUrl);
+
+        // The host's shared OAuth application, as /etc/kgsm/kgsm-auth.env supplies it on a real
+        // machine. Present so the provider door is wired at all — nothing here reaches a provider,
+        // because every case under test is decided before an exchange is attempted.
+        Environment.SetEnvironmentVariable("KgsmAuth__Providers__discord__ClientId", "test-client-id");
+        Environment.SetEnvironmentVariable("KgsmAuth__Providers__discord__ClientSecret", "test-client-secret");
 
         // A real secret, so this anchor is a real member: it mints service tokens another member
         // would present, and it claims the auth capability on start exactly as a deployed one does.
@@ -93,6 +103,14 @@ public sealed class AnchorFixture : IDisposable
 
     /// <summary>Something out of the running daemon's own service graph.</summary>
     public T Service<T>() => (T)_factory.Services.GetService(typeof(T))!;
+
+    /// <summary>
+    /// A client that reports a redirect rather than following it — the whole of what an OAuth bounce
+    /// and the handoff back to a panel are, so following one would assert against wherever it landed
+    /// instead of against what this anchor said.
+    /// </summary>
+    public HttpClient Following() => _factory.CreateClient(
+        new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
     /// <summary>
     /// Run <paramref name="body"/> with the anchor standing by, as a second install in a cluster

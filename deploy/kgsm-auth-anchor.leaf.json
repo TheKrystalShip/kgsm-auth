@@ -44,6 +44,16 @@
   ],
   "fields": [
     {
+      "key": "frontendUrl",
+      "env": "Anchor__FrontendUrl",
+      "label": "Panel address",
+      "description": "The Control Panel address a person lands back on after signing in with an external account. Blank means the sign-in answers with the session directly instead of sending a browser anywhere.",
+      "group": "network",
+      "type": "string",
+      "default": "",
+      "risk": "wiring"
+    },
+    {
       "key": "listenAddress",
       "env": "Anchor__ListenAddress",
       "label": "Listen address",
@@ -141,6 +151,29 @@
       "type": "path",
       "default": "/var/lib/kgsm/cluster/auth-public-key.json",
       "risk": "wiring"
+    },
+    {
+      "key": "pendingCap",
+      "env": "Anchor__PendingCap",
+      "label": "Unapproved account limit",
+      "description": "How many accounts that arrived on their own may be waiting for approval at one time. Signing in with an external account nobody has approved creates one, so this bounds what a stranger can fill up.",
+      "group": "sessions",
+      "type": "int",
+      "default": "25",
+      "min": 0,
+      "risk": "safe"
+    },
+    {
+      "key": "pendingTtlDays",
+      "env": "Anchor__PendingTtlDays",
+      "label": "Unapproved account lifetime",
+      "description": "How long an account that arrived on its own and was never approved is kept before it is removed. It only ever removes an account nobody granted anything to.",
+      "group": "sessions",
+      "type": "int",
+      "default": "14",
+      "min": 1,
+      "unit": "days",
+      "risk": "safe"
     },
     {
       "key": "accessLifetimeMin",

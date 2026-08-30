@@ -584,11 +584,11 @@ internal static class Endpoints
             Created: user.Created,
             Updated: user.Updated);
 
-    private static Task Refuse(HttpContext ctx, int status, string code, string message) =>
+    internal static Task Refuse(HttpContext ctx, int status, string code, string message) =>
         WriteJson(ctx, status, new ErrorEnvelope(new ErrorBody(code, message)),
             AnchorJsonContext.Default.ErrorEnvelope);
 
-    private static Task WriteJson<T>(HttpContext ctx, int status, T value, JsonTypeInfo<T> type)
+    internal static Task WriteJson<T>(HttpContext ctx, int status, T value, JsonTypeInfo<T> type)
     {
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json; charset=utf-8";

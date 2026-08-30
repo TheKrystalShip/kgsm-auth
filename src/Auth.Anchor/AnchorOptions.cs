@@ -24,6 +24,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="RefreshLifetime">The absolute session cap.</param>
 /// <param name="AllowedOrigins">Browser origins allowed to call this anchor.</param>
 /// <param name="SessionCleanup">How often expired session rows are swept.</param>
+/// <param name="FrontendUrl">Where a browser lands after a provider sign-in, or null to answer as JSON.</param>
+/// <param name="Pending">What is allowed to accumulate while nobody has approved it.</param>
 internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
@@ -37,8 +39,25 @@ internal sealed record AnchorOptions(
     TimeSpan AccessLifetime,
     TimeSpan RefreshLifetime,
     IReadOnlyList<string> AllowedOrigins,
-    TimeSpan SessionCleanup)
+    TimeSpan SessionCleanup,
+    string? FrontendUrl,
+    PendingPolicy Pending)
 {
+    /// <summary>
+    /// Where a provider sends the browser back, for one provider.
+    /// </summary>
+    /// <remarks>
+    /// Built from this anchor's own public address rather than configured per provider, so the two
+    /// callbacks a provider needs registered against it can never name different origins. A provider
+    /// accepts only redirect URIs registered on the application, so this exact string has to be one
+    /// of them or the bounce is refused at the provider, where no log here sees it.
+    /// </remarks>
+    public string RedirectUri(string provider) =>
+        $"{PublicBaseUrl.TrimEnd('/')}/auth/{provider}/callback";
+
+    /// <summary>Whether a browser is sent anywhere after a provider sign-in.</summary>
+    public bool RedirectsToPanel => !string.IsNullOrWhiteSpace(FrontendUrl);
+
     public static AnchorOptions FromSettings(AnchorSettings s)
     {
         return new AnchorOptions(
@@ -61,7 +80,13 @@ internal sealed record AnchorOptions(
                 AtLeast(s.RefreshLifetimeDays ?? 30, AnchorSettings.Floors.RefreshLifetimeDays)),
             AllowedOrigins: Origins(s.AllowedOrigins),
             SessionCleanup: TimeSpan.FromMinutes(
-                AtLeast(s.SessionCleanupMinutes ?? 60, AnchorSettings.Floors.SessionCleanupMinutes)));
+                AtLeast(s.SessionCleanupMinutes ?? 60, AnchorSettings.Floors.SessionCleanupMinutes)),
+            // Blank is a decision rather than an omission: a deployment with no browser in front of it
+            // wants the session in the response, not a redirect to somewhere there is nothing.
+            FrontendUrl: string.IsNullOrWhiteSpace(s.FrontendUrl) ? null : s.FrontendUrl.Trim(),
+            Pending: new PendingPolicy(
+                Cap: Math.Max(0, s.PendingCap ?? 25),
+                Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))));
     }
 
     /// <summary>

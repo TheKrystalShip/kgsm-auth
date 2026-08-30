@@ -44,6 +44,13 @@ Environment=Anchor__PublishedKeyPath=/var/lib/kgsm/cluster/auth-public-key.json
 # misconfiguration.
 EnvironmentFile=-/etc/kgsm/kgsm-cluster.env
 
+# The host's OAuth applications, shared with every other KGSM surface on the machine so a person
+# signing in here and signing in beside it goes through one application rather than two. Loaded
+# before this anchor's own file, so a deliberate override is still possible and is visible where the
+# overrides live. Nothing in it grants anything: an application proves who somebody is, and what
+# they may do is on their account.
+EnvironmentFile=-/etc/kgsm/kgsm-auth.env
+
 # Host-specific overrides — optional, and they win over everything above. Every key here must exist
 # in kgsm-auth-anchor.settings.json, which declares the daemon's whole configurable surface; a
 # variable naming an undeclared key binds to nothing and sets nothing.

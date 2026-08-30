@@ -125,6 +125,16 @@ internal sealed record AccountPatchRequest(string? Tier, string? Status);
 internal sealed record AccountChanged(AccountRecord Account, long Version);
 
 /// <summary>
+/// What a person can sign in with here.
+/// </summary>
+/// <param name="Providers">The external providers this anchor is wired to, in the order to draw them.</param>
+/// <param name="Redirects">
+/// Whether a provider sign-in sends the browser back to a panel. False means the callback answers
+/// with the session itself, which is what a caller that is not a browser wants.
+/// </param>
+internal sealed record ProvidersResult(IReadOnlyList<string> Providers, bool Redirects);
+
+/// <summary>
 /// One session is over, told to every other member.
 /// </summary>
 /// <remarks>
@@ -156,4 +166,5 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(AccountPatchRequest))]
 [JsonSerializable(typeof(AccountChanged))]
 [JsonSerializable(typeof(SessionRevoke))]
+[JsonSerializable(typeof(ProvidersResult))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

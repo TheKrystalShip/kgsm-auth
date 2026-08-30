@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>1.5.1</Version>
+    <Version>1.6.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.LeafConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -36,6 +36,7 @@
          own; every consumer outside it pins a published version instead. -->
     <ProjectReference Include="../Auth.Users/Auth.Users.csproj" />
     <ProjectReference Include="../Auth.Sessions/Auth.Sessions.csproj" />
+    <ProjectReference Include="../Auth.Discord/Auth.Discord.csproj" />
   </ItemGroup>
 
   <ItemGroup>
