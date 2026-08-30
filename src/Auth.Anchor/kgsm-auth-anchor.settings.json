@@ -71,6 +71,13 @@
     // refuses the response before any code here sees it. Blank allows none.
     "AllowedOrigins": "",
 
+    // Whether a person with no account may create one from the sign-in page. It is an unauthenticated
+    // write, so it is off unless a cluster decides otherwise — and the account it creates holds
+    // nothing until an administrator grants it something. The provider door creates the same kind of
+    // account for anybody who can complete a sign-in at a configured provider, and both are bounded
+    // by the same limit below.
+    "AllowSelfRegistration": false,
+
     // How many accounts that arrived on their own may await approval at once. Signing in with an
     // external account nobody has approved creates one, and that door is open to anyone who can
     // complete a login at a configured provider — so this bounds what a stranger can fill up.

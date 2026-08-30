@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a person with no account can make one (`1.7.0`)
+
+`POST /auth/register` creates an account from a username, a password and optionally a name to be
+shown by, and hands back a real session. Off unless `Anchor__AllowSelfRegistration` says otherwise,
+because it is an unauthenticated write and a cluster that never considered the question should not be
+taking strangers because a default did.
+
+**It adds a door to a room rather than a room.** Completing a sign-in at a configured provider
+already provisions exactly this: an account at `none`, `pending`, `TierSource.Derived`, bounded by
+the same `PendingPolicy` — one queue, not two counts that can disagree about how full it is. Nothing
+on the wire can ask for a tier or a status; both are decided here and the tier is always none.
+
+**The session it returns is real and reaches nothing**, deliberately. A bare refusal tells somebody
+who has just made an account nothing about what happens next; a session lets a surface say they are
+waiting on an administrator, and lets that administrator see them.
+
+Only the member holding the accounts writes one. A member standing by would create an account the
+holder has never heard of and will overwrite at the next snapshot — an account somebody was told they
+had, that quietly stops existing. Every account created is announced at a version like any other
+change, so a person who registers is not a stranger on every member they visit.
+
 ### Added — signing in with an account you already have (`1.6.0`)
 
 The anchor authenticated by KGSM password and by nothing else, so on a cluster where most people are

@@ -97,6 +97,157 @@ internal sealed class ProviderCatalog(
 }
 
 /// <summary>
+/// Making an account nobody has yet.
+/// </summary>
+/// <remarks>
+/// <para>
+/// An unauthenticated write, and the reason it is defensible is that the capability already exists:
+/// completing a sign-in at a configured provider provisions exactly the same unapproved account. This
+/// adds a door to a room rather than a room. It is off unless a cluster says otherwise, bounded by
+/// the same <see cref="PendingPolicy"/> that bounds the provider door, and the account it creates
+/// holds <b>nothing</b> until an administrator grants something.
+/// </para>
+/// <para>
+/// A caller names a username, a password and optionally a display name, and nothing else. A tier or a
+/// status on the wire is a field somebody will try to set, so neither is on it: both are decided here
+/// and the tier is always <see cref="KgsmTier.None"/>.
+/// </para>
+/// </remarks>
+internal static class RegisterEndpoint
+{
+    internal static async Task Register(HttpContext ctx)
+    {
+        var options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
+        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.RegisterEndpoint");
+
+        if (!options.AllowSelfRegistration)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "registration_closed",
+                "This cluster does not take accounts people create for themselves. Ask an administrator for one.");
+            return;
+        }
+
+        // The accounts are the cluster's, so only the member holding them may add one. A member
+        // standing by that wrote here would create an account the holder has never heard of and will
+        // overwrite at the next snapshot.
+        var role = ctx.RequestServices.GetRequiredService<AnchorRole>();
+        if (!role.IsAuthority)
+        {
+            if (role.Holder is { Length: > 0 } holder)
+                ctx.Response.Headers["X-Kgsm-Auth-Holder"] = holder;
+            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_the_anchor",
+                "This member does not hold the cluster's accounts.");
+            return;
+        }
+
+        RegisterRequest? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.RegisterRequest);
+        if (body is null)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
+                "The request body is not readable.");
+            return;
+        }
+
+        if (!Usernames.IsValid(body.Username))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "bad_request",
+                $"A username is {Usernames.MinLength}–{Usernames.MaxLength} characters of letters, digits, "
+                + "'.', '_' or '-', beginning with a letter or a digit.");
+            return;
+        }
+
+        if (!Passwords.IsAcceptable(body.Password))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "bad_request",
+                $"A password is at least {Passwords.MinLength} characters.");
+            return;
+        }
+
+        var store = ctx.RequestServices.GetRequiredService<IUserStore>();
+        var linking = ctx.RequestServices.GetRequiredService<IdentityLinkService>();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        string username = body.Username!.Trim();
+
+        // The cap, and the expiry that stops the cap becoming a permanent lockout. Read through the
+        // same service the provider door uses, so one policy bounds both doors rather than two counts
+        // that can disagree about how full the queue is.
+        int pending;
+        try
+        {
+            await linking.ExpirePendingAsync(options.Pending, now, ctx.RequestAborted);
+            pending = await linking.CountPendingAsync(ctx.RequestAborted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "registration failed: the account store could not be read");
+            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
+                "The account store could not be read.");
+            return;
+        }
+
+        if (pending >= options.Pending.Cap)
+        {
+            logger.LogWarning(
+                "'{Username}' tried to register and this cluster already holds {Cap} accounts awaiting approval",
+                username, options.Pending.Cap);
+            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_accepting_accounts",
+                "This cluster is not accepting new accounts right now. Ask an administrator.");
+            return;
+        }
+
+        var account = new KgsmUser(
+            UserIds.NewUserId(),
+            username,
+            string.IsNullOrWhiteSpace(body.DisplayName) ? username : body.DisplayName.Trim(),
+            KgsmTier.None,
+            // Nobody chose this tier — it is where an unapproved account starts. Granted is what an
+            // admin's deliberate pick records, and the difference is what expiry reads.
+            TierSource.Derived,
+            UserStatus.Pending,
+            now,
+            now);
+
+        try
+        {
+            await store.CreateAsync(account, ctx.RequestAborted);
+        }
+        catch (DuplicateUsernameException)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "username_taken",
+                $"'{username}' is already taken on this cluster.");
+            return;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "registration failed: the account could not be written");
+            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
+                "The account store could not be written.");
+            return;
+        }
+
+        await ctx.RequestServices.GetRequiredService<LocalSignInService>()
+            .SetPasswordAsync(account.UserId, body.Password!, now, ctx.RequestAborted);
+
+        // Every member is told, at a version, the way any other account change is. Without this the
+        // account exists on the anchor alone until something else makes a member take a snapshot —
+        // so a person could sign in and be a stranger everywhere they went.
+        var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();
+        long version = await versions.NextAsync(account.UserId, now, ctx.RequestAborted);
+        await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
+            .PublishAsync(account, version, ctx.RequestAborted);
+
+        logger.LogInformation("'{Username}' registered and is awaiting approval", username);
+
+        // A real session at `none`, deliberately. A bare refusal tells somebody who has just made an
+        // account nothing about what happens next; a session lets a surface say they are waiting on
+        // an administrator, and lets that administrator see them.
+        await Endpoints.MintSessionFor(ctx, account.AsIdentity(), account.EffectiveTier, account, now,
+            StatusCodes.Status201Created);
+    }
+}
+
+/// <summary>
 /// Signing in with an account somebody already has somewhere else.
 /// </summary>
 /// <remarks>

@@ -131,8 +131,18 @@ internal static class Endpoints
         }
     }
 
-    private static async Task MintSession(
-        HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now)
+    private static Task MintSession(
+        HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now) =>
+        MintSessionFor(ctx, identity, tier, user, now, StatusCodes.Status200OK);
+
+    /// <summary>
+    /// Record a session and answer with it. One path, so a session that arrives through any door is
+    /// the same session recorded the same way — the doors differ in what proves a person and in
+    /// nothing after that.
+    /// </summary>
+    internal static async Task MintSessionFor(
+        HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now,
+        int status)
     {
         var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
@@ -155,7 +165,7 @@ internal static class Endpoints
                 CurrentJti: refresh.Jti),
             ctx.RequestAborted);
 
-        await WriteJson(ctx, StatusCodes.Status200OK, new SignInResult(
+        await WriteJson(ctx, status, new SignInResult(
             Token: access.Token,
             Refresh: refresh.Token,
             Tier: KgsmTiers.ToWire(tier),
@@ -599,7 +609,7 @@ internal static class Endpoints
     /// The request body, or null when it is absent, oversized or not readable as
     /// <typeparamref name="T"/>.
     /// </summary>
-    private static async Task<T?> ReadBodyAsync<T>(HttpContext ctx, JsonTypeInfo<T> type) where T : class
+    internal static async Task<T?> ReadBodyAsync<T>(HttpContext ctx, JsonTypeInfo<T> type) where T : class
     {
         if (ctx.Request.ContentLength > MaxBodyBytes)
             return null;

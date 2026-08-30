@@ -15,6 +15,15 @@ internal sealed record ErrorBody(string Code, string Message);
 /// <summary>What a browser posts to sign in.</summary>
 internal sealed record SignInRequest(string? Username, string? Password);
 
+/// <summary>
+/// What a browser posts to make an account.
+/// </summary>
+/// <remarks>
+/// A username, a password, and optionally a name to be shown by. Deliberately nothing else — a tier
+/// or a status on this shape is a field somebody will try to set, and both are decided by the anchor.
+/// </remarks>
+internal sealed record RegisterRequest(string? Username, string? Password, string? DisplayName);
+
 /// <summary>What a browser posts to rotate or end a session.</summary>
 /// <param name="Refresh">The refresh token currently held.</param>
 internal sealed record RefreshRequest(string? Refresh);
@@ -158,6 +167,7 @@ internal sealed record SessionRevoke(string Scope, string Sid);
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(ErrorEnvelope))]
 [JsonSerializable(typeof(SignInRequest))]
+[JsonSerializable(typeof(RegisterRequest))]
 [JsonSerializable(typeof(RefreshRequest))]
 [JsonSerializable(typeof(SignInResult))]
 [JsonSerializable(typeof(RefreshResult))]

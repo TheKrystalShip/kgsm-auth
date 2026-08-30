@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>1.6.0</Version>
+    <Version>1.7.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.LeafConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -42,7 +42,7 @@
   <ItemGroup>
     <!-- Cluster membership and durable member-to-member messaging. The anchor is a member like any
          other: it joins directly, answers the same wire, and needs no kgsm-api to do it. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.15" />
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.16" />
   </ItemGroup>
 
   <ItemGroup>

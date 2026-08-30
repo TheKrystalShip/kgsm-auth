@@ -153,6 +153,16 @@
       "risk": "wiring"
     },
     {
+      "key": "allowSelfRegistration",
+      "env": "Anchor__AllowSelfRegistration",
+      "label": "Let people register",
+      "description": "Whether a person with no account can create one from the sign-in page. The account they get holds nothing until an administrator grants it something, and the limit below bounds how many can be waiting at once.",
+      "group": "sessions",
+      "type": "bool",
+      "default": "false",
+      "risk": "wiring"
+    },
+    {
       "key": "pendingCap",
       "env": "Anchor__PendingCap",
       "label": "Unapproved account limit",

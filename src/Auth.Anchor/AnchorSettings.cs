@@ -55,6 +55,13 @@ internal sealed class AnchorSettings
     [LeafField("frontendUrl", "Panel address", Group = "network", Risk = LeafRisk.Wiring)]
     public string? FrontendUrl { get; set; }
 
+    /// <summary>Whether somebody with no account may make one.</summary>
+    /// <panel>Whether a person with no account can create one from the sign-in page. The account they
+    /// get holds nothing until an administrator grants it something, and the limit below bounds how
+    /// many can be waiting at once.</panel>
+    [LeafField("allowSelfRegistration", "Let people register", Group = "sessions", Risk = LeafRisk.Wiring)]
+    public bool? AllowSelfRegistration { get; set; }
+
     /// <summary>How many accounts may be awaiting approval at once.</summary>
     /// <panel>How many accounts that arrived on their own may be waiting for approval at one time.
     /// Signing in with an external account nobody has approved creates one, so this bounds what a

@@ -26,6 +26,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="SessionCleanup">How often expired session rows are swept.</param>
 /// <param name="FrontendUrl">Where a browser lands after a provider sign-in, or null to answer as JSON.</param>
 /// <param name="Pending">What is allowed to accumulate while nobody has approved it.</param>
+/// <param name="AllowSelfRegistration">Whether somebody with no account may make one.</param>
 internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
@@ -41,7 +42,8 @@ internal sealed record AnchorOptions(
     IReadOnlyList<string> AllowedOrigins,
     TimeSpan SessionCleanup,
     string? FrontendUrl,
-    PendingPolicy Pending)
+    PendingPolicy Pending,
+    bool AllowSelfRegistration)
 {
     /// <summary>
     /// Where a provider sends the browser back, for one provider.
@@ -84,6 +86,9 @@ internal sealed record AnchorOptions(
             // Blank is a decision rather than an omission: a deployment with no browser in front of it
             // wants the session in the response, not a redirect to somewhere there is nothing.
             FrontendUrl: string.IsNullOrWhiteSpace(s.FrontendUrl) ? null : s.FrontendUrl.Trim(),
+            // Off unless a cluster says otherwise. It is an unauthenticated write, and a cluster that
+            // has not decided to take strangers should not be taking them because a default did.
+            AllowSelfRegistration: s.AllowSelfRegistration ?? false,
             Pending: new PendingPolicy(
                 Cap: Math.Max(0, s.PendingCap ?? 25),
                 Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))));

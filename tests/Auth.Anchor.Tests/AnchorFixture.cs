@@ -64,6 +64,7 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
         Environment.SetEnvironmentVariable("Anchor__PublicBaseUrl", SignInUrl);
         Environment.SetEnvironmentVariable("Anchor__FrontendUrl", PanelUrl);
+        Environment.SetEnvironmentVariable("Anchor__AllowSelfRegistration", "true");
 
         // The host's shared OAuth application, as /etc/kgsm/kgsm-auth.env supplies it on a real
         // machine. Present so the provider door is wired at all — nothing here reaches a provider,

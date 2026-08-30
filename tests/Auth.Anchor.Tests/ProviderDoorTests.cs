@@ -1,7 +1,9 @@
+using System.Net.Http;
 using System.Net;
 using System.Text.Json;
 
 using TheKrystalShip.KGSM.Auth.Users;
+using System.Text.Json.Serialization;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
@@ -233,5 +235,154 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
         Assert.Equal(LinkOutcome.Existing, link.Outcome);
         Assert.Equal(seeded.UserId, link.User!.UserId);
         Assert.Equal(KgsmTier.Operator, link.User.Tier);
+    }
+}
+
+/// <summary>
+/// Making an account nobody has yet.
+/// </summary>
+/// <remarks>
+/// An unauthenticated write, so what bounds it is the interesting part: it is off unless a cluster
+/// says otherwise, it creates an account holding nothing, and it is capped by the same policy the
+/// provider door is — one queue, not two counts that can disagree about how full it is.
+/// </remarks>
+[Collection(AnchorCollection.Name)]
+public sealed class RegisterTests(AnchorFixture anchor)
+{
+    private static StringContent Body(string? username, string? password, string? display = null) =>
+        new(JsonSerializer.Serialize(new { username, password, displayName = display }),
+            System.Text.Encoding.UTF8, "application/json");
+
+    private static async Task<JsonElement> Json(HttpResponseMessage response) =>
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+    private static string Code(JsonElement body) => body.GetProperty("error").GetProperty("code").GetString()!;
+
+    [Fact]
+    public async Task Somebody_with_no_account_gets_one_and_a_session_that_reaches_nothing()
+    {
+        string name = "newcomer" + Guid.NewGuid().ToString("N")[..8];
+        HttpResponseMessage response = await anchor.Client.PostAsync("/auth/register", Body(name, "a-long-enough-password"));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        JsonElement body = await Json(response);
+
+        // A real session, deliberately. A bare refusal tells somebody who has just made an account
+        // nothing about what happens next; this lets a surface say they are waiting on an admin.
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("token").GetString()));
+        Assert.Equal("pending", body.GetProperty("status").GetString());
+        Assert.Equal("none", body.GetProperty("tier").GetString());
+
+        // Scoped to the cluster like every other session this anchor mints — the doors differ in
+        // what proves a person and in nothing after that.
+        Assert.Equal(AnchorFixture.ClusterId, body.GetProperty("cluster").GetString());
+
+        KgsmUser? stored = await anchor.Store.FindByUsernameAsync(name);
+        Assert.NotNull(stored);
+        Assert.Equal(KgsmTier.None, stored.Tier);
+        Assert.Equal(UserStatus.Pending, stored.Status);
+
+        // Derived, not granted: nobody chose this tier, and expiry reads that difference to tell an
+        // account that arrived on its own from one an admin made.
+        Assert.Equal(TierSource.Derived, stored.TierSource);
+    }
+
+    [Fact]
+    public async Task The_password_it_sets_is_the_one_that_signs_in()
+    {
+        string name = "roundtrip" + Guid.NewGuid().ToString("N")[..8];
+        const string password = "a-long-enough-password";
+
+        Assert.Equal(
+            HttpStatusCode.Created,
+            (await anchor.Client.PostAsync("/auth/register", Body(name, password))).StatusCode);
+
+        HttpResponseMessage signIn = await anchor.Client.PostAsync(
+            "/auth/sign-in",
+            new StringContent(
+                JsonSerializer.Serialize(new { username = name, password }),
+                System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
+        Assert.Equal("pending", (await Json(signIn)).GetProperty("status").GetString());
+    }
+
+    [Theory]
+    [InlineData("", "a-long-enough-password")]
+    [InlineData("no spaces allowed", "a-long-enough-password")]
+    [InlineData("fine-name", "short")]
+    [InlineData("fine-name", "")]
+    public async Task A_username_or_password_that_will_not_do_is_refused(string username, string password)
+    {
+        HttpResponseMessage response = await anchor.Client.PostAsync("/auth/register", Body(username, password));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("bad_request", Code(await Json(response)));
+    }
+
+    [Fact]
+    public async Task A_username_somebody_already_has_is_refused_rather_than_taken()
+    {
+        string name = "taken" + Guid.NewGuid().ToString("N")[..8];
+        await anchor.Client.PostAsync("/auth/register", Body(name, "a-long-enough-password"));
+
+        HttpResponseMessage second = await anchor.Client.PostAsync("/auth/register", Body(name, "another-long-password"));
+
+        // Never merged onto the existing account: matching a stranger onto somebody else's account by
+        // name is the documented route to handing one person another's access.
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal("username_taken", Code(await Json(second)));
+    }
+
+    [Fact]
+    public async Task Nothing_on_the_wire_can_ask_for_a_tier()
+    {
+        string name = "ambitious" + Guid.NewGuid().ToString("N")[..8];
+
+        // The shape has no tier and no status, so a caller sending them is sending fields that bind
+        // to nothing. Asserted rather than assumed, because "the DTO does not have it" is exactly the
+        // kind of thing a later edit quietly changes.
+        var content = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                username = name,
+                password = "a-long-enough-password",
+                tier = "admin",
+                status = "active",
+            }),
+            System.Text.Encoding.UTF8, "application/json");
+
+        Assert.Equal(HttpStatusCode.Created, (await anchor.Client.PostAsync("/auth/register", content)).StatusCode);
+
+        KgsmUser? stored = await anchor.Store.FindByUsernameAsync(name);
+        Assert.Equal(KgsmTier.None, stored!.Tier);
+        Assert.Equal(UserStatus.Pending, stored.Status);
+    }
+
+    [Fact]
+    public void A_cluster_that_has_not_decided_to_take_strangers_does_not()
+    {
+        // Off unless a cluster says otherwise. It is an unauthenticated write, and a default that
+        // opened it would take strangers on every install that never thought about the question.
+        // Asserted against the settings-to-options step, because that is where the answer is decided.
+        AnchorOptions defaults = AnchorOptions.FromSettings(new AnchorSettings());
+
+        Assert.False(defaults.AllowSelfRegistration);
+    }
+
+    [Fact]
+    public async Task A_member_that_does_not_hold_the_accounts_creates_none()
+    {
+        await anchor.StandingBy("some-other-anchor", async () =>
+        {
+            // Writing here would create an account the holder has never heard of and will overwrite
+            // at the next snapshot — an account somebody was told they had, that quietly stops
+            // existing.
+            HttpResponseMessage response = await anchor.Client.PostAsync(
+                "/auth/register", Body("standby" + Guid.NewGuid().ToString("N")[..8], "a-long-enough-password"));
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("not_the_anchor", Code(await Json(response)));
+        });
     }
 }

@@ -171,6 +171,7 @@ app.MapGet("/auth/providers", ProviderEndpoints.Providers);
 app.MapGet("/auth/{provider}/start", ProviderEndpoints.Start);
 app.MapGet("/auth/{provider}/callback", ProviderEndpoints.Callback);
 
+app.MapPost("/auth/register", RegisterEndpoint.Register);
 app.MapPost("/auth/sign-in", Endpoints.SignIn);
 app.MapPost("/auth/session/refresh", Endpoints.Refresh);
 app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
