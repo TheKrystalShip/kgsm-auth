@@ -50,14 +50,30 @@ public sealed record ReplicatedAccount(
         Created, Updated);
 
     /// <summary>An account as it should travel, with every credential secret left behind.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Every handle travels; no secret does.</b> A handle is the name of a fact and a secret is
+    /// evidence for it, and only the second one lets somebody in. A session names its holder by the
+    /// handle of whatever proved them — <c>discord:123</c> for an external identity, and
+    /// <see cref="UserCredentials.LocalHandle"/> for a KGSM password — so a member that is not given
+    /// the handle cannot say who a session it has just verified belongs to. The account is there, the
+    /// signature is good, and nothing joins the two.
+    /// </para>
+    /// <para>
+    /// A password's handle therefore travels while its hash stays where it was set. A replica holds
+    /// it as an identity with no secret, which is the shape sign-in already treats as an account with
+    /// no password: the decoy hash is verified and the attempt is refused, at the same cost as any
+    /// other. So a replica says what somebody may do and still cannot let them in.
+    /// </para>
+    /// </remarks>
     public static ReplicatedAccount From(KgsmUser user, IReadOnlyList<UserCredential> credentials) =>
         new(
             user.UserId, user.Username, user.DisplayName,
             KgsmTiers.ToWire(user.Tier), TierSources.ToWire(user.TierSource),
             UserStatuses.ToWire(user.Status), user.Created, user.Updated,
             [.. credentials
-                .Where(c => c.Kind == CredentialKind.Identity)
-                .Select(c => new ReplicatedIdentity(c.Handle, c.Label))]);
+                .Where(c => c.Kind is CredentialKind.Identity or CredentialKind.Password)
+                .Select(c => new ReplicatedIdentity(c.Handle, c.Kind == CredentialKind.Password ? null : c.Label))]);
 }
 
 /// <summary>One account, at one point in its life, as the member holding the accounts published it.</summary>

@@ -7,6 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a member can say who a session it verified belongs to (`users-1.4.0-dev.3`)
+
+A session names its holder by the handle of whatever proved them: `discord:123` for an external
+identity, `local:<user id>` for a KGSM password. Only the first travelled, so a member that took the
+cluster's accounts could verify a password-holder's session, hold their account, and still resolve
+them as a stranger — signature good, tier `none`, every gate refusing. It failed as a correct-looking
+answer about somebody else.
+
+**Every handle travels now; no secret ever did or does.** A handle is the name of a fact and a hash is
+evidence for it, and only the second lets somebody in. A replica holds a password's handle as an
+identity with no secret, which is the shape sign-in already treats as an account with no password —
+the decoy hash is verified and the attempt refused, at the same cost as any other. So a replica says
+what somebody may do and still cannot let them in, which is what it was always meant to be.
+
+The two tests that had to change were asserting the wrong thing: both stood a handle count in for
+"the password did not travel", when the property is about the hash. They assert the hash now, and are
+stronger for it.
+
 ### Fixed — a fact this anchor states now reaches every member (`1.5.1`)
 
 A member's incarnation rose only to refute a report that it was suspect or dead, so an anchor that

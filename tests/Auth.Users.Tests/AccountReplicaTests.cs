@@ -43,10 +43,75 @@ public class AccountReplicaTests
         ReplicatedAccount travelling = ReplicatedAccount.From(
             user, await temp.Store.ListCredentialsAsync(user.UserId));
 
-        // The identity is carried because resolving authority needs it; the password is not carried
-        // at all, so there is nothing on the wire a member could authenticate anybody with.
-        Assert.Equal(["discord:123"], travelling.Identities.Select(i => i.Handle));
+        // Both handles are carried, because a session names its holder by one of them and a member
+        // that lacks it cannot say who it has just verified. Neither secret is, so there is nothing
+        // on the wire a member could authenticate anybody with — which is the whole property, and it
+        // is about the hash rather than about which handles appear.
+        Assert.Equal(
+            ["discord:123", UserCredentials.LocalHandle(user.UserId)],
+            travelling.Identities.Select(i => i.Handle).Order());
         Assert.DoesNotContain("a-real-hash", string.Join("|", travelling.Identities.Select(i => i.Handle + i.Label)));
+    }
+
+    /// <summary>
+    /// A person who signs in with a KGSM password is named by the handle of that password —
+    /// <c>local:&lt;user id&gt;</c> — and that handle is what a session's subject carries. It has to reach
+    /// every member, or a session the cluster's anchor minted resolves to nobody everywhere else: the
+    /// signature verifies, the account is there, and nothing joins the two.
+    /// </summary>
+    /// <remarks>
+    /// The secret still does not travel, which is the property that matters. A handle is the name of a
+    /// fact and a hash is evidence for it, and only the second one lets somebody in.
+    /// </remarks>
+    [Fact]
+    public async Task TheHandleOfAPasswordTravelsEvenThoughThePasswordDoesNot()
+    {
+        using TempStore temp = new();
+        KgsmUser user = Make.User();
+        await temp.Store.CreateAsync(user);
+        await temp.Store.AddCredentialAsync(new UserCredential(
+            UserIds.NewCredentialId(), user.UserId, CredentialKind.Password,
+            UserCredentials.LocalHandle(user.UserId), "a-real-hash", null, Now, null));
+
+        ReplicatedAccount travelling = ReplicatedAccount.From(
+            user, await temp.Store.ListCredentialsAsync(user.UserId));
+
+        Assert.Contains(UserCredentials.LocalHandle(user.UserId), travelling.Identities.Select(i => i.Handle));
+        Assert.DoesNotContain("a-real-hash", string.Join("|", travelling.Identities.Select(i => i.Handle + i.Label)));
+    }
+
+    /// <summary>
+    /// The same fact from the receiving end: a member that took the account can resolve the person
+    /// its session names, and still cannot verify a password for them.
+    /// </summary>
+    [Fact]
+    public async Task AMemberThatTookAPasswordAccountCanResolveWhoTheSessionNames()
+    {
+        using TempStore source = new();
+        KgsmUser user = Make.User(tier: KgsmTier.Admin);
+        await source.Store.CreateAsync(user);
+        await source.Store.AddCredentialAsync(new UserCredential(
+            UserIds.NewCredentialId(), user.UserId, CredentialKind.Password,
+            UserCredentials.LocalHandle(user.UserId), "a-real-hash", null, Now, null));
+
+        var change = new AccountChange(
+            ReplicatedAccount.From(user, await source.Store.ListCredentialsAsync(user.UserId)), 1);
+
+        using TempStore member = new();
+        (AccountReplica replica, _) = Replica(member);
+        Assert.Equal(ReplicationOutcome.Applied, await replica.ApplyAsync(change, Now));
+
+        // What a session minted by the anchor carries as its subject.
+        string subject = UserCredentials.LocalHandle(user.UserId);
+
+        KgsmUser? resolved = await member.Store.FindByCredentialAsync(subject);
+        Assert.NotNull(resolved);
+        Assert.Equal(KgsmTier.Admin, resolved.Tier);
+
+        // And it still holds nothing anybody could sign in with.
+        IReadOnlyList<UserCredential> held = await member.Store.ListCredentialsAsync(user.UserId);
+        Assert.All(held, c => Assert.Null(c.Secret));
+        Assert.DoesNotContain(held, c => c.Kind == CredentialKind.Password);
     }
 
     // ── applying ──────────────────────────────────────────────────────────────────────────────
