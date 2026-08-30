@@ -1,0 +1,64 @@
+[Unit]
+Description=KGSM Auth Anchor
+Documentation=https://github.com/TheKrystalShip
+After=network.target
+
+[Service]
+Type=simple
+# Runs as the KGSM user, not root. It reads and writes the account store, which is owned by that
+# user, and binds an unprivileged port.
+User=kgsm
+Group=kgsm
+
+# Native-AOT single-file binary (publish: dotnet publish src/Auth.Anchor -c Release -r linux-x64).
+ExecStart=/opt/kgsm-auth-anchor/kgsm-auth-anchor
+
+# Where a browser reaches this anchor. A person signs in here directly, once, for the whole
+# cluster, so unlike a leaf's unix socket this is a TCP surface.
+Environment=Anchor__ListenAddress=http://0.0.0.0:8098
+
+# The account store — the same file every other KGSM surface on this host reads.
+Environment=Anchor__UserStorePath=/var/lib/kgsm/auth/users.db
+
+# Sessions and the private signing key live in the state directory below, which systemd creates
+# owned by this user.
+Environment=Anchor__SessionStorePath=/var/lib/kgsm-auth-anchor/sessions.db
+Environment=Anchor__SigningKeyPath=/var/lib/kgsm-auth-anchor/session-signing.pem
+
+# The shared cluster directory, scaffolded by kgsm-base, is where members on this machine read the
+# verification key from. Absent, the key is served over HTTP alone.
+Environment=Anchor__PublishedKeyPath=/var/lib/kgsm/cluster/auth-public-key.json
+
+# The browser origins allowed to sign in here. Blank allows none, so the Control Panel's origin
+# belongs in the env file below.
+# Environment=Anchor__AllowedOrigins=https://panel.example
+
+# The shared cluster secret, loaded before this anchor's own env file so one file serves every
+# member on the machine. Blank means this host is not part of a cluster, which is a state and not a
+# misconfiguration.
+EnvironmentFile=-/etc/kgsm/kgsm-cluster.env
+
+# Host-specific overrides — optional, and they win over everything above. Every key here must exist
+# in kgsm-auth-anchor.settings.json, which declares the daemon's whole configurable surface; a
+# variable naming an undeclared key binds to nothing and sets nothing.
+EnvironmentFile=-/etc/kgsm-auth-anchor/kgsm-auth-anchor.env
+
+# systemd creates /var/lib/kgsm-auth-anchor owned by this user. 0700 because the private signing
+# key lives in it, and because SQLite writes -wal and -shm beside its database — write permission
+# on the file alone is not enough.
+StateDirectory=kgsm-auth-anchor
+StateDirectoryMode=0700
+
+Restart=always
+RestartSec=2
+
+# The daemon reads and writes two SQLite files and serves TCP. It needs nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

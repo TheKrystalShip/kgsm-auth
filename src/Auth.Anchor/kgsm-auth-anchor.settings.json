@@ -1,0 +1,69 @@
+{
+  // === KGSM auth anchor — configuration ===
+  //
+  // This file declares the daemon's WHOLE configurable surface, each key with its default. It is
+  // the floor; an environment variable overrides one key of it by spelling that key's path with
+  // "__" — Anchor__ListenAddress, Logging__LogLevel__Default. A variable naming a key that is not
+  // declared here binds to nothing, which is what stops a stale override from looking applied.
+  //
+  // Every key below maps 1:1 onto a property of AnchorSettings, which the daemon binds in one step,
+  // and onto a [LeafField] the config descriptor is generated from. A knob that exists in one place
+  // and not the others fails the build.
+
+  "Anchor": {
+    // Where the browser reaches this anchor. A person signs in here directly, once, for the whole
+    // cluster, so unlike a leaf's unix socket this is a TCP surface with TLS terminated the way any
+    // member's is.
+    "ListenAddress": "http://0.0.0.0:8098",
+
+    // The cluster a session is scoped to. It is the token audience: a session minted here is valid
+    // on every member of THIS cluster and on nothing else. Changing it invalidates every token
+    // already issued, so a running cluster keeps the value it started with.
+    "ClusterId": "kgsm-cluster",
+
+    // The token issuer. Validated, so changing it on a running anchor signs everyone out.
+    "Issuer": "kgsm",
+
+    // The account store. The same file every other KGSM surface on a host reads, and the anchor is
+    // the writer of it.
+    "UserStorePath": "/var/lib/kgsm/auth/users.db",
+
+    // Where live sessions are recorded, so a revoke outlives the process that issued it and a
+    // restart does not sign everybody out. Inside the unit's StateDirectory=.
+    "SessionStorePath": "/var/lib/kgsm-auth-anchor/sessions.db",
+
+    // The private key sessions are signed with. Generated on first start if absent, 0600, and never
+    // leaves this machine. Deleting it invalidates every session ever minted.
+    "SigningKeyPath": "/var/lib/kgsm-auth-anchor/session-signing.pem",
+
+    // Where the PUBLIC half is published for members on this machine to verify against. Under the
+    // shared cluster directory rather than this daemon's own state, because that is the directory
+    // for what several members on one machine share. Blank publishes no file; the key is still
+    // served over HTTP.
+    "PublishedKeyPath": "/var/lib/kgsm/cluster/auth-public-key.json",
+
+    // How long an access bearer lives before it has to be refreshed. Short, because it bounds how
+    // long a stolen one is worth anything.
+    "AccessLifetimeMinutes": 15,
+
+    // The absolute session cap: how long somebody stays signed in, rotating access tokens, before a
+    // fresh sign-in.
+    "RefreshLifetimeDays": 30,
+
+    // Browser origins allowed to call this anchor, comma-separated. A person signs in here from the
+    // Control Panel, which is served from a different origin, so without an entry the browser
+    // refuses the response before any code here sees it. Blank allows none.
+    "AllowedOrigins": "",
+
+    // How often dead session rows are swept. The sweep only deletes what is already past its cap;
+    // it is housekeeping, not revocation.
+    "SessionCleanupMinutes": 60
+  },
+
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  }
+}

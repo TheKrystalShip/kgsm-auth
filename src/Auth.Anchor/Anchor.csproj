@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Native AOT, like every other anchor and leaf. Nothing this daemon uses blocks it: the host
+         is the slim builder with minimal APIs rather than MVC, storage is raw ADO SQLite rather than
+         an ORM, and every wire shape is serialized through a source-generated context. -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
+    <AssemblyName>kgsm-auth-anchor</AssemblyName>
+    <Version>1.0.0</Version>
+
+    <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.LeafConfig.
+         These name the two files it works between; the attribute source, the documentation file the
+         <panel> tags travel in and the build step all come with the package. -->
+    <LeafSettingsFile>kgsm-auth-anchor.settings.json</LeafSettingsFile>
+    <LeafDescriptorFile>$(MSBuildProjectDirectory)/../../deploy/kgsm-auth-anchor.leaf.json</LeafDescriptorFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The settings file, named for this daemon rather than appsettings.json so it cannot collide
+         with a sibling's config if they ever share a directory. The Web SDK only auto-copies the
+         literal "appsettings.json", so the renamed file needs an explicit item to reach bin/ and
+         publish/. Program.cs loads it from AppContext.BaseDirectory, where deploy installs it. -->
+    <Content Update="kgsm-auth-anchor.settings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The account store and the session tokens. Referenced by project because they are this repo's
+         own; every consumer outside it pins a published version instead. -->
+    <ProjectReference Include="../Auth.Users/Auth.Users.csproj" />
+    <ProjectReference Include="../Auth.Sessions/Auth.Sessions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build-only: the descriptor attributes arrive as source and the generator as a tool, and the
+         package declares no dependencies of its own, so none of it reaches the AOT publish. -->
+    <PackageReference Include="TheKrystalShip.KGSM.LeafConfig" Version="2.2.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Scoped, same advisory and same reasoning as Auth.Users' own: a native SQLite lib pulled in
+         transitively, where the flagged version is the latest published build and there is nothing
+         to move to. A suppression does not travel with a reference, so the consuming project
+         declares its own. Delete it the moment a patched SQLitePCLRaw bundle ships. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TheKrystalShip.KGSM.Auth.Anchor.Tests" />
+  </ItemGroup>
+
+</Project>

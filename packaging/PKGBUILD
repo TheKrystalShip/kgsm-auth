@@ -1,0 +1,78 @@
+# Maintainer: Cristian Moraru <info@thekrystalship.com>
+#
+# Build from this directory:  cd packaging && makepkg
+#
+# Compiles nothing. CI publishes the Native-AOT binary first and this places the result, so the
+# packaged bytes are the tested bytes. Point KGSM_STAGE at that publish output, or leave it unset to
+# use ../artifacts/publish, which is where deploy.sh leaves one.
+#
+# The repo is kgsm-auth and the package is kgsm-auth-anchor: this repo's other output is a set of
+# libraries every surface compiles against, published to NuGet on their own versions. The daemon is
+# the one deployable built from them, and it is what this ships.
+
+pkgname=kgsm-auth-anchor
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="KGSM auth anchor — the cluster's account store and its one sign-in"
+arch=('x86_64')
+url="https://github.com/TheKrystalShip/kgsm-auth"
+license=('GPL-3.0-or-later')
+# On the selection menu, so a machine chosen to hold the cluster's accounts installs it the same way
+# it installs everything else. It is preset-DISABLED: a cluster has one anchor, and which machine
+# holds it is a decision rather than a default.
+groups=('kgsm-node')
+# kgsm-base carries the kgsm service account this unit runs as, the /var/lib/kgsm/auth directory the
+# account store lives in, the /var/lib/kgsm/cluster directory the verification key is published to,
+# and the preset policy deciding whether this runs here.
+depends=('kgsm-base' 'systemd')
+backup=('etc/kgsm-auth-anchor/kgsm-auth-anchor.env')
+install="kgsm-auth-anchor.install"
+optdepends=(
+    'kgsm-api: the Control Panel, which renders this anchor configuration page and signs people in against it'
+)
+# No separate debug package: these are shipped to a private fleet, not a distro archive.
+options=('!debug')
+
+_stage() { printf '%s' "${KGSM_STAGE:-${startdir}/../artifacts/publish}"; }
+
+pkgver() {
+    "${startdir}/../deploy/version.sh" --pkgver
+}
+
+build() {
+    local stage; stage="$(_stage)"
+    [[ -f "${stage}/kgsm-auth-anchor" ]] || {
+        printf '\n  no publish output at %s\n' "$stage" >&2
+        printf '  build it first:  dotnet publish src/Auth.Anchor/Anchor.csproj -c Release -r linux-x64 -o artifacts/publish\n' >&2
+        printf '  or point KGSM_STAGE at an existing one.\n\n' >&2
+        return 1
+    }
+}
+
+package() {
+    local repo="${startdir}/.." stage; stage="$(_stage)"
+    local prefix="${pkgdir}/opt/${pkgname}"
+
+    # The AOT binary, the SQLite native lib it dlopens and the settings file, exactly as published.
+    install -dm755 "$prefix"
+    cp -a "${stage}/." "${prefix}/"
+    # A published tree carries build leftovers a package should not.
+    rm -f "${prefix}"/*.pdb "${prefix}"/*.dbg "${prefix}"/*.xml
+
+    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.service" \
+        "${pkgdir}/usr/lib/systemd/system/kgsm-auth-anchor.service"
+
+    # Operator overrides. Seeded from the committed example — every knob commented — and listed in
+    # backup=(), so an upgrade writes .pacnew beside an edited file rather than over it. Root-owned
+    # 0640 is correct rather than strict: systemd reads EnvironmentFile= as root before dropping to
+    # User=, so nothing reads this as the service account.
+    install -Dm640 "${repo}/deploy/kgsm-auth-anchor.env.example" \
+        "${pkgdir}/etc/${pkgname}/${pkgname}.env"
+
+    # The config descriptor, in the directory kgsm-api scans. Packaged rather than installed by a
+    # script, so it can never describe a different build than the one beside it.
+    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.leaf.json" \
+        "${pkgdir}/var/lib/kgsm/leaves/auth-anchor.json"
+
+    install -Dm644 "${repo}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

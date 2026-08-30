@@ -31,8 +31,10 @@ public sealed record RefreshClaims(KgsmIdentity Identity, KgsmTier Tier, string 
 /// <summary>How this surface mints session tokens.</summary>
 /// <param name="HostId">The token audience — a bearer is scoped to one host and useless on another.</param>
 /// <param name="SigningKey">
-/// The HMAC secret, of any length (it is hashed to 256 bits). Blank generates an ephemeral
-/// per-process key: every token dies on restart, which is fine for a test and never for a real host.
+/// The HMAC secret, of any length (it is hashed to 256 bits), for a surface that signs and verifies
+/// its own tokens. Blank generates an ephemeral per-process key: every token dies on restart, which
+/// is fine for a test and never for a real host. A surface supplying an <see cref="ISessionSigner"/>
+/// signs with that instead and this value is not read.
 /// </param>
 /// <param name="AccessLifetime">How long an access bearer lives. Short — it bounds privilege.</param>
 /// <param name="RefreshLifetime">
@@ -85,32 +87,56 @@ public interface ISessionTokenService
 public sealed class SessionTokenService : ISessionTokenService
 {
     private readonly SessionTokenOptions _options;
-    private readonly SymmetricSecurityKey _key;
     private readonly SigningCredentials _signing;
     private readonly JsonWebTokenHandler _handler = new();
 
     public TokenValidationParameters ValidationParameters { get; }
 
-    public SessionTokenService(SessionTokenOptions options, ILogger<SessionTokenService>? logger = null)
+    /// <param name="options">The audience, lifetimes and issuer this surface mints under.</param>
+    /// <param name="logger">Reports an ephemeral key, which is the one misconfiguration that works.</param>
+    /// <param name="signer">
+    /// How tokens are signed. Absent, the surface signs and verifies with the shared HMAC secret in
+    /// <paramref name="options"/> — the right shape where the minting surface is also the only one
+    /// checking. A surface whose tokens are verified elsewhere supplies an asymmetric signer, so the
+    /// verifier holds only what checks a signature and cannot produce one.
+    /// </param>
+    public SessionTokenService(
+        SessionTokenOptions options,
+        ILogger<SessionTokenService>? logger = null,
+        ISessionSigner? signer = null)
     {
         _options = options;
 
-        byte[] keyBytes;
-        if (!string.IsNullOrWhiteSpace(options.SigningKey))
+        SecurityKey verificationKey;
+        string algorithm;
+
+        if (signer is not null)
         {
-            // Hashed, so any length of secret works and the key is always exactly 256 bits.
-            keyBytes = SHA256.HashData(Encoding.UTF8.GetBytes(options.SigningKey));
+            _signing = signer.Credentials;
+            verificationKey = signer.VerificationKey;
+            algorithm = signer.Algorithm;
         }
         else
         {
-            keyBytes = RandomNumberGenerator.GetBytes(32);
-            logger?.LogWarning(
-                "No session signing key is configured — generated an EPHEMERAL one. Every session "
-                + "dies on restart. Set a stable secret on any real host.");
-        }
+            byte[] keyBytes;
+            if (!string.IsNullOrWhiteSpace(options.SigningKey))
+            {
+                // Hashed, so any length of secret works and the key is always exactly 256 bits.
+                keyBytes = SHA256.HashData(Encoding.UTF8.GetBytes(options.SigningKey));
+            }
+            else
+            {
+                keyBytes = RandomNumberGenerator.GetBytes(32);
+                logger?.LogWarning(
+                    "No session signing key is configured — generated an EPHEMERAL one. Every session "
+                    + "dies on restart. Set a stable secret on any real host.");
+            }
 
-        _key = new SymmetricSecurityKey(keyBytes);
-        _signing = new SigningCredentials(_key, SecurityAlgorithms.HmacSha256);
+            var symmetric = new SymmetricSecurityKey(keyBytes);
+            _signing = new SigningCredentials(symmetric, SecurityAlgorithms.HmacSha256);
+            verificationKey = symmetric;
+            algorithm = SecurityAlgorithms.HmacSha256;
+        }
 
         ValidationParameters = new TokenValidationParameters
         {
@@ -119,7 +145,11 @@ public sealed class SessionTokenService : ISessionTokenService
             ValidateAudience = true,
             ValidAudience = options.HostId,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = _key,
+            IssuerSigningKey = verificationKey,
+            // Pinned, so a token offering any other algorithm is refused before its signature is
+            // looked at. Without it a public verification key is one an attacker may present as an
+            // HMAC secret, and the key everybody holds becomes the key everybody can sign with.
+            ValidAlgorithms = [algorithm],
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30),
             NameClaimType = "sub",

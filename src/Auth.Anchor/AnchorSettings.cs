@@ -1,0 +1,121 @@
+using TheKrystalShip.KGSM.LeafConfig;
+
+namespace TheKrystalShip.KGSM.Auth.Anchor;
+
+/// <summary>
+/// The anchor's configurable surface, shaped 1:1 with the <c>"Anchor"</c> section of
+/// <c>kgsm-auth-anchor.settings.json</c>. That file is the floor: every knob is declared there with
+/// its default, and an environment variable may only override a key that exists in it
+/// (<c>Anchor__ListenAddress</c>, <c>Anchor__ClusterId</c>). A variable naming a key this class does
+/// not declare sets nothing.
+/// </summary>
+/// <remarks>
+/// This type holds what was <em>written</em>, not what the daemon runs on. <see cref="AnchorOptions"/>
+/// is the validated form, so the raw configuration and the runtime view stay separable.
+/// <para>
+/// Every number is <b>nullable</b>, and null means "not written" — the coded default in
+/// <see cref="AnchorOptions"/> applies. Two binder behaviours make that load-bearing: a blank value
+/// (<c>Anchor__AccessLifetimeMinutes=</c>, one stray line in an env file) binds to a non-nullable
+/// <see cref="int"/> by throwing, taking the daemon down at startup; and a JSON null binds to
+/// <c>0</c>, silently discarding a property initializer's default. Nullable turns both into "unset",
+/// while a value that is present and is not a number still fails loudly.
+/// </para>
+/// </remarks>
+[LeafSection(Section)]
+internal sealed class AnchorSettings
+{
+    /// <summary>The configuration section this binds from.</summary>
+    public const string Section = "Anchor";
+
+    /// <summary>
+    /// The lowest value each lifetime may take. Declared once and read by both
+    /// <see cref="AnchorOptions.FromSettings"/>, which raises anything lower, and the config
+    /// descriptor, which is what the Control Panel rejects against — so the panel can never accept a
+    /// value the daemon would silently move.
+    /// </summary>
+    public static class Floors
+    {
+        /// <summary>A one-minute access token is already short enough to be a refresh loop.</summary>
+        public const int AccessLifetimeMinutes = 1;
+
+        /// <summary>A session shorter than a day is a sign-in prompt, not a session.</summary>
+        public const int RefreshLifetimeDays = 1;
+
+        /// <summary>A sweep faster than a minute is a busy loop over rows nothing is reading.</summary>
+        public const int SessionCleanupMinutes = 1;
+    }
+
+    /// <summary>Where Kestrel listens. TCP, because a browser signs in here directly.</summary>
+    /// <panel>The address a person's browser reaches this anchor at. Sign-in happens here directly,
+    /// once, for the whole cluster.</panel>
+    [LeafField("listenAddress", "Listen address", Group = "network", Risk = LeafRisk.Wiring)]
+    public string ListenAddress { get; set; } = "http://0.0.0.0:8098";
+
+    /// <summary>The cluster a session is scoped to, and the token audience.</summary>
+    /// <panel>The cluster this anchor holds the accounts for. A session it mints is valid on every
+    /// member of this cluster and on nothing else. Changing it signs everybody out.</panel>
+    [LeafField("clusterId", "Cluster id", Group = "network", Risk = LeafRisk.Destructive)]
+    public string ClusterId { get; set; } = "kgsm-cluster";
+
+    /// <summary>The <c>iss</c> claim, and what validation requires.</summary>
+    /// <panel>The issuer name stamped on every session. It is checked when a session is presented, so
+    /// changing it signs everybody out.</panel>
+    [LeafField("issuer", "Token issuer", Group = "network", Risk = LeafRisk.Destructive)]
+    public string Issuer { get; set; } = "kgsm";
+
+    /// <summary>The account store this anchor is the writer of.</summary>
+    /// <panel>The file the accounts live in. It is the same file every other KGSM surface on this
+    /// machine reads.</panel>
+    [LeafField("userStorePath", "Account store", Group = "storage", Type = LeafType.Path,
+        Risk = LeafRisk.Destructive)]
+    public string UserStorePath { get; set; } = "/var/lib/kgsm/auth/users.db";
+
+    /// <summary>Where live sessions are recorded.</summary>
+    /// <panel>Where live sign-ins are recorded, so a sign-out outlives the process that issued the
+    /// session and a restart does not sign everybody out.</panel>
+    [LeafField("sessionStorePath", "Session store", Group = "storage", Type = LeafType.Path,
+        Risk = LeafRisk.Destructive)]
+    public string SessionStorePath { get; set; } = "/var/lib/kgsm-auth-anchor/sessions.db";
+
+    /// <summary>The private key sessions are signed with.</summary>
+    /// <panel>The private key every session is signed with. It is generated on first start and never
+    /// leaves this machine. Replacing it invalidates every session that exists.</panel>
+    [LeafField("signingKeyPath", "Session signing key", Group = "storage", Type = LeafType.Path,
+        Risk = LeafRisk.Destructive)]
+    public string SigningKeyPath { get; set; } = "/var/lib/kgsm-auth-anchor/session-signing.pem";
+
+    /// <summary>Where the public half is written for members on this machine.</summary>
+    /// <panel>Where the public half of the signing key is published, for other members on this machine
+    /// to verify sessions against. Blank publishes no file; the key is still served over HTTP.</panel>
+    [LeafField("publishedKeyPath", "Published public key", Group = "storage", Type = LeafType.Path,
+        Risk = LeafRisk.Wiring)]
+    public string PublishedKeyPath { get; set; } = "/var/lib/kgsm/cluster/auth-public-key.json";
+
+    /// <summary>Access-token lifetime in minutes. Raised to <see cref="Floors.AccessLifetimeMinutes"/> if lower.</summary>
+    /// <panel>How long a session's bearer lasts before it is refreshed. Short bounds how long a stolen
+    /// one is worth anything; it does not affect how long somebody stays signed in.</panel>
+    [LeafField("accessLifetimeMin", "Access token lifetime", Group = "sessions",
+        Min = Floors.AccessLifetimeMinutes, Unit = "min")]
+    public int? AccessLifetimeMinutes { get; set; }
+
+    /// <summary>The absolute session cap in days. Raised to <see cref="Floors.RefreshLifetimeDays"/> if lower.</summary>
+    /// <panel>How long somebody stays signed in before a fresh sign-in is required.</panel>
+    [LeafField("refreshLifetimeDays", "Session lifetime", Group = "sessions",
+        Min = Floors.RefreshLifetimeDays, Unit = "days")]
+    public int? RefreshLifetimeDays { get; set; }
+
+    /// <summary>Browser origins allowed to call this anchor, comma-separated.</summary>
+    /// <panel>The browser origins allowed to sign in against this anchor, comma-separated. The Control
+    /// Panel is served from a different origin, so without an entry for it the browser refuses the
+    /// response before this daemon's answer is read.</panel>
+    [LeafField("allowedOrigins", "Allowed browser origins", Group = "network", Type = LeafType.Csv,
+        Risk = LeafRisk.Wiring)]
+    public string AllowedOrigins { get; set; } = "";
+
+    /// <summary>Sweep cadence for expired session rows. Raised to <see cref="Floors.SessionCleanupMinutes"/> if lower.</summary>
+    /// <panel>How often session rows that are already past their cap are deleted. Housekeeping — it
+    /// ends no session that is still alive.</panel>
+    [LeafField("sessionCleanupMin", "Session sweep interval", Group = "sessions",
+        Min = Floors.SessionCleanupMinutes, Unit = "min")]
+    public int? SessionCleanupMinutes { get; set; }
+}

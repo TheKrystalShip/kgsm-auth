@@ -1,0 +1,432 @@
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
+
+using TheKrystalShip.KGSM.Auth;
+using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Users;
+
+namespace TheKrystalShip.KGSM.Auth.Anchor;
+
+/// <summary>
+/// The anchor's HTTP surface: signing in, keeping a session, and reading the accounts.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Every handler is a plain <see cref="RequestDelegate"/> that reads its own request and writes its
+/// own response. The convenient routing overloads bind an arbitrary delegate's parameters by
+/// reflecting over them, which no Native-AOT service can do — and the failure appears at publish
+/// time rather than at build time, so it is avoided by construction rather than caught.
+/// </para>
+/// <para>
+/// Bodies are deserialized through <see cref="AnchorJsonContext"/> for the same reason: there is no
+/// reflection fallback, so every shape on the wire is one this assembly generated metadata for.
+/// </para>
+/// </remarks>
+internal static class Endpoints
+{
+    /// <summary>The largest body any of these endpoints accepts.</summary>
+    /// <remarks>
+    /// A sign-in is a username and a password. A cap this size costs nothing legitimate and stops an
+    /// unauthenticated caller from making this daemon buffer whatever it feels like sending.
+    /// </remarks>
+    private const int MaxBodyBytes = 8 * 1024;
+
+    // ── Sign in ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Verify a KGSM password and mint a cluster-scoped session for it.
+    /// </summary>
+    /// <remarks>
+    /// This is the one door. A person signs in here, once, and the session works on every member —
+    /// so no member ever holds a credential, and none of them proxies one.
+    /// </remarks>
+    internal static async Task SignIn(HttpContext ctx)
+    {
+        SignInRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.SignInRequest);
+        if (body is null)
+        {
+            await Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request", "The request body is not readable.");
+            return;
+        }
+
+        var signIn = ctx.RequestServices.GetRequiredService<LocalSignInService>();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        LocalSignInResult result;
+        try
+        {
+            result = await signIn.SignInAsync(body.Username, body.Password, now, ctx.RequestAborted);
+        }
+        catch (KgsmAuthProviderException)
+        {
+            await Unavailable(ctx);
+            return;
+        }
+
+        switch (result.Outcome)
+        {
+            case LocalSignInOutcome.LockedOut:
+                // The wait is stated, because a person who has mistyped their own password twice
+                // needs to know it is a wait rather than a permanent refusal.
+                if (result.RetryAfter is { } until)
+                {
+                    int seconds = (int)Math.Max(1, Math.Ceiling((until - now).TotalSeconds));
+                    ctx.Response.Headers.RetryAfter = seconds.ToString();
+                }
+                await Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
+                    "Too many failed attempts. Try again shortly.");
+                return;
+
+            case LocalSignInOutcome.Disabled:
+                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
+                    "This account has been switched off.");
+                return;
+
+            case LocalSignInOutcome.Success when result.Principal is { } principal && result.User is { } user:
+                await MintSession(ctx, principal.Identity, principal.Tier, user, now);
+                return;
+
+            default:
+                await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_credentials",
+                    "That username and password do not match an account.");
+                return;
+        }
+    }
+
+    private static async Task MintSession(
+        HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now)
+    {
+        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
+        var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
+        AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
+
+        string sessionId = NewSessionId();
+        MintedToken access = tokens.MintAccess(identity, tier, sessionId);
+        MintedToken refresh = tokens.MintRefresh(identity, tier, sessionId);
+
+        await registry.CreateAsync(
+            new SessionRegistration(
+                SessionId: sessionId,
+                // Keyed by the provider-qualified handle, never the username: a rename must not
+                // detach somebody from their own sessions.
+                UserId: identity.Handle,
+                HostId: options.ClusterId,
+                Created: now,
+                Expires: refresh.ExpiresAt,
+                UserAgent: UserAgentOf(ctx),
+                CurrentJti: refresh.Jti),
+            ctx.RequestAborted);
+
+        await WriteJson(ctx, StatusCodes.Status200OK, new SignInResult(
+            Token: access.Token,
+            Refresh: refresh.Token,
+            Tier: KgsmTiers.ToWire(tier),
+            UserId: user.UserId,
+            Status: UserStatuses.ToWire(user.Status),
+            Cluster: options.ClusterId,
+            AccessTokenExpiresAt: access.ExpiresAt,
+            RefreshExpiresAt: refresh.ExpiresAt),
+            AnchorJsonContext.Default.SignInResult);
+    }
+
+    // ── Keep a session ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Rotate a session: a new access bearer and a new refresh token, with standing re-read.
+    /// </summary>
+    /// <remarks>
+    /// Nothing on this path leaves the machine. That is what makes a session survive an outage of
+    /// anything else — the tier comes from the account store on this host, and the signature from the
+    /// key this daemon holds.
+    /// </remarks>
+    internal static async Task Refresh(HttpContext ctx)
+    {
+        RefreshRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.RefreshRequest);
+        if (body?.Refresh is not { Length: > 0 } presented)
+        {
+            await Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request", "No refresh token was sent.");
+            return;
+        }
+
+        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
+        RefreshClaims? claims = await tokens.ReadRefreshAsync(presented);
+        if (claims is null)
+        {
+            await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_refresh_token",
+                "That session cannot be continued. Sign in again.");
+            return;
+        }
+
+        var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
+        var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
+        var authority = ctx.RequestServices.GetRequiredService<UserStoreAuthority>();
+
+        // Standing is re-read rather than carried over from the presented token, so a demotion or a
+        // disable takes effect at the next rotation instead of at the end of the session.
+        AuthorityAnswer answer;
+        try
+        {
+            answer = await authority.ResolveAsync(claims.Identity, ctx.RequestAborted);
+        }
+        catch (KgsmAuthProviderException)
+        {
+            await Unavailable(ctx);
+            return;
+        }
+
+        if (answer.Outcome != AuthorityOutcome.Ok)
+        {
+            // A withdrawn account keeps no session. Killing the row here is what stops the remaining
+            // access bearer from being refreshed into a new one for its whole lifetime.
+            await registry.RevokeAsync(claims.SessionId, ctx.RequestAborted);
+            validator.Evict(claims.SessionId);
+
+            await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
+                "This account has been switched off.");
+            return;
+        }
+
+        MintedToken refresh = tokens.MintRefresh(claims.Identity, answer.Tier, claims.SessionId);
+
+        // The presented jti has to be the one the session currently holds. Anything else is a replay
+        // of a token that has already been rotated away — a stale client or a stolen token, and this
+        // daemon cannot tell which, so it refuses and lets the real holder sign in again.
+        bool rotated = await registry.RotateAsync(
+            claims.SessionId, claims.Jti, refresh.Jti, refresh.ExpiresAt, ctx.RequestAborted);
+
+        if (!rotated)
+        {
+            validator.Evict(claims.SessionId);
+            await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_refresh_token",
+                "That session cannot be continued. Sign in again.");
+            return;
+        }
+
+        MintedToken access = tokens.MintAccess(claims.Identity, answer.Tier, claims.SessionId);
+
+        await WriteJson(ctx, StatusCodes.Status200OK, new RefreshResult(
+            Token: access.Token,
+            Refresh: refresh.Token,
+            Tier: KgsmTiers.ToWire(answer.Tier),
+            ExpiresAt: access.ExpiresAt),
+            AnchorJsonContext.Default.RefreshResult);
+    }
+
+    /// <summary>
+    /// End a session.
+    /// </summary>
+    /// <remarks>
+    /// Answers 204 whether or not there was something to end. A signed-out caller wants to be signed
+    /// out, and reporting "there was no such session" would tell a stranger holding a stolen token
+    /// whether it was still live.
+    /// </remarks>
+    internal static async Task SignOut(HttpContext ctx)
+    {
+        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
+        var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
+        var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
+
+        string? sessionId = null;
+
+        RefreshRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.RefreshRequest);
+        if (body?.Refresh is { Length: > 0 } presented)
+            sessionId = (await tokens.ReadRefreshAsync(presented))?.SessionId;
+
+        // A caller that sent no refresh token still ends the session its bearer belongs to, so
+        // signing out works from a client that holds only the access token.
+        if (sessionId is null)
+        {
+            var auth = ctx.RequestServices.GetRequiredService<AnchorAuth>();
+            try
+            {
+                sessionId = (await auth.ResolveAsync(ctx.Request, ctx.RequestAborted)).SessionId;
+            }
+            catch (KgsmAuthProviderException)
+            {
+                await Unavailable(ctx);
+                return;
+            }
+        }
+
+        if (sessionId is not null)
+        {
+            await registry.RevokeAsync(sessionId, ctx.RequestAborted);
+            validator.Evict(sessionId);
+        }
+
+        ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+    }
+
+    // ── Read ──────────────────────────────────────────────────────────────────
+
+    /// <summary>Who the caller is, resolved against the store rather than read off their token.</summary>
+    internal static async Task Session(HttpContext ctx)
+    {
+        Caller? maybe = await RequireCaller(ctx, KgsmTier.None);
+        if (maybe is not { } caller || caller.User is not { } user)
+            return;
+
+        AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
+
+        await WriteJson(ctx, StatusCodes.Status200OK, new WhoAmI(
+            UserId: user.UserId,
+            Username: user.Username,
+            DisplayName: user.DisplayName,
+            Tier: KgsmTiers.ToWire(caller.Tier),
+            Status: UserStatuses.ToWire(user.Status),
+            Cluster: options.ClusterId),
+            AnchorJsonContext.Default.WhoAmI);
+    }
+
+    /// <summary>Every account the anchor holds. Never carries a secret in any form.</summary>
+    internal static async Task Accounts(HttpContext ctx)
+    {
+        if (await RequireCaller(ctx, KgsmTier.Admin) is null)
+            return;
+
+        var store = ctx.RequestServices.GetRequiredService<IUserStore>();
+
+        IReadOnlyList<KgsmUser> users = await store.ListAsync(ctx.RequestAborted);
+        var records = new List<AccountRecord>(users.Count);
+
+        foreach (KgsmUser user in users)
+        {
+            IReadOnlyList<UserCredential> credentials =
+                await store.ListCredentialsAsync(user.UserId, ctx.RequestAborted);
+
+            records.Add(new AccountRecord(
+                Id: user.UserId,
+                Username: user.Username,
+                DisplayName: user.DisplayName,
+                Tier: KgsmTiers.ToWire(user.Tier),
+                TierSource: TierSources.ToWire(user.TierSource),
+                Status: UserStatuses.ToWire(user.Status),
+                HasPassword: credentials.Any(c => c.Kind == CredentialKind.Password),
+                Identities: [.. credentials.Where(c => c.Kind == CredentialKind.Identity).Select(c => c.Handle)],
+                Created: user.Created,
+                Updated: user.Updated));
+        }
+
+        await WriteJson(ctx, StatusCodes.Status200OK, new AccountsPage(records),
+            AnchorJsonContext.Default.AccountsPage);
+    }
+
+    // ── Shared ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The caller, or null with the refusal already written.
+    /// </summary>
+    /// <remarks>
+    /// The four refusals are distinguishable because a client acts differently on each: an
+    /// unauthenticated caller signs in, an ended session signs in again, a disabled account is told
+    /// so, and an insufficient tier is a person who is signed in and may not do this.
+    /// </remarks>
+    private static async Task<Caller?> RequireCaller(HttpContext ctx, KgsmTier required)
+    {
+        var auth = ctx.RequestServices.GetRequiredService<AnchorAuth>();
+
+        Caller caller;
+        try
+        {
+            caller = await auth.ResolveAsync(ctx.Request, ctx.RequestAborted);
+        }
+        catch (KgsmAuthProviderException)
+        {
+            await Unavailable(ctx);
+            return null;
+        }
+
+        switch (caller.Refusal)
+        {
+            case CallerRefusal.Unauthenticated:
+                await Refuse(ctx, StatusCodes.Status401Unauthorized, "unauthenticated",
+                    "Sign in to continue.");
+                return null;
+
+            case CallerRefusal.SessionEnded:
+                await Refuse(ctx, StatusCodes.Status401Unauthorized, "session_ended",
+                    "That session has ended. Sign in again.");
+                return null;
+
+            case CallerRefusal.AccountDisabled:
+                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
+                    "This account has been switched off.");
+                return null;
+        }
+
+        if (!caller.Holds(required))
+        {
+            await Refuse(ctx, StatusCodes.Status403Forbidden, "forbidden",
+                "This account does not hold the tier required for that.");
+            return null;
+        }
+
+        return caller;
+    }
+
+    /// <summary>
+    /// The account store could not be read.
+    /// </summary>
+    /// <remarks>
+    /// 503, never 403. "We could not find out what this person may do" is a different fact from "they
+    /// may do nothing", and reporting the first as the second locks out an admin mid-incident.
+    /// </remarks>
+    private static Task Unavailable(HttpContext ctx) =>
+        Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
+            "The account store could not be read.");
+
+    private static Task Refuse(HttpContext ctx, int status, string code, string message) =>
+        WriteJson(ctx, status, new ErrorEnvelope(new ErrorBody(code, message)),
+            AnchorJsonContext.Default.ErrorEnvelope);
+
+    private static Task WriteJson<T>(HttpContext ctx, int status, T value, JsonTypeInfo<T> type)
+    {
+        ctx.Response.StatusCode = status;
+        ctx.Response.ContentType = "application/json; charset=utf-8";
+        return JsonSerializer.SerializeAsync(ctx.Response.Body, value, type, ctx.RequestAborted);
+    }
+
+    /// <summary>
+    /// The request body, or null when it is absent, oversized or not readable as
+    /// <typeparamref name="T"/>.
+    /// </summary>
+    private static async Task<T?> ReadBodyAsync<T>(HttpContext ctx, JsonTypeInfo<T> type) where T : class
+    {
+        if (ctx.Request.ContentLength > MaxBodyBytes)
+            return null;
+
+        try
+        {
+            ctx.Request.EnableBuffering(bufferThreshold: MaxBodyBytes, bufferLimit: MaxBodyBytes);
+            return await JsonSerializer.DeserializeAsync(ctx.Request.Body, type, ctx.RequestAborted);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The device, for a person reading their own session list. Truncated, because it is arbitrary
+    /// text from a caller that ends up on a page somebody reads.
+    /// </summary>
+    private static string? UserAgentOf(HttpContext ctx)
+    {
+        string agent = ctx.Request.Headers.UserAgent.ToString();
+        if (string.IsNullOrWhiteSpace(agent))
+            return null;
+        return agent.Length > 256 ? agent[..256] : agent;
+    }
+
+    /// <summary>
+    /// A fresh session id: 128 bits from the cryptographic RNG, matching the <c>usr_</c>/<c>crd_</c>
+    /// convention the account store already uses.
+    /// </summary>
+    private static string NewSessionId() =>
+        "sid_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+}

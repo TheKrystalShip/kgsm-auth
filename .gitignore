@@ -3,3 +3,8 @@ obj/
 artifacts/
 *.user
 TestResults/
+
+# makepkg's by-products. The package itself is a release asset, never a committed file.
+packaging/*.pkg.tar.zst*
+packaging/pkg/
+packaging/src/

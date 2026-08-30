@@ -21,8 +21,13 @@ its own with a password, and an external identity is a credential attached to it
 have two different sources — a provider verifies who someone is, and the account store alone says
 what they may do.
 
+**The repo also holds one deployable.** `src/Auth.Anchor` builds `kgsm-auth-anchor`, the cluster
+member that holds the accounts and signs people in to the whole cluster at once. It is built from
+these libraries and publishes nothing to NuGet, so a change to a library is a compile break here
+before it is anything else.
+
 This file is the authority for the auth design; the account-store design is also covered by
-**`../auth-internal-users-plan.md`**.
+**`../auth-internal-users-plan.md`**, and the anchor's own design by **`../cluster-auth-plan.md`**.
 
 ## Locked decisions (do not relitigate)
 
@@ -172,12 +177,56 @@ This file is the authority for the auth design; the account-store design is also
   door that sets one — registration, an admin reset, a holder changing their own — reads the same
   constant, because a floor checked in three callers is three places for it to drift low.
 
+## `Auth.Anchor` — locked decisions
+
+- **A session's audience is the CLUSTER, not a machine.** That single value is what makes one
+  sign-in valid on every member, and changing `Anchor__ClusterId` on a running cluster invalidates
+  every token at once. It is `SessionTokenOptions.HostId` because that field has always been the
+  audience; what moved is what the audience names.
+- **Signing is asymmetric and the verification key is published.** A member must be able to check a
+  session it cannot mint — one that could mint what it verifies could mint itself an admin session.
+  `ValidAlgorithms` is pinned for the same reason: a public key offered as an HMAC secret would make
+  the key everybody holds the key everybody can sign with.
+- **The private key is generated exactly once, on a machine that has none.** Every member in the
+  cluster verifies against its public half, so a key that changed would invalidate every session and
+  leave every member checking against something nothing signs with. A file that exists and cannot be
+  read stops the daemon; it is never a reason to generate. It is created with mode `0600` rather than
+  chmod'd after — the gap between write and chmod is exactly what the mode exists to close.
+- **Authority is read from the store on every request, never off the token.** The tier claim is what
+  was true at mint time. The same read happens on refresh, and a withdrawn account has its session
+  revoked there rather than left to run out its bearer's lifetime.
+- **A store that cannot be read is `503`, never `403`.** "We could not find out what this person may
+  do" is a different fact from "they may do nothing", and reporting the first as the second locks out
+  an admin mid-incident. It is the same rule `Auth.Users` states for the store itself.
+- **Every endpoint is a plain `RequestDelegate` and every wire shape has source-generated metadata.**
+  The routing overloads that bind an arbitrary delegate reflect over its parameters, which no
+  Native-AOT service can do, and the failure appears at publish time rather than at build time. The
+  same goes for a shape missing from `AnchorJsonContext`: it throws at runtime, not at build.
+- **The CORS allowance is per configured origin and never a wildcard.** A person signs in here from
+  a browser, so this is a surface that mints credentials; a wildcard invites any page to drive
+  somebody's sign-in from their own browser.
+- **The package is preset-disabled.** A cluster has one anchor and which machine holds it is an
+  administrator's decision. A second machine with the package installed and the unit stopped is a
+  promotion candidate, not a second authority.
+- **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
+  no default store, and sessions are not accounts: a member replicating the cluster's accounts
+  replicates none of the sign-ins.
+
 ## Conventions
 
-- Namespace `TheKrystalShip.KGSM.Auth`; package id matches.
+- Namespace `TheKrystalShip.KGSM.Auth`; package id matches. The daemon is
+  `TheKrystalShip.KGSM.Auth.Anchor`, and its binary and unit are `kgsm-auth-anchor`.
 - Doc comments say what the code does now and why that rule exists — never what it replaced.
 
 ## Version tracking
+
+Each package versions on its own clock, and the daemon on a fifth. `deploy/version.sh` reads the
+daemon's, because that is the one the pacman package ships.
+
+**Tags carry the prefix of the thing they version**, since one repo's commits move five numbers:
+`auth-v*`, `sessions-v*`, `users-v*`, `discord-v*` for the packages, and a bare `v*` for the daemon.
+Only the bare `v*` fires the release workflow, which asserts the tag against `deploy/version.sh` — so
+a package tag can never publish a pacman package by accident.
 
 - **Version source:** `<Version>` in `src/Auth/Auth.csproj`.
 - Bump on any user-facing change; patch for fixes, minor for additions, major for a breaking change.

@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+#
+# setup.sh — one-shot host provisioning for this project. Run it ONCE per host.
+#
+#   ./deploy/setup.sh
+#
+# This is the ONLY script in the project that needs privilege. It asks for your sudo password,
+# provisions everything that lives outside your ownership, and hands the host over to
+# deploy/deploy.sh — which from then on deploys with NO password and NO prompt, forever.
+#
+# Idempotent: safe to re-run any time. A steady-state re-run changes nothing (every install is
+# cmp-guarded). Re-run it after changing the systemd unit's User=/Group=, adding a unit, or if
+# deploy.sh tells you to.
+#
+# What it provisions:
+#   1. ${PREFIX}                    — the install tree, chowned to you, so deploy.sh writes it
+#                                     unprivileged.
+#   2. ${ENV_DIR}/…env              — operator config, seeded from the repo template if absent.
+#                                     NEVER overwritten: your secrets survive every redeploy.
+#   3. ${UNIT_DIR}                  — a directory YOU own that holds the real systemd unit files.
+#   4. /etc/systemd/system/<unit>   — a symlink into ${UNIT_DIR}. systemd resolves and enables
+#                                     units through symlinks, so this is what lets deploy.sh
+#                                     update a unit by writing a file it already owns.
+#   5. a scoped polkit rule         — lets you drive systemctl for THIS project's units with no
+#                                     password and no interactive auth agent.
+#   6. the units enabled at boot, and started when there is something to start. On a host
+#                                     that has never deployed this project there is no binary at the unit's
+#                                     ExecStart yet, so the unit is enabled and left stopped for
+#                                     deploy/deploy.sh to install and start.
+#
+# Then it VERIFIES the grant by making the same unprivileged systemctl calls deploy.sh will,
+# and fails loudly if they would have prompted.
+#
+# Security note, stated plainly: ${UNIT_DIR} is writable by ${DEPLOY_USER}, and systemd runs
+# those units as root. Anyone who can write there can make PID 1 run anything. That is a
+# deliberate trade for a single-admin host where the deploying user already holds full sudo —
+# it moves no boundary that was not already open. Do NOT adopt this layout on a host where the
+# deploying user is meant to be less privileged than root.
+#
+# Non-interactive (CI / an agent): no password ever lives in this script — point sudo at an
+# askpass helper instead.
+#   printf '#!/bin/sh\necho YOUR_PASS\n' > /tmp/ap && chmod 700 /tmp/ap
+#   SUDO='sudo -A' SUDO_ASKPASS=/tmp/ap ./deploy/setup.sh
+#
+set -euo pipefail
+
+source "$(dirname "${BASH_SOURCE[0]}")/deploy-common.sh"
+
+trap 'err "setup failed (line ${LINENO}). The host may be partly provisioned — re-run this script."; exit 1' ERR
+
+refuse_root
+
+# ── Can this unit start yet? ──────────────────────────────────────────────────
+# The executable a unit's first ExecStart names, or nothing for a unit that has none (a .socket).
+# Read from the RENDERED unit, so it is the same text systemd is given, and with systemd's exec
+# prefixes (-@+!:) stripped. The first thing to run is the first thing that can be missing.
+unit_execstart_binary() {   # $1 = unit filename under deploy/
+    local rendered line
+    rendered="$(render_unit "$1" 2>/dev/null)" || return 0
+    while IFS= read -r line; do
+        [[ "$line" == ExecStart=* ]] || continue
+        line="${line#ExecStart=}"
+        while [[ "$line" == [-@+!:]* ]]; do line="${line:1}"; done
+        printf '%s\n' "${line%%[[:space:]]*}"
+        return 0
+    done <<< "$rendered"
+}
+
+# True when starting this unit is something the host can actually do. A unit naming no absolute
+# path (a .socket, or a command systemd resolves itself) can always start; a unit whose binary is
+# absent cannot — and that is the fresh-host case, where the prefix stays empty until deploy.sh
+# has run once.
+unit_can_start() {          # $1 = unit filename under deploy/
+    local bin
+    bin="$(unit_execstart_binary "$1")"
+    if [[ -z "$bin" || "$bin" != /* ]]; then
+        return 0
+    fi
+    [[ -x "$bin" ]]
+}
+
+log "provisioning ${PROJECT} for headless deploys by '${DEPLOY_USER}'"
+
+# Prove sudo works up front, so a wrong password fails here and not halfway through.
+$SUDO true || { err "sudo is not usable — setup needs it once."; exit 1; }
+
+# ── 1. The install prefix (owned by the deploying user) ───────────────────────
+if [[ ! -d "$PREFIX" ]]; then
+    log "creating ${PREFIX} (owned by ${DEPLOY_USER})"
+    $SUDO install -d -m 0755 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" "$PREFIX"
+elif [[ "$(stat -c '%U' "$PREFIX")" != "$DEPLOY_USER" ]]; then
+    log "chowning ${PREFIX} → ${DEPLOY_USER}:${DEPLOY_GROUP} (so deploys need no privilege)"
+    $SUDO chown -R "${DEPLOY_USER}:${DEPLOY_GROUP}" "$PREFIX"
+fi
+
+# ── 2. Operator config — seeded once, never clobbered ─────────────────────────
+if [[ -n "${ENV_EXAMPLE:-}" && ! -f "$ENV_FILE" ]]; then
+    log "creating ${ENV_FILE} from template — EDIT IT before relying on this service"
+    $SUDO install -d -m 0755 "$ENV_DIR"
+    $SUDO install -m 0640 -g "$DEPLOY_GROUP" "$ENV_EXAMPLE" "$ENV_FILE"
+    ENV_SEEDED=1
+else
+    [[ -d "$ENV_DIR" ]] || $SUDO install -d -m 0755 "$ENV_DIR"
+    ENV_SEEDED=0
+fi
+
+# ── 2b. The shared leaf-descriptor directory ──────────────────────────────────
+# Where this leaf declares its configurable surface for the Control Panel. Shared by every leaf
+# and scanned by kgsm-api, so it is created once by whichever project's setup.sh runs first and
+# owned by the deploying user — deploy.sh then writes the descriptor with no privilege. Skipped
+# entirely for a project that ships no descriptor.
+if [[ -n "${LEAF_DESCRIPTOR:-}" && -f "$LEAF_DESCRIPTOR" && ! -d "$LEAF_DESCRIPTOR_DIR" ]]; then
+    log "creating ${LEAF_DESCRIPTOR_DIR} (owned by ${DEPLOY_USER}) — the leaf config descriptors"
+    $SUDO install -d -m 0755 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" "$LEAF_DESCRIPTOR_DIR"
+fi
+
+# ── 3. The user-owned unit directory ──────────────────────────────────────────
+if [[ ! -d "$UNIT_DIR" ]]; then
+    log "creating ${UNIT_DIR} (owned by ${DEPLOY_USER} — this is what makes deploys sudo-free)"
+    $SUDO install -d -m 0755 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" "$UNIT_DIR"
+elif [[ ! -w "$UNIT_DIR" ]]; then
+    $SUDO chown -R "${DEPLOY_USER}:${DEPLOY_GROUP}" "$UNIT_DIR"
+fi
+
+# Preserve whatever is live before we take the unit over. A hand-edit on this host that never
+# made it back into the repo would otherwise vanish silently on the first deploy.
+for u in "${UNITS[@]}"; do
+    live="${SYSTEMD_DIR}/${u}"
+    if [[ -f "$live" && ! -L "$live" ]]; then
+        rendered="$(mktemp)"; render_unit "$u" > "$rendered"
+        if ! cmp -s "$rendered" "$live"; then
+            warn "the live ${live} differs from what this repo renders."
+            warn "keeping a copy at ${UNIT_DIR}/${u}.pre-setup.bak — diff it if that drift mattered."
+            $SUDO install -m 0644 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" \
+                 "$live" "${UNIT_DIR}/${u}.pre-setup.bak"
+        fi
+        rm -f "$rendered"
+    fi
+done
+
+# Write the units into the directory we now own (unprivileged, same call deploy.sh makes).
+install_units_unprivileged
+
+# ── 4. Point systemd at them ──────────────────────────────────────────────────
+LINKS_CHANGED=0
+for u in "${UNITS[@]}"; do
+    live="${SYSTEMD_DIR}/${u}"
+    if [[ -L "$live" && "$(readlink -f "$live")" == "${UNIT_DIR}/${u}" ]]; then
+        continue
+    fi
+    log "linking ${live} → ${UNIT_DIR}/${u}"
+    $SUDO rm -f "$live"
+    $SUDO ln -sfn "${UNIT_DIR}/${u}" "$live"
+    LINKS_CHANGED=1
+done
+
+if [[ "$LINKS_CHANGED" -eq 1 || "$UNIT_CHANGED" -eq 1 ]]; then
+    log "reloading systemd"
+    $SUDO systemctl daemon-reload
+fi
+
+# ── 5. The polkit grant ───────────────────────────────────────────────────────
+# Scoped to exactly this project's units and exactly the verbs deploy.sh uses. Returning
+# polkit.Result.YES means no auth agent is consulted, which is what makes a headless,
+# session-less deploy possible.
+#
+# reload-daemon is granted unscoped because the action carries no unit to match on — systemd's
+# daemon-reload is global by nature. It re-reads unit files; it starts and stops nothing.
+POLKIT_RENDERED="$(mktemp)"
+render_polkit_rule > "$POLKIT_RENDERED"
+
+if $SUDO cmp -s "$POLKIT_RENDERED" "$POLKIT_DST" 2>/dev/null; then
+    : # already current
+else
+    log "installing polkit grant → ${POLKIT_DST}"
+    $SUDO install -D -m 0644 "$POLKIT_RENDERED" "$POLKIT_DST"
+fi
+rm -f "$POLKIT_RENDERED"
+
+# ── 6. Enable, and start what can start ───────────────────────────────────────
+# Enablement is unconditional — wiring the unit into boot is the whole point of this script.
+# STARTING it is only possible once something exists at the unit's ExecStart, and on a host that
+# has never deployed this project nothing does. Starting there would fail for a reason that has
+# nothing to do with provisioning, so the unit is enabled and left stopped; deploy.sh installs the
+# binary and starts it. The fresh-host path is setup.sh → deploy.sh, with nothing in between.
+NOT_STARTED=()
+for u in "${ENABLE_UNITS[@]}"; do
+    if unit_can_start "$u"; then
+        log "enabling + starting ${u}"
+        $SUDO systemctl enable --now "$u"
+    else
+        log "enabling ${u} — NOT starting it: nothing is installed at $(unit_execstart_binary "$u") yet"
+        $SUDO systemctl enable "$u"
+        NOT_STARTED+=("$u")
+    fi
+done
+
+# ── 7. Verify the grant actually works, unprivileged ──────────────────────────
+# The point of this script is that deploy.sh never needs a password. Prove it here rather than
+# discovering it on the next deploy. Both calls are real, polkit-gated ones deploy.sh makes:
+# daemon-reload (action reload-daemon) and a manage-units call on this project's own service.
+#
+# Which manage-units call depends on the service's state, because the probe must prove the grant
+# without having an effect. A running service takes `start` — systemd queues a no-op job. A stopped
+# one takes `try-restart`, which systemd documents as doing nothing when the unit is not running,
+# and which is refused exactly like `start` when the grant is missing: the polkit check happens
+# before the no-op short-circuit, so it measures the grant and not the unit. `try-restart` is one
+# of the verbs the rule grants, so this probes the rule as installed.
+log "verifying the headless grant (no password expected) ..."
+GRANT_OK=0
+for _ in 1 2 3 4 5; do
+    if systemctl is-active --quiet "$SERVICE"; then
+        MANAGE_PROBE=(start "$SERVICE")          # a no-op job on a unit already running
+    else
+        MANAGE_PROBE=(try-restart "$SERVICE")    # a no-op on a unit that is not running
+    fi
+    # polkitd picks up rules.d via inotify; give it a moment on the first pass.
+    if systemctl --no-ask-password daemon-reload 2>/dev/null &&
+       systemctl --no-ask-password "${MANAGE_PROBE[@]}" 2>/dev/null; then
+        GRANT_OK=1
+        break
+    fi
+    sleep 1
+done
+
+if [[ "$GRANT_OK" -ne 1 ]]; then
+    err "the unprivileged systemctl calls were REFUSED — deploy.sh would prompt for a password."
+    err "check that polkit is running and that ${POLKIT_DST} names '${DEPLOY_USER}' and ${SERVICE}:"
+    err "    systemctl status polkit"
+    err "    sudo cat ${POLKIT_DST}"
+    exit 1
+fi
+
+# ── 8. Project-specific provisioning ──────────────────────────────────────────
+# Whatever else this project needs set up once (extra state dirs, a CLI symlink on PATH, a
+# feature's drop-ins). Defined in deploy-common.sh's PROJECT BLOCK; a no-op for most projects.
+setup_project_extras
+
+trap - ERR
+
+# ── 9. Summary ────────────────────────────────────────────────────────────────
+log "${PROJECT} is provisioned ✓  — deploys are now headless"
+printf '   prefix : %s (owned by %s)\n' "$PREFIX" "$DEPLOY_USER"
+printf '   units  : %s → %s/\n' "${UNITS[*]}" "$UNIT_DIR"
+printf '   grant  : %s may start/stop/restart/reload %s with no password\n' "$DEPLOY_USER" "${UNITS[*]}"
+[[ -n "${HEALTH_URL:-}" ]] && printf '   health : %s\n' "$HEALTH_URL"
+if [[ -f "$ENV_FILE" ]]; then
+    printf '   config : %s%s\n' "$ENV_FILE" \
+        "$([[ "$ENV_SEEDED" -eq 1 ]] && printf '  ← FRESH FROM TEMPLATE, EDIT IT' || printf '  (untouched)')"
+fi
+if [[ "${#NOT_STARTED[@]}" -gt 0 ]]; then
+    printf '   status : %s is ENABLED at boot but NOT RUNNING — nothing is installed yet.\n' "${NOT_STARTED[*]}"
+    printf '            deploy/deploy.sh builds it, installs it and starts it. Run it next.\n'
+fi
+printf '\n   deploy from now on with:  %s/deploy/deploy.sh   (no sudo, no prompts)\n' "$REPO_DIR"

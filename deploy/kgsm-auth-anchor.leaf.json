@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "id": "auth-anchor",
+  "displayName": "Auth anchor",
+  "unit": "kgsm-auth-anchor.service",
+  "role": "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.",
+  "onDemand": false,
+  "applyMode": "restart",
+  "floorSources": [
+    {
+      "kind": "appsettings",
+      "path": "/opt/kgsm-auth-anchor/kgsm-auth-anchor.settings.json"
+    },
+    {
+      "kind": "systemd-unit",
+      "path": "kgsm-auth-anchor.service"
+    },
+    {
+      "kind": "env-file",
+      "path": "/etc/kgsm-auth-anchor/kgsm-auth-anchor.env"
+    }
+  ],
+  "groups": [
+    {
+      "id": "network",
+      "label": "Network",
+      "order": 1
+    },
+    {
+      "id": "storage",
+      "label": "Storage",
+      "order": 2
+    },
+    {
+      "id": "sessions",
+      "label": "Sessions",
+      "order": 3
+    },
+    {
+      "id": "general",
+      "label": "General",
+      "order": 4
+    }
+  ],
+  "fields": [
+    {
+      "key": "listenAddress",
+      "env": "Anchor__ListenAddress",
+      "label": "Listen address",
+      "description": "The address a person's browser reaches this anchor at. Sign-in happens here directly, once, for the whole cluster.",
+      "group": "network",
+      "type": "string",
+      "default": "http://0.0.0.0:8098",
+      "risk": "wiring"
+    },
+    {
+      "key": "clusterId",
+      "env": "Anchor__ClusterId",
+      "label": "Cluster id",
+      "description": "The cluster this anchor holds the accounts for. A session it mints is valid on every member of this cluster and on nothing else. Changing it signs everybody out.",
+      "group": "network",
+      "type": "string",
+      "default": "kgsm-cluster",
+      "risk": "destructive"
+    },
+    {
+      "key": "issuer",
+      "env": "Anchor__Issuer",
+      "label": "Token issuer",
+      "description": "The issuer name stamped on every session. It is checked when a session is presented, so changing it signs everybody out.",
+      "group": "network",
+      "type": "string",
+      "default": "kgsm",
+      "risk": "destructive"
+    },
+    {
+      "key": "allowedOrigins",
+      "env": "Anchor__AllowedOrigins",
+      "label": "Allowed browser origins",
+      "description": "The browser origins allowed to sign in against this anchor, comma-separated. The Control Panel is served from a different origin, so without an entry for it the browser refuses the response before this daemon's answer is read.",
+      "group": "network",
+      "type": "csv",
+      "default": "",
+      "risk": "wiring"
+    },
+    {
+      "key": "userStorePath",
+      "env": "Anchor__UserStorePath",
+      "label": "Account store",
+      "description": "The file the accounts live in. It is the same file every other KGSM surface on this machine reads.",
+      "group": "storage",
+      "type": "path",
+      "default": "/var/lib/kgsm/auth/users.db",
+      "risk": "destructive"
+    },
+    {
+      "key": "sessionStorePath",
+      "env": "Anchor__SessionStorePath",
+      "label": "Session store",
+      "description": "Where live sign-ins are recorded, so a sign-out outlives the process that issued the session and a restart does not sign everybody out.",
+      "group": "storage",
+      "type": "path",
+      "default": "/var/lib/kgsm-auth-anchor/sessions.db",
+      "risk": "destructive"
+    },
+    {
+      "key": "signingKeyPath",
+      "env": "Anchor__SigningKeyPath",
+      "label": "Session signing key",
+      "description": "The private key every session is signed with. It is generated on first start and never leaves this machine. Replacing it invalidates every session that exists.",
+      "group": "storage",
+      "type": "path",
+      "default": "/var/lib/kgsm-auth-anchor/session-signing.pem",
+      "risk": "destructive"
+    },
+    {
+      "key": "publishedKeyPath",
+      "env": "Anchor__PublishedKeyPath",
+      "label": "Published public key",
+      "description": "Where the public half of the signing key is published, for other members on this machine to verify sessions against. Blank publishes no file; the key is still served over HTTP.",
+      "group": "storage",
+      "type": "path",
+      "default": "/var/lib/kgsm/cluster/auth-public-key.json",
+      "risk": "wiring"
+    },
+    {
+      "key": "accessLifetimeMin",
+      "env": "Anchor__AccessLifetimeMinutes",
+      "label": "Access token lifetime",
+      "description": "How long a session's bearer lasts before it is refreshed. Short bounds how long a stolen one is worth anything; it does not affect how long somebody stays signed in.",
+      "group": "sessions",
+      "type": "int",
+      "default": "15",
+      "min": 1,
+      "unit": "min",
+      "risk": "safe"
+    },
+    {
+      "key": "refreshLifetimeDays",
+      "env": "Anchor__RefreshLifetimeDays",
+      "label": "Session lifetime",
+      "description": "How long somebody stays signed in before a fresh sign-in is required.",
+      "group": "sessions",
+      "type": "int",
+      "default": "30",
+      "min": 1,
+      "unit": "days",
+      "risk": "safe"
+    },
+    {
+      "key": "sessionCleanupMin",
+      "env": "Anchor__SessionCleanupMinutes",
+      "label": "Session sweep interval",
+      "description": "How often session rows that are already past their cap are deleted. Housekeeping — it ends no session that is still alive.",
+      "group": "sessions",
+      "type": "int",
+      "default": "60",
+      "min": 1,
+      "unit": "min",
+      "risk": "safe"
+    },
+    {
+      "key": "logLevel",
+      "env": "Logging__LogLevel__Default",
+      "label": "Log level",
+      "description": "Minimum severity this anchor logs.",
+      "group": "general",
+      "type": "enum",
+      "values": [
+        "Trace",
+        "Debug",
+        "Information",
+        "Warning",
+        "Error",
+        "Critical"
+      ],
+      "default": "Information",
+      "risk": "safe"
+    }
+  ]
+}

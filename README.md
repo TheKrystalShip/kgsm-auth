@@ -4,6 +4,10 @@ The shared authorization model for the KGSM ecosystem: **one definition of who m
 every surface onto a host, so the same person gets the same authority through the Control Panel, the
 assistant and the Discord bot alike.
 
+Four libraries and one daemon. The libraries are what every surface compiles against; the daemon —
+**`kgsm-auth-anchor`** — is what holds a whole cluster's accounts and signs people in to all of it at
+once. A standalone host runs no daemon and reads the same file through the same libraries.
+
 ## Packages
 
 | package | contents | taken by |
@@ -12,6 +16,9 @@ assistant and the Discord bot alike.
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot |
+
+The deployable is **`kgsm-auth-anchor`** (`src/Auth.Anchor`), built from those libraries and shipped
+as a pacman package and a systemd unit. It publishes nothing to NuGet.
 
 ## The model
 
@@ -185,6 +192,73 @@ evicts, making the kill immediate; the TTL is the backstop for what cannot evict
 **absolute, never sliding** — a sliding window is extended by every hit, so the busiest session, the
 one most worth revoking, would be the one that never re-checks. A "no" is cached too, because a
 revoked session still presenting its token is exactly what a stolen one does.
+
+## The auth anchor
+
+`kgsm-auth-anchor` is the member of a cluster that holds the accounts. One store, one writer, one
+address a person signs in to — and a session it mints is valid on **every** member, because its
+audience is the cluster rather than a machine. The design and its phases are
+`../cluster-auth-plan.md`; this is what the daemon serves.
+
+| | |
+|---|---|
+| `GET /health` | the ecosystem's liveness probe |
+| `POST /auth/sign-in` | verify a KGSM password, mint a cluster-scoped session |
+| `POST /auth/session/refresh` | rotate both tokens, re-reading standing from the store |
+| `POST /auth/session/sign-out` | end a session, by refresh token or by bearer |
+| `GET /auth/session` | who the caller is, resolved on this request |
+| `GET /auth/cluster/users` | every account, admin only |
+| `GET /auth/cluster/public-key` | the verification key set |
+
+**Sessions are signed asymmetrically, and that is the whole point.** The anchor holds the private
+key; every member verifies with the published public one. A member that could mint what it verifies
+could mint itself an admin session, so it holds only what checks a signature.
+
+```
+GET /auth/cluster/public-key
+{"keys":[{"kty":"EC","crv":"P-256","x":"…","y":"…","alg":"ES256","use":"sig","kid":"…"}]}
+```
+
+The key is a set so rotation has somewhere to go: publish the incoming key beside the outgoing one,
+let every verifier pick up both, then move the signer. `kid` is the key's own RFC 7638 thumbprint,
+so two holders of one key compute one id.
+
+**The private key is generated once and never replaced by accident.** It lives at
+`/var/lib/kgsm-auth-anchor/session-signing.pem`, `0600`, created with that mode rather than chmod'd
+after — the gap between the two is the window the whole mode exists to close. A file that exists and
+cannot be read stops the daemon: replacing it invalidates every session in the cluster and leaves
+every member checking against a key nothing signs with, so "this anchor has no key yet" and "this
+anchor's key is unreadable" must not take the same path. The public half is copied to
+`/var/lib/kgsm/cluster/auth-public-key.json`, the directory members on one machine share.
+
+**Authority is read on every request, never off the token.** The tier claim is what was true at mint
+time; a demotion has to land at the caller's next request, so the store's answer overwrites it. The
+same read happens on refresh, and a withdrawn account has its session ended there rather than being
+left to run out its bearer.
+
+**Nothing on the serving path leaves the machine.** Signature checks are local and the standing read
+is a local point query, which is what lets a member keep serving and keep refreshing while the
+anchor is unreachable.
+
+**A browser signs in here directly, so the origin list is load-bearing.** The Control Panel is served
+from a different origin; without an entry in `Anchor__AllowedOrigins` the browser discards the
+anchor's answer before the sign-in code reads it. There is deliberately no wildcard — this surface
+mints credentials.
+
+### Running one
+
+```bash
+./deploy/setup.sh          # once per host, asks for sudo
+./deploy/deploy.sh         # every deploy, no sudo, no prompts
+```
+
+Its whole configurable surface is `src/Auth.Anchor/kgsm-auth-anchor.settings.json`, which the build
+generates `deploy/kgsm-auth-anchor.leaf.json` from — so the Control Panel renders the page from the
+same declaration the daemon binds. Edit the settings class, never the JSON.
+
+The pacman package installs it **switched off**. A cluster has one anchor and which machine holds it
+is a decision, so installing the package claims nothing: a second machine with it installed and
+stopped is a promotion candidate rather than a second authority.
 
 ## Accounts
 

@@ -1,0 +1,42 @@
+{
+  "project": "kgsm-auth-anchor",
+  "leafId": "auth-anchor",
+  "role": "anchor",
+  "runtime": {
+    "kind": "native-aot",
+    "note": "A single native binary plus the SQLite native lib beside it. The host needs no .NET runtime."
+  },
+  "commands": [
+    { "name": "systemctl", "package": "systemd", "required": true, "probe": "systemctl --version", "why": "the daemon is a systemd unit and deploy verifies it through systemctl" }
+  ],
+  "services": [],
+  "system": [
+    { "feature": "tcp-listen", "required": true, "probe": "test -d /proc/net", "why": "a person signs in against this anchor directly, over TCP" }
+  ],
+  "units": {
+    "system": ["kgsm-auth-anchor.service"],
+    "user": [],
+    "note": "One unit, unprivileged. It runs as the kgsm service account kgsm-base declares, reads and writes the account store that account owns, and binds an unprivileged port."
+  },
+  "paths": {
+    "prefix": "/opt/kgsm-auth-anchor",
+    "state": ["/var/lib/kgsm-auth-anchor", "/var/lib/kgsm/auth", "/var/lib/kgsm/cluster"],
+    "runtime": [],
+    "config": ["/etc/kgsm-auth-anchor/kgsm-auth-anchor.env", "/etc/kgsm/kgsm-cluster.env"],
+    "descriptor": "/var/lib/kgsm/leaves/auth-anchor.json"
+  },
+  "secrets": [
+    {
+      "path": "/var/lib/kgsm-auth-anchor/session-signing.pem",
+      "owner": "the daemon",
+      "why": "every session in the cluster is signed with it, and every member verifies against its public half",
+      "note": "Generated once, on a machine that has none, and never shipped by any package. Replacing it invalidates every session that exists."
+    },
+    {
+      "path": "/etc/kgsm/kgsm-cluster.env",
+      "owner": "kgsm-base",
+      "why": "the shared secret that proves membership of a cluster",
+      "note": "Shipped blank. A host that is not part of a cluster leaves it blank, which is a state rather than a misconfiguration."
+    }
+  ]
+}

@@ -7,6 +7,59 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — `kgsm-auth-anchor`, the daemon that holds a cluster's accounts (`1.0.0`)
+
+The first deployable this repo produces. It serves the account store the libraries already own — one
+sign-in for a whole cluster, at one address — and publishes the key every member verifies a session
+with. Native AOT with `CreateSlimBuilder` and minimal APIs, `Microsoft.Data.Sqlite` under both
+stores, and a config descriptor generated from its settings class like every other configurable KGSM
+component. Authority is `../cluster-auth-plan.md`.
+
+The surface:
+
+| | |
+|---|---|
+| `GET /health` | the ecosystem's liveness probe |
+| `POST /auth/sign-in` | verify a KGSM password, mint a cluster-scoped session |
+| `POST /auth/session/refresh` | rotate both tokens, re-reading standing from the store |
+| `POST /auth/session/sign-out` | end a session, by refresh token or by bearer |
+| `GET /auth/session` | who the caller is, resolved on this request |
+| `GET /auth/cluster/users` | every account, admin only, never a secret in any form |
+| `GET /auth/cluster/public-key` | the verification key set, unauthenticated |
+
+A session's audience is the **cluster**, not a machine, which is what makes one sign-in valid on
+every member of it. Authority is read from the store on every request rather than from the token, so
+a demotion takes effect at the caller's next request. Nothing on the refresh path leaves the machine.
+
+The private signing key is generated once, on a machine that has none, at `0600` inside the unit's
+state directory, and the public half is published to `/var/lib/kgsm/cluster/auth-public-key.json`
+for the other members on that machine. A key file that exists and cannot be read stops the daemon
+rather than being replaced — silently generating a new one would invalidate every session in the
+cluster and leave every member verifying against something nothing signs with.
+
+Deployed the ecosystem way: `deploy/setup.sh` once, `deploy/deploy.sh` forever after, plus a pacman
+package. The package is preset-**disabled**: a cluster has one anchor, and which machine holds it is
+a decision rather than a default, so installing it claims nothing.
+
+### Added — asymmetric session signing (`Auth.Sessions` 2.1.0)
+
+`ISessionSigner`, and `EcdsaSessionSigner` over P-256/ES256. `SessionTokenService` takes one and
+signs with it; without one it signs and verifies with the shared HMAC secret exactly as before, so
+every surface that mints and checks its own tokens is untouched.
+
+This is what lets a session be verified somewhere it cannot be minted. A member holding the
+published key checks a signature and cannot produce one, so a compromised surface can read what its
+tier allows and cannot promote itself. `ValidAlgorithms` is pinned on validation for the same
+reason: a public verification key offered as an HMAC secret would make the key everybody holds the
+key everybody can sign with.
+
+A key is published as a JWK set — `EcdsaSessionSigner.PublicKeysJson`, read back with `ReadKeys` and
+turned into verification keys with `VerificationKeysFrom`. A set rather than one key because
+rotation needs an overlap: the incoming key is published beside the outgoing one, every verifier
+picks up both, and only then does the signer move. The `kid` is the key's own RFC 7638 thumbprint,
+so two holders of one key compute one id and a rotated key cannot reuse the previous one's.
+
+
 ### Added — `KgsmRelaySecret`, the secret a host mints for itself (`Auth` 3.2.0)
 
 `KgsmRelaySecret.Resolve(configured, path?)` returns the secret a trusted relay proves itself with:

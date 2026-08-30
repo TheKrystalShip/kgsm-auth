@@ -1,0 +1,41 @@
+# The preset policy in kgsm-base decides whether this daemon runs on a node; applying it is symlink
+# manipulation on disk, so it works during the transaction and in a chroot alike. Starting it is the
+# node's post-transaction hook's job, which is where a running system is available.
+#
+# post_install only. An administrator who enabled this unit keeps it enabled across every later
+# version — re-presetting on upgrade would quietly switch it back off.
+
+post_install() {
+    systemctl preset kgsm-auth-anchor.service > /dev/null 2>&1 || true
+
+    cat <<'MSG'
+
+  kgsm-auth-anchor is installed and switched OFF. A cluster holds its accounts in one place, so
+  which machine is the anchor is a decision rather than a default — installing the package claims
+  nothing.
+
+  To make this machine the anchor:
+
+      systemctl enable --now kgsm-auth-anchor.service
+
+  On its first start it generates the key every session in the cluster is signed with, at
+  /var/lib/kgsm-auth-anchor/session-signing.pem, and publishes the public half to
+  /var/lib/kgsm/cluster/auth-public-key.json for the other members on this machine. That key is
+  never shipped by any package and replacing it invalidates every session that exists — back it up
+  with the account store, not separately from it.
+
+  Two things it needs from you: the browser origins allowed to sign in here
+  (Anchor__AllowedOrigins in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env), and — for a machine
+  joining a cluster — the shared secret in /etc/kgsm/kgsm-cluster.env.
+
+MSG
+}
+
+post_upgrade() {
+    cat <<'MSG'
+
+  If pacman wrote a .pacnew beside /etc/kgsm-auth-anchor/kgsm-auth-anchor.env, merge it — new
+  settings are declared there and a key the file never declares binds to nothing.
+
+MSG
+}
