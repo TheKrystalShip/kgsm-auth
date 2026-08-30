@@ -7,6 +7,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the replica: a member's own copy of the cluster's accounts (`Auth.Users` 1.4.0-dev.1)
+
+`AccountReplica` applies what the member holding the accounts publishes, and `IAccountVersions` is
+the counter that orders it. A member can then answer *who is this and what may they do* without
+leaving the machine — which is what lets serving, streaming and session refresh carry on while that
+member is unreachable.
+
+**No password travels.** A replicated account carries its external identities, because resolving a
+session naming `discord:123` needs the handle that maps it to an account, and a handle is the name of
+a fact rather than evidence for it. Password hashes stay where signing in happens. A replica therefore
+says what somebody may do and cannot let them in — the difference between a compromised member
+reading what its tier allows and signing in as anyone in the cluster.
+
+**A whole record travels, never a field of one.** Per-field messages leave a replica holding a tier
+from one point in time beside a status from another, an account that never existed in that
+combination anywhere. One record at one version means a replica always holds a state the writer
+actually published.
+
+**The counter is its own table and `UserSchema.Version` does not move.** The store is opened by every
+surface on a host, each pinned to its own build, and the schema guard refuses a file declaring a
+version newer than the build reading it — deliberately, because half-understood accounts is the
+failure that grants access quietly. Raising it would refuse the Control Panel, the bot and the
+assistant at once until all three were redeployed. A table an older build has never heard of is
+invisible to it instead.
+
+A version row outlives the account it belongs to, and that is the tombstone: a change issued before a
+removal carries a lower version and is refused rather than re-creating somebody who was deliberately
+removed. A username another local account already holds is reported, never merged — merging on a
+shared name is the documented route to handing somebody another person's access — and the version is
+not advanced, so it stays resolvable rather than silently skipped.
+
+
 ### Added — a public vhost, and loopback for the daemon itself (`1.2.0`)
 
 A person signs in against the anchor directly, once, for the whole cluster — so unlike a leaf's unix

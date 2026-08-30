@@ -100,4 +100,22 @@ public static class UserSchema
             locked_until_utc TEXT NULL
         );
         """;
+
+    /// <summary>
+    /// The per-account counter that orders account changes between members of a cluster.
+    /// </summary>
+    /// <remarks>
+    /// <b>Deliberately not part of <see cref="Version"/>.</b> A table an older build has never heard
+    /// of is invisible to it — it reads accounts exactly as before and nothing is half-understood —
+    /// whereas raising the version would make every build pinned to an earlier one refuse the file,
+    /// which on a host running the Control Panel, the bot and the assistant is all three at once.
+    /// Created on open by any build that knows about it, and simply absent on one that does not.
+    /// </remarks>
+    public const string CreateAccountVersions = """
+        CREATE TABLE IF NOT EXISTS account_versions (
+            user_id     TEXT PRIMARY KEY,
+            version     INTEGER NOT NULL,
+            updated_utc TEXT NOT NULL
+        );
+        """;
 }

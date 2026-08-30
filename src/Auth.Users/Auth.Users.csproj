@@ -9,7 +9,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Users</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.3.0</Version>
+    <Version>1.4.0-dev.1</Version>
     <Description>
       The KGSM user store: local accounts with passwords, the credentials that prove them (a local
       password, a linked external identity), and the tier each account holds. A user exists on its
