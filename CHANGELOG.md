@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — ending one of somebody else's sessions (`1.9.1`)
+
+`POST /auth/cluster/users/{userId}/sessions/{sid}/revoke`, admin only.
+
+Deliberately not the same fact as ending all of them. "This one session looks wrong" and "sign this
+person out everywhere" are different decisions with different costs: the first ends a device without
+disturbing somebody mid-task, and an admin left only the second reaches for it because it is what
+exists.
+
+The session is addressed **under the account it belongs to**, so the check is whether this sid is that
+person's rather than whether it exists. An admin ending a session without knowing whose it was could
+not be recorded honestly, and the row has to name the subject. A sid belonging to a different account
+answers `404` — an admin acting on the wrong account is told they have the wrong account rather than
+shown a stranger's session.
+
 ### Added — creating an account, and the devices somebody is signed in on (`1.9.0`)
 
 `POST /auth/cluster/users` creates an account as an administrator — the counterpart to registration,

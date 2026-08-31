@@ -213,6 +213,87 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     }
 
     [Fact]
+    public async Task An_admin_ends_one_session_without_ending_the_rest()
+    {
+        string admin = Unique("surgeon-");
+        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        Session adminSession = await SignInAsync(admin);
+
+        string subject = Unique("patient-");
+        KgsmUser user = await anchor.SeedAsync(subject, Long, KgsmTier.Viewer);
+        Session suspicious = await SignInAsync(subject, "a phone");
+        await SignInAsync(subject, "a laptop");
+
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post,
+            $"/auth/cluster/users/{user.UserId}/sessions/{suspicious.Sid}/revoke",
+            adminSession.Bearer);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(1, (await response.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("revoked").GetInt32());
+
+        // The point of the narrow door: one device stops and the person is not disturbed mid-task.
+        // An admin left only "sign them out everywhere" reaches for it because it is what exists.
+        JsonElement left = Assert.Single(await SessionsAsync(adminSession.Bearer, user.UserId));
+        Assert.Equal("a laptop", left.GetProperty("userAgent").GetString());
+
+        JsonElement data = Assert.Single(
+            anchor.Journal(AuthEvents.SessionRevoked),
+            e => e.GetProperty("Data").GetProperty("UserId").GetString() == user.UserId)
+            .GetProperty("Data");
+
+        // Admin scope, naming the one session. The subject is on the row and the actor is the admin,
+        // so "who did this" and "to whom" never have to be told apart by reading a sentence.
+        Assert.Equal(SessionRevokeScopes.Admin, data.GetProperty("Scope").GetString());
+        Assert.Equal(suspicious.Sid, data.GetProperty("Sid").GetString());
+        Assert.Equal($"local:{admin}", 
+            Assert.Single(anchor.Journal(AuthEvents.SessionRevoked),
+                e => e.GetProperty("Data").GetProperty("UserId").GetString() == user.UserId)
+                .GetProperty("Actor").GetString());
+    }
+
+    [Fact]
+    public async Task A_session_belonging_to_a_different_account_is_not_found_under_this_one()
+    {
+        string admin = Unique("mistaken-");
+        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        Session adminSession = await SignInAsync(admin);
+
+        KgsmUser one = await anchor.SeedAsync(Unique("one-"), Long, KgsmTier.Viewer);
+        KgsmUser two = await anchor.SeedAsync(Unique("two-"), Long, KgsmTier.Viewer);
+        Session belongsToTwo = await SignInAsync(two.Username, "a phone");
+
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post,
+            $"/auth/cluster/users/{one.UserId}/sessions/{belongsToTwo.Sid}/revoke",
+            adminSession.Bearer);
+
+        // An admin acting on the wrong account is told they have the wrong account, rather than
+        // shown a stranger's session — and the session survives.
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Single(await SessionsAsync(belongsToTwo.Bearer));
+    }
+
+    [Fact]
+    public async Task Ending_one_of_somebody_elses_sessions_needs_admin()
+    {
+        string viewer = Unique("meddler-");
+        await anchor.SeedAsync(viewer, Long, KgsmTier.Viewer);
+        Session session = await SignInAsync(viewer);
+
+        KgsmUser target = await anchor.SeedAsync(Unique("targeted-"), Long, KgsmTier.Viewer);
+        Session theirs = await SignInAsync(target.Username, "a phone");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(
+            HttpMethod.Post,
+            $"/auth/cluster/users/{target.UserId}/sessions/{theirs.Sid}/revoke",
+            session.Bearer)).StatusCode);
+
+        Assert.Single(await SessionsAsync(theirs.Bearer));
+    }
+
+    [Fact]
     public async Task An_admin_cutting_an_account_with_nothing_live_is_not_an_error()
     {
         string admin = Unique("quiet-");

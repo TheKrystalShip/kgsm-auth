@@ -223,6 +223,7 @@ app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount);
 app.MapGet("/auth/sessions", SessionEndpoints.List);
 app.MapPost("/auth/session/revoke", SessionEndpoints.Revoke);
 app.MapPost("/auth/cluster/users/{userId}/sessions/revoke-all", SessionEndpoints.RevokeAll);
+app.MapPost("/auth/cluster/users/{userId}/sessions/{sid}/revoke", SessionEndpoints.RevokeOne);
 
 // What this anchor serves to other MEMBERS: the accounts, so each can answer for itself who somebody
 // is and what they may do. Authenticated by a member service token, never by a person's session.

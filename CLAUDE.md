@@ -278,6 +278,11 @@ This file is the authority for the auth design; the account-store design is also
   looked up under **every credential handle the account holds**: a session is keyed by the handle
   somebody arrived with, so one account signed in with a password and with Discord has two keys.
   Ending one is never gated on holding the capability, for the same reason sign-out is not.
+- **Ending one session and ending all of them are separate doors, and both exist.** They are different
+  decisions with different costs, and an admin left only the wide one reaches for it because it is
+  what exists. A session an admin acts on is addressed under the account it belongs to, so the check
+  is whether the sid is that person's — an admin ending a session without knowing whose it was could
+  not be recorded honestly.
 - **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
   no default store, and sessions are not accounts: a member replicating the cluster's accounts
   replicates none of the sign-ins.

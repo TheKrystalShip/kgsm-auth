@@ -140,6 +140,63 @@ internal static class SessionEndpoints
             ctx, subject, await HandlesOf(ctx, subject), SessionRevokeScopes.Admin, caller);
     }
 
+    /// <summary>End one of somebody else's sessions — an administrator's door.</summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately not the same fact as ending all of them. "This one session looks wrong" and "sign
+    /// this person out everywhere" are different decisions with different costs: the first ends a
+    /// device without disturbing somebody mid-task, and an admin left only the second reaches for it
+    /// because it is what exists.
+    /// </para>
+    /// <para>
+    /// The session is addressed <em>under the account it belongs to</em>, so the check is whether this
+    /// sid is that person's rather than whether it exists. An admin ending a session without knowing
+    /// whose it was could not be recorded honestly, and the row has to name the subject.
+    /// </para>
+    /// </remarks>
+    internal static async Task RevokeOne(HttpContext ctx)
+    {
+        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.Admin);
+        if (maybe is not { } caller)
+            return;
+
+        if (ctx.Request.RouteValues["userId"] as string is not { Length: > 0 } userId
+            || ctx.Request.RouteValues["sid"] as string is not { Length: > 0 } sid)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_session",
+                "A user id and a session id are required.");
+            return;
+        }
+
+        if (await ctx.RequestServices.GetRequiredService<IUserStore>()
+                .FindByIdAsync(userId, ctx.RequestAborted) is not { } subject)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_such_account",
+                "No account has that id.");
+            return;
+        }
+
+        IReadOnlyList<string> handles = await HandlesOf(ctx, subject);
+
+        // A sid that belongs to somebody else answers the same as one that does not exist, for the
+        // same reason it does on the caller's own door: telling those apart says whether an id is
+        // real, and an admin acting on the wrong account should be told they have the wrong account
+        // rather than shown a stranger's session.
+        if (await RegistryOf(ctx).OwnerAsync(sid, ctx.RequestAborted) is not { } owner
+            || !handles.Contains(owner, StringComparer.Ordinal))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_such_session",
+                "That account holds no session with that id.");
+            return;
+        }
+
+        await EndAsync(ctx, sid);
+        await RecordAsync(ctx, SessionRevokeScopes.Admin, subject, sid, 1, caller);
+
+        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new RevokeResult(1),
+            AnchorJsonContext.Default.RevokeResult);
+    }
+
     // ── Shared ────────────────────────────────────────────────────────────────
 
     private static async Task EndAllAsync(
