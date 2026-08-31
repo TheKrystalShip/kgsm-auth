@@ -46,13 +46,14 @@ ENV_EXAMPLE="${REPO_DIR}/deploy/${PROJECT}.env.example"
 
 HEALTH_TRIES="${HEALTH_TRIES:-30}"
 
-# The config descriptor kgsm-api reads to render this anchor's configuration page. setup.sh creates
-# the discovery directory; deploy.sh installs the file there unprivileged on every deploy, so the
-# descriptor can never be older than the binary it describes.
-LEAF_DESCRIPTOR="${REPO_DIR}/deploy/${PROJECT}.leaf.json"
+# What this anchor can be configured with, generated from AnchorSettings on every build. The
+# `.anchor.json` suffix is what routes it: setup.sh creates the anchors directory and deploy.sh
+# installs the file there unprivileged, so the descriptor can never be older than the binary it
+# describes — and it never lands where a node's leaves are scanned for.
+LEAF_DESCRIPTOR="${REPO_DIR}/deploy/${PROJECT}.anchor.json"
 
-# The id kgsm-api knows this project by — the descriptor's "id", its filename stem in the discovery
-# directory, and the {leaf} segment of the API's config route.
+# The id this anchor is known by — the descriptor's "id" and its filename stem in the anchors
+# directory.
 LEAF_ID="auth-anchor"
 
 render_unit() {   # $1 = unit filename
@@ -143,9 +144,18 @@ render_polkit_rule() {
 SERVICE="${UNITS[0]}"           # the primary unit, e.g. kgsm-api.service
 PUBLISH_DIR="${REPO_DIR}/artifacts/publish"
 
-# Where every leaf drops its config descriptor. Shared across projects and scanned by kgsm-api —
-# the API holds no list of leaves, so a new leaf becomes configurable by landing a file here.
+# Where a component's config descriptor lands, and the two are separate directories because leaves and
+# anchors are separate things. A LEAF is run by this node: kgsm-api scans the leaves directory, holds
+# no list of its own, and a new leaf becomes configurable by landing a file there. An ANCHOR serves one
+# capability to the whole cluster and is a peer of every node in it — sharing a machine with one is a
+# deployment coincidence — so its descriptor records what runs here and is read by nothing that
+# administers this node's services.
+#
+# Which directory a project uses is decided by the SUFFIX of the descriptor its build produced, and the
+# generator refuses a suffix that disagrees with the identity the component declares. So a component
+# cannot reach the wrong directory without failing its own build.
 LEAF_DESCRIPTOR_DIR="${KGSM_LEAF_DESCRIPTOR_DIR:-/var/lib/kgsm/leaves}"
+ANCHOR_DESCRIPTOR_DIR="${KGSM_ANCHOR_DESCRIPTOR_DIR:-/var/lib/kgsm/anchors}"
 
 # Privileged-call indirection, used by setup.sh ONLY. deploy.sh never calls this. An automated
 # run can set SUDO='sudo -A' + SUDO_ASKPASS=… to provision without an interactive prompt; no
@@ -237,17 +247,37 @@ install_units_unprivileged() {
     done
 }
 
-# Install this project's leaf config descriptor into the shared discovery directory. Unprivileged:
-# the directory is owned by DEPLOY_USER (setup.sh created it), so this is a plain file write.
+# Where this project's descriptor belongs, from the suffix its build produced. An unrecognised suffix
+# is refused rather than guessed at: guessing puts an anchor on some node's service board, which has
+# no symptom until somebody reads that board and believes it.
+descriptor_dir_for() {
+    case "$1" in
+        *.anchor.json) printf '%s' "$ANCHOR_DESCRIPTOR_DIR" ;;
+        *.leaf.json)   printf '%s' "$LEAF_DESCRIPTOR_DIR" ;;
+        *)             return 1 ;;
+    esac
+}
+
+# Install this project's config descriptor into the discovery directory its kind belongs to.
+# Unprivileged: the directory is owned by DEPLOY_USER (setup.sh created it), so this is a plain file
+# write.
 #
-# A project with no descriptor file is simply not a leaf — nothing is installed and nothing fails.
-# When the file IS present the descriptor is validated before it lands, because kgsm-api skips a
-# malformed one silently: catching it here is the difference between "the panel has no page for
-# this leaf" and knowing why.
+# A project with no descriptor file describes nothing — nothing is installed and nothing fails. When
+# the file IS present it is validated before it lands, because a reader skips a malformed one
+# silently: catching it here is the difference between "the panel has no page for this" and knowing
+# why.
 install_leaf_descriptor() {
     [[ -n "${LEAF_DESCRIPTOR:-}" && -f "$LEAF_DESCRIPTOR" ]] || return 0
 
-    local dst="${LEAF_DESCRIPTOR_DIR}/${LEAF_ID}.json"
+    local dir
+    if ! dir="$(descriptor_dir_for "$LEAF_DESCRIPTOR")"; then
+        err "${LEAF_DESCRIPTOR} ends in neither .leaf.json nor .anchor.json, so there is no"
+        err "directory it belongs in. The suffix is what says whether this component is one of"
+        err "this node's leaves or an anchor serving the whole cluster."
+        return 1
+    fi
+
+    local dst="${dir}/${LEAF_ID}.json"
 
     # Validate what we can before it lands: it must parse, and its "id" must be the id this
     # project deploys under — a mismatch would install the file under a name kgsm-api then reads
@@ -270,14 +300,24 @@ PY
         fi
     fi
 
-    if [[ ! -d "$LEAF_DESCRIPTOR_DIR" ]]; then
-        err "leaf descriptor directory ${LEAF_DESCRIPTOR_DIR} is missing."
+    if [[ ! -d "$dir" ]]; then
+        err "descriptor directory ${dir} is missing."
         err "run ONCE (it will ask for your sudo password):   ${REPO_DIR}/deploy/setup.sh"
         return 1
     fi
 
     if ! cmp -s "$LEAF_DESCRIPTOR" "$dst"; then
-        log "leaf descriptor changed → ${dst}"
+        log "config descriptor changed → ${dst}"
         install -m 0644 "$LEAF_DESCRIPTOR" "$dst"
+    fi
+
+    # A component that has changed kind leaves its old file behind, and a stale descriptor in the
+    # leaves directory is read as a leaf however the component now describes itself.
+    local other
+    [[ "$dir" == "$ANCHOR_DESCRIPTOR_DIR" ]] && other="${LEAF_DESCRIPTOR_DIR}/${LEAF_ID}.json" \
+                                             || other="${ANCHOR_DESCRIPTOR_DIR}/${LEAF_ID}.json"
+    if [[ -f "$other" ]]; then
+        log "removing ${other} — this component is described in ${dir}"
+        rm -f "$other"
     fi
 }

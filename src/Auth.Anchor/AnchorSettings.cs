@@ -1,4 +1,4 @@
-using TheKrystalShip.KGSM.LeafConfig;
+using TheKrystalShip.KGSM.ComponentConfig;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
@@ -21,7 +21,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// while a value that is present and is not a number still fails loudly.
 /// </para>
 /// </remarks>
-[LeafSection(Section)]
+[ConfigSection(Section)]
 internal sealed class AnchorSettings
 {
     /// <summary>The configuration section this binds from.</summary>
@@ -52,43 +52,43 @@ internal sealed class AnchorSettings
     /// <panel>The Control Panel address a person lands back on after signing in with an external
     /// account. Blank means the sign-in answers with the session directly instead of sending a
     /// browser anywhere.</panel>
-    [LeafField("frontendUrl", "Panel address", Group = "network", Risk = LeafRisk.Wiring)]
+    [ConfigField("frontendUrl", "Panel address", Group = "network", Risk = ConfigRisk.Wiring)]
     public string? FrontendUrl { get; set; }
 
     /// <summary>Whether somebody with no account may make one.</summary>
     /// <panel>Whether a person with no account can create one from the sign-in page. The account they
     /// get holds nothing until an administrator grants it something, and the limit below bounds how
     /// many can be waiting at once.</panel>
-    [LeafField("allowSelfRegistration", "Let people register", Group = "sessions", Risk = LeafRisk.Wiring)]
+    [ConfigField("allowSelfRegistration", "Let people register", Group = "sessions", Risk = ConfigRisk.Wiring)]
     public bool? AllowSelfRegistration { get; set; }
 
     /// <summary>How many accounts may be awaiting approval at once.</summary>
     /// <panel>How many accounts that arrived on their own may be waiting for approval at one time.
     /// Signing in with an external account nobody has approved creates one, so this bounds what a
     /// stranger can fill up.</panel>
-    [LeafField("pendingCap", "Unapproved account limit", Group = "sessions", Risk = LeafRisk.Safe,
+    [ConfigField("pendingCap", "Unapproved account limit", Group = "sessions", Risk = ConfigRisk.Safe,
         Min = 0)]
     public int? PendingCap { get; set; }
 
     /// <summary>How long an unapproved account survives before it is removed.</summary>
     /// <panel>How long an account that arrived on its own and was never approved is kept before it is
     /// removed. It only ever removes an account nobody granted anything to.</panel>
-    [LeafField("pendingTtlDays", "Unapproved account lifetime", Group = "sessions",
-        Risk = LeafRisk.Safe, Min = 1, Unit = "days")]
+    [ConfigField("pendingTtlDays", "Unapproved account lifetime", Group = "sessions",
+        Risk = ConfigRisk.Safe, Min = 1, Unit = "days")]
     public int? PendingTtlDays { get; set; }
 
     /// <summary>How long a proved credential lets somebody keep changing what proves their account.</summary>
     /// <panel>How long after proving your password you may keep attaching or detaching sign-in
     /// methods. Holding a session is not the same as having proved you own it, and attaching an
     /// identity outlives the session — afterwards whoever holds that account can sign in as yours.</panel>
-    [LeafField("reauthWindowMinutes", "Re-authentication window", Group = "sessions",
-        Risk = LeafRisk.Safe, Min = 1, Unit = "minutes")]
+    [ConfigField("reauthWindowMinutes", "Re-authentication window", Group = "sessions",
+        Risk = ConfigRisk.Safe, Min = 1, Unit = "minutes")]
     public int? ReauthWindowMinutes { get; set; }
 
     /// <summary>Where Kestrel listens. TCP, because a browser signs in here directly.</summary>
     /// <panel>The address a person's browser reaches this anchor at. Sign-in happens here directly,
     /// once, for the whole cluster.</panel>
-    [LeafField("listenAddress", "Listen address", Group = "network", Risk = LeafRisk.Wiring)]
+    [ConfigField("listenAddress", "Listen address", Group = "network", Risk = ConfigRisk.Wiring)]
     public string ListenAddress { get; set; } = "http://0.0.0.0:8098";
 
     /// <summary>
@@ -97,7 +97,7 @@ internal sealed class AnchorSettings
     /// <panel>The name other members of the cluster know this anchor by. A machine can run more than
     /// one member — a node and an anchor are two members with two names — so this is not the machine's
     /// name. Blank derives one from it.</panel>
-    [LeafField("memberId", "Cluster member id", Group = "network", Risk = LeafRisk.Wiring,
+    [ConfigField("memberId", "Cluster member id", Group = "network", Risk = ConfigRisk.Wiring,
         NoDefault = true)]
     public string MemberId { get; set; } = "";
 
@@ -108,59 +108,59 @@ internal sealed class AnchorSettings
     /// <panel>The address other members of the cluster reach this anchor at. Set it when this machine
     /// sits behind a reverse proxy and cannot see its own public address; otherwise leave it blank and
     /// the addresses are learned when a member joins.</panel>
-    [LeafField("publicBaseUrl", "Public address", Group = "network", Risk = LeafRisk.Wiring)]
+    [ConfigField("publicBaseUrl", "Public address", Group = "network", Risk = ConfigRisk.Wiring)]
     public string PublicBaseUrl { get; set; } = "";
 
     /// <summary>The cluster a session is scoped to, and the token audience.</summary>
     /// <panel>The cluster this anchor holds the accounts for. A session it mints is valid on every
     /// member of this cluster and on nothing else. Changing it signs everybody out.</panel>
-    [LeafField("clusterId", "Cluster id", Group = "network", Risk = LeafRisk.Destructive)]
+    [ConfigField("clusterId", "Cluster id", Group = "network", Risk = ConfigRisk.Destructive)]
     public string ClusterId { get; set; } = "kgsm-cluster";
 
     /// <summary>The <c>iss</c> claim, and what validation requires.</summary>
     /// <panel>The issuer name stamped on every session. It is checked when a session is presented, so
     /// changing it signs everybody out.</panel>
-    [LeafField("issuer", "Token issuer", Group = "network", Risk = LeafRisk.Destructive)]
+    [ConfigField("issuer", "Token issuer", Group = "network", Risk = ConfigRisk.Destructive)]
     public string Issuer { get; set; } = "kgsm";
 
     /// <summary>The account store this anchor is the writer of.</summary>
     /// <panel>The file the accounts live in. It is the same file every other KGSM surface on this
     /// machine reads.</panel>
-    [LeafField("userStorePath", "Account store", Group = "storage", Type = LeafType.Path,
-        Risk = LeafRisk.Destructive)]
+    [ConfigField("userStorePath", "Account store", Group = "storage", Type = ConfigType.Path,
+        Risk = ConfigRisk.Destructive)]
     public string UserStorePath { get; set; } = "/var/lib/kgsm/auth/users.db";
 
     /// <summary>Where live sessions are recorded.</summary>
     /// <panel>Where live sign-ins are recorded, so a sign-out outlives the process that issued the
     /// session and a restart does not sign everybody out.</panel>
-    [LeafField("sessionStorePath", "Session store", Group = "storage", Type = LeafType.Path,
-        Risk = LeafRisk.Destructive)]
+    [ConfigField("sessionStorePath", "Session store", Group = "storage", Type = ConfigType.Path,
+        Risk = ConfigRisk.Destructive)]
     public string SessionStorePath { get; set; } = "/var/lib/kgsm-auth-anchor/sessions.db";
 
     /// <summary>The private key sessions are signed with.</summary>
     /// <panel>The private key every session is signed with. It is generated on first start and never
     /// leaves this machine. Replacing it invalidates every session that exists.</panel>
-    [LeafField("signingKeyPath", "Session signing key", Group = "storage", Type = LeafType.Path,
-        Risk = LeafRisk.Destructive)]
+    [ConfigField("signingKeyPath", "Session signing key", Group = "storage", Type = ConfigType.Path,
+        Risk = ConfigRisk.Destructive)]
     public string SigningKeyPath { get; set; } = "/var/lib/kgsm-auth-anchor/session-signing.pem";
 
     /// <summary>Where the public half is written for members on this machine.</summary>
     /// <panel>Where the public half of the signing key is published, for other members on this machine
     /// to verify sessions against. Blank publishes no file; the key is still served over HTTP.</panel>
-    [LeafField("publishedKeyPath", "Published public key", Group = "storage", Type = LeafType.Path,
-        Risk = LeafRisk.Wiring)]
+    [ConfigField("publishedKeyPath", "Published public key", Group = "storage", Type = ConfigType.Path,
+        Risk = ConfigRisk.Wiring)]
     public string PublishedKeyPath { get; set; } = "/var/lib/kgsm/cluster/auth-public-key.json";
 
     /// <summary>Access-token lifetime in minutes. Raised to <see cref="Floors.AccessLifetimeMinutes"/> if lower.</summary>
     /// <panel>How long a session's bearer lasts before it is refreshed. Short bounds how long a stolen
     /// one is worth anything; it does not affect how long somebody stays signed in.</panel>
-    [LeafField("accessLifetimeMin", "Access token lifetime", Group = "sessions",
+    [ConfigField("accessLifetimeMin", "Access token lifetime", Group = "sessions",
         Min = Floors.AccessLifetimeMinutes, Unit = "min")]
     public int? AccessLifetimeMinutes { get; set; }
 
     /// <summary>The absolute session cap in days. Raised to <see cref="Floors.RefreshLifetimeDays"/> if lower.</summary>
     /// <panel>How long somebody stays signed in before a fresh sign-in is required.</panel>
-    [LeafField("refreshLifetimeDays", "Session lifetime", Group = "sessions",
+    [ConfigField("refreshLifetimeDays", "Session lifetime", Group = "sessions",
         Min = Floors.RefreshLifetimeDays, Unit = "days")]
     public int? RefreshLifetimeDays { get; set; }
 
@@ -168,14 +168,14 @@ internal sealed class AnchorSettings
     /// <panel>The browser origins allowed to sign in against this anchor, comma-separated. The Control
     /// Panel is served from a different origin, so without an entry for it the browser refuses the
     /// response before this daemon's answer is read.</panel>
-    [LeafField("allowedOrigins", "Allowed browser origins", Group = "network", Type = LeafType.Csv,
-        Risk = LeafRisk.Wiring)]
+    [ConfigField("allowedOrigins", "Allowed browser origins", Group = "network", Type = ConfigType.Csv,
+        Risk = ConfigRisk.Wiring)]
     public string AllowedOrigins { get; set; } = "";
 
     /// <summary>Sweep cadence for expired session rows. Raised to <see cref="Floors.SessionCleanupMinutes"/> if lower.</summary>
     /// <panel>How often session rows that are already past their cap are deleted. Housekeeping — it
     /// ends no session that is still alive.</panel>
-    [LeafField("sessionCleanupMin", "Session sweep interval", Group = "sessions",
+    [ConfigField("sessionCleanupMin", "Session sweep interval", Group = "sessions",
         Min = Floors.SessionCleanupMinutes, Unit = "min")]
     public int? SessionCleanupMinutes { get; set; }
 }

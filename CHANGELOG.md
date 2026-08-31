@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the anchor is described in `/var/lib/kgsm/anchors/` (`1.13.0`)
+
+It declares `[assembly: Anchor(...)]` and its descriptor is written as `.anchor.json`, which is what
+routes it: a node's leaves live in `/var/lib/kgsm/leaves/` and nothing that administers a node's
+services reads the anchors directory. This daemon serves one capability to the whole cluster and is a
+peer of every node in it; sharing a machine with one is a deployment coincidence, and the ordinary
+topology puts it on its own.
+
+The generator refuses to write an anchor's descriptor to a `.leaf.json` path, so this cannot reach
+the wrong directory without failing the build, and a deploy clears the file it left in the other
+directory. Needs `TheKrystalShip.KGSM.ComponentConfig` 3.0.0, which is what the pin moves to.
+
 ### Changed — the anchor is a cluster member, not a node's leaf (`1.12.0`)
 
 Its descriptor declares `anchor: true`, so kgsm-api leaves it off the service board of whatever node

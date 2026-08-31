@@ -4,7 +4,6 @@
   "displayName": "Auth anchor",
   "unit": "kgsm-auth-anchor.service",
   "role": "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.",
-  "anchor": true,
   "onDemand": false,
   "applyMode": "restart",
   "floorSources": [
