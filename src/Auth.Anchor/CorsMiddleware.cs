@@ -23,18 +23,34 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options)
 {
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext ctx)
     {
-        string? origin = context.Request.Headers.Origin.ToString();
+        string? origin = ctx.Request.Headers.Origin.ToString();
 
         if (!string.IsNullOrEmpty(origin) && Allowed(origin))
         {
-            IHeaderDictionary headers = context.Response.Headers;
+            IHeaderDictionary headers = ctx.Response.Headers;
             headers.AccessControlAllowOrigin = origin;
             // The answer varies by origin, so a cache that keyed on the URL alone would serve one
             // origin's allowance to another.
             headers.Append("Vary", "Origin");
-            headers.AccessControlAllowHeaders = "Authorization, Content-Type";
+            // Reflected, not a fixed list. A browser states exactly which headers it intends to send
+            // and refuses the request when the answer omits one — in the browser, before anything
+            // reaches this daemon, so a caller sees a failed fetch with no status and nothing here
+            // logs it. A list held here would have to be extended every time any client grows a
+            // header, and each omission would present itself as a broken endpoint rather than as a
+            // policy that did not permit it.
+            //
+            // Safe because the origin above is already one this cluster configured: a page that is
+            // allowed to call at all is allowed to say what it is sending, and the request itself is
+            // still authorized on its own merits.
+            string requested = ctx.Request.Headers.AccessControlRequestHeaders.ToString();
+            headers.AccessControlAllowHeaders = string.IsNullOrWhiteSpace(requested)
+                ? "Authorization, Content-Type"
+                : requested;
+
+            // The answer now varies by the requested headers as well as by the origin.
+            headers.Append("Vary", "Access-Control-Request-Headers");
             // Every method a door here answers. A method missing from this list is refused by the
             // browser at the preflight, which the daemon never sees and no log here records — so a
             // door added without its method appearing here reads as an unreachable endpoint rather
@@ -53,13 +69,13 @@ internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options
         // A preflight asks whether the real request is permitted and carries nothing to act on.
         // Answered here for every path, including ones that do not exist, because a browser reads a
         // 404 on a preflight as "not permitted" rather than "no such route".
-        if (HttpMethods.IsOptions(context.Request.Method))
+        if (HttpMethods.IsOptions(ctx.Request.Method))
         {
-            context.Response.StatusCode = StatusCodes.Status204NoContent;
+            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
             return;
         }
 
-        await next(context);
+        await next(ctx);
     }
 
     private bool Allowed(string origin)

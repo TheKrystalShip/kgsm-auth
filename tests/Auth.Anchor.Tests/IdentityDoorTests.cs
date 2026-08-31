@@ -344,6 +344,46 @@ public sealed class IdentityDoorTests(AnchorFixture anchor)
             response.Headers.GetValues("Access-Control-Allow-Origin").Single());
     }
 
+    [Fact]
+    public async Task A_header_a_client_intends_to_send_is_allowed_whatever_it_is_called()
+    {
+        using var preflight = new HttpRequestMessage(HttpMethod.Options, "/auth/identities");
+        preflight.Headers.Add("Origin", AnchorFixture.PanelUrl);
+        preflight.Headers.Add("Access-Control-Request-Method", "GET");
+        preflight.Headers.Add("Access-Control-Request-Headers", "authorization,x-krystal-device");
+
+        HttpResponseMessage response = await anchor.Client.SendAsync(preflight);
+        string allowed = response.Headers.GetValues("Access-Control-Allow-Headers").Single();
+
+        // A browser states exactly what it intends to send and refuses the request when the answer
+        // omits one — in the browser, before anything reaches this daemon, so the caller sees a
+        // failed fetch with no status and nothing here logs it. A fixed list would have to grow every
+        // time any client grows a header, and each omission would present itself as a broken endpoint
+        // rather than as a policy that did not permit it.
+        Assert.Contains("x-krystal-device", allowed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("authorization", allowed, StringComparison.OrdinalIgnoreCase);
+
+        // The answer now depends on what was asked for, so a cache keyed on the URL and origin alone
+        // would serve one client's allowance to another that asked for more.
+        Assert.Contains("Access-Control-Request-Headers", response.Headers.GetValues("Vary"));
+    }
+
+    [Fact]
+    public async Task A_preflight_that_names_no_headers_still_allows_the_ordinary_two()
+    {
+        using var preflight = new HttpRequestMessage(HttpMethod.Options, "/auth/identities");
+        preflight.Headers.Add("Origin", AnchorFixture.PanelUrl);
+        preflight.Headers.Add("Access-Control-Request-Method", "GET");
+
+        HttpResponseMessage response = await anchor.Client.SendAsync(preflight);
+        string allowed = response.Headers.GetValues("Access-Control-Allow-Headers").Single();
+
+        // Reflecting nothing would answer with an empty allowance, which is a refusal spelled as a
+        // permission. Every door here takes a bearer and most take a body.
+        Assert.Contains("Authorization", allowed, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Content-Type", allowed, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── What a surface is told ────────────────────────────────────────────────
 
     [Fact]

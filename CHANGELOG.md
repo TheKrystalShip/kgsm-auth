@@ -7,6 +7,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a client could not add a header without every call failing (`1.9.3`)
+
+`Access-Control-Allow-Headers` was a fixed `Authorization, Content-Type`. A browser states exactly
+which headers it intends to send and refuses the request when the answer omits one — in the browser,
+before anything reaches this daemon, so the caller sees a failed fetch with no status code and nothing
+here logs it. A panel that attached one extra header had every account call, every identity call and
+the whole devices surface die at the preflight while sign-in kept working, because sign-in went
+through a client that sent neither.
+
+The requested headers are reflected now, falling back to the ordinary two when a preflight names
+none — reflecting nothing would answer with an empty allowance, which is a refusal spelled as a
+permission. `Vary` covers `Access-Control-Request-Headers` as well as `Origin`, so a cache cannot
+serve one client's allowance to another that asked for more.
+
+Safe to reflect because the origin is already one this cluster configured: a page allowed to call at
+all is allowed to say what it is sending, and the request is still authorized on its own merits.
+
 ### Fixed — a sign-out did not name the account it ended (`1.9.2`)
 
 `auth.signed_out` carried a null `UserId` whenever the caller signed out with a refresh token, which
