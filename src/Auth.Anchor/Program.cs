@@ -156,6 +156,7 @@ builder.Services.AddSingleton<ConfigFloorReader>();
 builder.Services.AddSingleton<SelfRestart>();
 builder.Services.AddSingleton<AnchorConfigService>();
 builder.Services.AddSingleton<UnitLogReader>();
+builder.Services.AddSingleton<UnitLogFollower>();
 builder.Services.AddHostedService<ClusterMembershipWorker>();
 
 builder.Services.AddSingleton<ISessionRegistry>(_ => new SqliteSessionRegistry(options.SessionStorePath));
@@ -227,6 +228,7 @@ app.MapGet("/auth/session", Endpoints.Session);
 app.MapGet("/auth/config", ConfigEndpoints.Read);
 app.MapPut("/auth/config", ConfigEndpoints.Apply);
 app.MapGet("/auth/logs", LogEndpoints.Read);
+app.MapGet("/auth/logs/stream", LogEndpoints.Stream);
 
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount);

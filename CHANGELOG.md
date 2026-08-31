@@ -7,6 +7,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the journal is followed, not just read (`1.16.0`)
+
+`GET /auth/logs/stream`, server-sent events, admin. The REST read is the scrollback and this carries
+lines from the next one on, so a viewer sees its own journal the way every other log console in the
+ecosystem is seen — live, with nothing to press.
+
+**One `journalctl -f` for however many people are watching.** The first subscriber starts it and the
+last one to leave kills it, so an unwatched page costs nothing and three browsers are not three
+processes reading one journal. Each watcher has a bounded queue that drops its oldest when full: one
+browser on a bad connection cannot stall the follow for the rest, and the journal on disk is the
+durable record a reconnect re-reads.
+
+`fetch`-read rather than `EventSource` on the client's side, for the reason every authenticated
+stream here is: `EventSource` sends no `Authorization` header, and a daemon holding the cluster's
+accounts does not take its token in a query string.
+
 ### Added — `TheKrystalShip.KGSM.Auth.Cluster`, what a member does about identity
 
 Every member of a cluster verifies a session the anchor minted, resolves the person from its own
@@ -32,6 +48,29 @@ A member supplies three seams: `IReplicatedAccounts` for its own store, `ICluste
 its own sessions, and `ISessionValidator` as before. Nothing here opens a file or serves a route.
 
 ## [Unreleased]
+
+### Added — the anchor's journal, live (`1.16.0`)
+
+`GET /auth/logs/stream`, admin, server-sent events. The read above is the scrollback and this carries
+lines from the next one on, so nothing arrives twice on an attach. Read with `fetch` rather than
+`EventSource`, because that sends no `Authorization` header and a daemon holding the cluster's
+accounts does not take its token in a query string.
+
+**One `journalctl -f` however many people are watching** — the first subscriber starts it, the last
+one to leave stops it, and an unwatched page costs nothing. A slow viewer drops its own oldest lines
+rather than stalling the follow for everyone else; the journal on disk is the durable record, and a
+reconnect re-reads it.
+
+An idle journal and a dropped connection look identical on screen, so the stream opens with a comment
+line and heartbeats every 20 seconds: the first is what makes a proxy release the response, and the
+rest are what let a viewer show a tail that has stopped as stopped.
+
+### Fixed — the test suite read the live host (`1.16.0`)
+
+`ConfigDescriptorPath` and `ConfigOverridePath` are the two absolute defaults the anchor fixture left
+alone, so a run read the descriptor the deployed daemon carries — naming the live unit, and following
+its journal. A suite that passes only on a host where the thing under test is already installed is
+measuring the host.
 
 ### Added — the anchor serves its own journal (`1.15.0`)
 

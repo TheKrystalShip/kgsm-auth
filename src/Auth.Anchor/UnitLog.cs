@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Http.Features;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -96,11 +97,15 @@ internal sealed class UnitLogReader(ConfigDescriptorStore descriptors, ILogger<U
     }
 
     /// <summary>
-    /// One journald record. Parsed with <see cref="JsonDocument"/> rather than a generated type
-    /// because the fields wanted are three of many and their names are journald's, not a shape worth
-    /// declaring — and because it costs the AOT build no reflection either way.
+    /// One journald record → one line. Parsed with <see cref="JsonDocument"/> rather than a generated
+    /// type because the fields wanted are three of many and their names are journald's, not a shape
+    /// worth declaring — and because it costs the AOT build no reflection either way.
     /// </summary>
-    private static UnitLogLine? Parse(string raw, string source)
+    /// <remarks>
+    /// The live follow parses through this too, so a line reads the same whether it arrived over the
+    /// read or the stream — two parsers would drift on the first field either of them learned about.
+    /// </remarks>
+    internal static UnitLogLine? Parse(string raw, string source)
     {
         try
         {
@@ -183,5 +188,100 @@ internal static class LogEndpoints
 
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new UnitLogPage(read),
             AnchorJsonContext.Default.UnitLogPage);
+    }
+
+    /// <summary>
+    /// <c>GET /auth/logs/stream</c> — the same lines, as they happen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Server-sent events rather than a socket, because this carries one thing in one direction and a
+    /// browser reconnects it for free. It is read with <c>fetch</c> on the panel's side for the
+    /// ordinary reason: <c>EventSource</c> sends no <c>Authorization</c> header, and a daemon holding
+    /// the cluster's accounts does not put its journal behind a token in the query string.
+    /// </para>
+    /// <para>
+    /// <b>Follow-only.</b> The caller hydrated its scrollback from the read above and applies lines
+    /// from the next one on, so nothing here replays history — sending it would show every line twice
+    /// on every attach.
+    /// </para>
+    /// <para>
+    /// The comment line at the start is what makes a proxy release the response: a stream that has
+    /// carried no bytes is a stream several of them hold on to until it does. The heartbeats after it
+    /// are what stop an idle journal reading as a dropped connection.
+    /// </para>
+    /// </remarks>
+    internal static async Task Stream(HttpContext ctx)
+    {
+        if (!await Endpoints.RequireAuthorityAsync(ctx))
+            return;
+
+        if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is null)
+            return;
+
+        var follower = ctx.RequestServices.GetRequiredService<UnitLogFollower>();
+        if (follower.Watch() is not { } watch)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "journal_unreadable",
+                "This anchor's journal could not be followed on this host.");
+            return;
+        }
+
+        using IDisposable handle = watch.Handle;
+
+        ctx.Response.StatusCode = StatusCodes.Status200OK;
+        ctx.Response.ContentType = "text/event-stream";
+        ctx.Response.Headers.CacheControl = "no-cache";
+        ctx.Response.Headers["X-Accel-Buffering"] = "no";
+        ctx.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+
+        await ctx.Response.WriteAsync(": open\n\n", ctx.RequestAborted);
+        await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+
+        var heartbeat = new PeriodicTimer(TimeSpan.FromSeconds(20));
+        Task<bool> tick = heartbeat.WaitForNextTickAsync(ctx.RequestAborted).AsTask();
+
+        try
+        {
+            while (!ctx.RequestAborted.IsCancellationRequested)
+            {
+                ValueTask<bool> waiting = watch.Lines.WaitToReadAsync(ctx.RequestAborted);
+                Task<bool> lines = waiting.AsTask();
+
+                Task done = await Task.WhenAny(lines, tick).ConfigureAwait(false);
+
+                if (done == tick)
+                {
+                    if (!await tick)
+                        break;
+                    tick = heartbeat.WaitForNextTickAsync(ctx.RequestAborted).AsTask();
+                    await ctx.Response.WriteAsync(": ping\n\n", ctx.RequestAborted);
+                    await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+                    continue;
+                }
+
+                // The follow ended. Closing is the honest answer: the panel says the tail stopped
+                // rather than showing a live pill over a stream carrying nothing.
+                if (!await lines)
+                    break;
+
+                while (watch.Lines.TryRead(out UnitLogLine? line))
+                {
+                    string json = JsonSerializer.Serialize(line, AnchorJsonContext.Default.UnitLogLine);
+                    await ctx.Response.WriteAsync("data: " + json + "\n\n", ctx.RequestAborted);
+                }
+
+                await ctx.Response.Body.FlushAsync(ctx.RequestAborted);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The browser left. Nothing to report: the handle's disposal is what matters, and it is
+            // what stops the follow when this was the last watcher.
+        }
+        finally
+        {
+            heartbeat.Dispose();
+        }
     }
 }

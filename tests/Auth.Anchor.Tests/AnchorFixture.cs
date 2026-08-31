@@ -69,6 +69,17 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__FrontendUrl", PanelUrl);
         Environment.SetEnvironmentVariable("Anchor__AllowSelfRegistration", "true");
 
+        // This anchor's own configuration surface, likewise relocated. Left at its default, a test
+        // run reads the descriptor the REAL kgsm-auth-anchor is deployed with — so the log surface
+        // names the live unit and follows its journal, and a suite passes on a host where the daemon
+        // is installed and fails on one where it is not. The override is where an applied change is
+        // written and is pointed inside the fixture for the blunter reason: nothing under test may
+        // rewrite the environment a running daemon reads.
+        Environment.SetEnvironmentVariable(
+            "Anchor__ConfigDescriptorPath", Path.Combine(Root, "anchors", "auth-anchor.json"));
+        Environment.SetEnvironmentVariable(
+            "Anchor__ConfigOverridePath", Path.Combine(Root, "config-override.env"));
+
         // The journal's state root, relocated into the fixture. Left at its default, a test run
         // appends to the REAL /var/lib/kgsm-auth-anchor/events — where a Control Panel on this
         // machine scans for journals, so a suite that signs people in would put invented sign-ins on
