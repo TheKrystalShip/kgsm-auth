@@ -35,7 +35,11 @@ internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options
             // origin's allowance to another.
             headers.Append("Vary", "Origin");
             headers.AccessControlAllowHeaders = "Authorization, Content-Type";
-            headers.AccessControlAllowMethods = "GET, POST, PATCH, OPTIONS";
+            // Every method a door here answers. A method missing from this list is refused by the
+            // browser at the preflight, which the daemon never sees and no log here records — so a
+            // door added without its method appearing here reads as an unreachable endpoint rather
+            // than as a policy that does not permit it.
+            headers.AccessControlAllowMethods = "GET, POST, PATCH, DELETE, OPTIONS";
             headers.AccessControlMaxAge = "600";
         }
 

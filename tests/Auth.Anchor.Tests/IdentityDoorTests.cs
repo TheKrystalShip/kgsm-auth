@@ -309,6 +309,26 @@ public sealed class IdentityDoorTests(AnchorFixture anchor)
         Assert.False(anchor.Service<ReauthGate>().IsFresh(session.Sid));
     }
 
+    // ── What a browser is allowed to send ─────────────────────────────────────
+
+    [Fact]
+    public async Task Every_method_a_door_here_answers_is_allowed_across_origins()
+    {
+        using var preflight = new HttpRequestMessage(HttpMethod.Options, "/auth/identities/anything");
+        preflight.Headers.Add("Origin", AnchorFixture.PanelUrl);
+        preflight.Headers.Add("Access-Control-Request-Method", "DELETE");
+
+        HttpResponseMessage response = await anchor.Client.SendAsync(preflight);
+        string allowed = response.Headers.GetValues("Access-Control-Allow-Methods").Single();
+
+        // A method missing here is refused by the browser at the preflight, which this daemon never
+        // sees and no log records — so the door reads as unreachable rather than as not permitted.
+        // Detaching an identity and deleting an account are both DELETE, and both are reached from a
+        // panel on another origin.
+        foreach (string method in new[] { "GET", "POST", "PATCH", "DELETE", "OPTIONS" })
+            Assert.Contains(method, allowed);
+    }
+
     // ── What a surface is told ────────────────────────────────────────────────
 
     [Fact]

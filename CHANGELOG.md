@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a browser could not reach the doors that detach (`1.8.1`)
+
+The cross-origin allowance named `GET, POST, PATCH, OPTIONS`, so a panel on another origin was
+refused at the preflight for every `DELETE` — detaching an identity and deleting an account. A
+preflight refusal happens in the browser: this daemon never sees the request and no log here records
+it, so the door reads as unreachable rather than as a policy that does not permit it.
+
+The allowed methods are pinned by a test against the doors that exist, so a door added with a new
+method cannot ship without the allowance following it.
+
 ### Added — the anchor records what happens to the cluster's accounts (`1.8.0`)
 
 The anchor writes its own event journal, at `/var/lib/kgsm-auth-anchor/events`. A Control Panel on
