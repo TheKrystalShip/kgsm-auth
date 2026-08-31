@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the anchor serves its own journal (`1.15.0`)
+
+`GET /auth/logs?lines=N`, admin, in the shape every KGSM log surface renders — so an anchor's journal
+and a leaf's are read through one component in the panel. A node's journal is read by the API running
+on that node; an anchor has no node above it, which is the same reason it serves its own
+configuration.
+
+The unit it reads is the descriptor's, not a second setting. It carries
+`SupplementaryGroups=systemd-journal`, without which `journalctl` exits 0 having printed nothing — a
+success indistinguishable from a unit that has logged nothing. An unreadable journal answers 503 and
+an empty one answers an empty list, because those are different facts.
+
 ### Added — the anchor serves its own configuration surface (`1.14.0`)
 
 `GET /auth/config` and `PUT /auth/config`, admin, on the origin a panel already reaches this daemon

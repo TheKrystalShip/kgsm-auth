@@ -399,6 +399,7 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(AnchorConfigUpdate))]
 [JsonSerializable(typeof(AnchorConfigApplyResult))]
 [JsonSerializable(typeof(RawConfigDescriptor))]
+[JsonSerializable(typeof(UnitLogPage))]
 [JsonSerializable(typeof(ClusterRoster))]
 [JsonSerializable(typeof(AccountRecord))]
 [JsonSerializable(typeof(SessionsPage))]

@@ -59,6 +59,10 @@ EnvironmentFile=-/etc/kgsm-auth-anchor/kgsm-auth-anchor.env
 # systemd creates /var/lib/kgsm-auth-anchor owned by this user. 0700 because the private signing
 # key lives in it, and because SQLite writes -wal and -shm beside its database — write permission
 # on the file alone is not enough.
+# Reading this daemon's own journal, which is what its Logs tab shows. Without the group journalctl
+# exits 0 having printed nothing — a success indistinguishable from a unit that has logged nothing.
+SupplementaryGroups=systemd-journal
+
 StateDirectory=kgsm-auth-anchor
 StateDirectoryMode=0700
 
