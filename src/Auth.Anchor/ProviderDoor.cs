@@ -266,9 +266,9 @@ internal static class RegisterEndpoint
         // account exists on the anchor alone until something else makes a member take a snapshot —
         // so a person could sign in and be a stranger everywhere they went.
         var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();
-        long version = await versions.NextAsync(account.UserId, now, ctx.RequestAborted);
+        long version = await versions.NextAsync(account.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);
         await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-            .PublishAsync(account, version, ctx.RequestAborted);
+            .DrainAsync(ctx.RequestAborted);
 
         logger.LogInformation("'{Username}' registered and is awaiting approval", username);
 

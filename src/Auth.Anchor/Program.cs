@@ -70,11 +70,15 @@ builder.Services.AddSingleton<IUserStore>(_ => new SqliteUserStore(
     new UserStoreOptions { Path = options.UserStorePath }));
 builder.Services.AddSingleton<IUserPasswordHasher, IdentityPasswordHasher>();
 
-// The counter every account change is ordered by, cluster-wide. It lives beside the accounts, in a
-// table older builds of the store have never heard of — so a surface pinned to an earlier version
-// goes on reading accounts exactly as it did.
-builder.Services.AddSingleton<IAccountVersions>(_ => new SqliteAccountVersions(
+// The counter every account change is ordered by, cluster-wide, and the record of what the cluster
+// has not yet been told. Both live beside the accounts, in tables older builds of the store have
+// never heard of — so a surface pinned to an earlier version goes on reading accounts exactly as it
+// did — and one instance serves both, because a version and the announcement owed for it are written
+// in the same transaction.
+builder.Services.AddSingleton<SqliteAccountVersions>(_ => new SqliteAccountVersions(
     new UserStoreOptions { Path = options.UserStorePath }));
+builder.Services.AddSingleton<IAccountVersions>(sp => sp.GetRequiredService<SqliteAccountVersions>());
+builder.Services.AddSingleton<IAccountAnnouncements>(sp => sp.GetRequiredService<SqliteAccountVersions>());
 
 // The staleness bound on a demotion. Short, because the read behind it is a local point query and
 // there is nothing to buy by keeping it long.
@@ -179,6 +183,10 @@ builder.Services.AddTransient(sp => new ProviderCatalog(
 builder.Services.AddSingleton(sp => new IdentityLinkService(sp.GetRequiredService<IUserStore>()));
 builder.Services.AddSingleton<MemberTargets>();
 builder.Services.AddSingleton<AccountBroadcast>();
+// Sends what the write paths did not manage to: a change made while the process was dying, a bus that
+// was unreachable, a cluster that had no members at the time. Nothing depends on a write path having
+// drained, which is what makes the announcement as durable as the change.
+builder.Services.AddHostedService<AccountBroadcastWorker>();
 builder.Services.AddSingleton<SessionBroadcast>();
 
 // Deletes rows already past their cap. Housekeeping — it ends no session that is still alive.

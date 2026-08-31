@@ -319,10 +319,10 @@ internal static class AccountEndpoints
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         long version = await ctx.RequestServices.GetRequiredService<IAccountVersions>()
-            .NextAsync(user.UserId, now, ctx.RequestAborted);
+            .NextAsync(user.UserId, now, AccountAnnouncementKind.Removed, ctx.RequestAborted);
 
         await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-            .PublishRemovalAsync(user.UserId, version, ctx.RequestAborted);
+            .DrainAsync(ctx.RequestAborted);
 
         // Nothing announces the sessions. A member resolves authority against its replica on every
         // request, and an account that is not there answers "no account" — so the removal above ends
@@ -504,10 +504,10 @@ internal static class AccountEndpoints
     private static async Task AnnounceAsync(HttpContext ctx, KgsmUser user, DateTimeOffset now)
     {
         long version = await ctx.RequestServices.GetRequiredService<IAccountVersions>()
-            .NextAsync(user.UserId, now, ctx.RequestAborted);
+            .NextAsync(user.UserId, now, AccountAnnouncementKind.Removed, ctx.RequestAborted);
 
         await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-            .PublishAsync(user with { Updated = now }, version, ctx.RequestAborted);
+            .DrainAsync(ctx.RequestAborted);
     }
 
     /// <summary>The administrator who acted, as an audit trail names one.</summary>

@@ -7,6 +7,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — an account change and the announcement owed for it are one write (`1.17.0`)
+
+The change was applied to the accounts and the announcement enqueued onto the cluster bus afterwards,
+in a different database. A crash in the gap left a member changed and the cluster never told — the
+change was not lost, only the telling of it, and nothing detected that. A member repaired it by taking
+a snapshot, which it does when it joins and never again.
+
+`account_announcements` lives in the accounts' own file and is written **in the same transaction as
+the version that orders the change**, so a change cannot exist at a version with nothing owed for it.
+That is the only place such a table can be: two databases cannot be made atomic however carefully the
+writes are sequenced.
+
+`AccountBroadcast` drains what is recorded rather than announcing what it was handed, and deletes a
+row only once the bus has taken the message — so a crash between the two costs a redelivery, which
+every replica drops as stale, rather than a change nobody hears about. A write path still drains
+immediately, so the cluster hears within the moment; `AccountBroadcastWorker` drains at startup and on
+a timer, so nothing depends on that having happened.
+
+Pending announcements collapse to the highest version per account, because an announcement carries the
+account's whole current state — sending an older one first would put the current state on the wire
+under an earlier version's name — and a removal supersedes a change it followed.
+
+Like `account_versions`, a table older builds have never heard of, so `UserSchema.Version` does not
+move and no surface reading the shared account store is refused.
+
 ### Added — the journal is followed, not just read (`1.16.0`)
 
 `GET /auth/logs/stream`, server-sent events, admin. The REST read is the scrollback and this carries
@@ -46,8 +71,6 @@ identity cannot survive.
 
 A member supplies three seams: `IReplicatedAccounts` for its own store, `IClusterSessionAuthority` for
 its own sessions, and `ISessionValidator` as before. Nothing here opens a file or serves a route.
-
-## [Unreleased]
 
 ### Added — the anchor's journal, live (`1.16.0`)
 

@@ -31,9 +31,9 @@ public class AccountVersionsTests
         using TempStore temp = new();
         IAccountVersions versions = Versions(temp);
 
-        Assert.Equal(1, await versions.NextAsync("usr_a", Now));
-        Assert.Equal(2, await versions.NextAsync("usr_a", Now));
-        Assert.Equal(3, await versions.NextAsync("usr_a", Now));
+        Assert.Equal(1, await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed));
+        Assert.Equal(2, await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed));
+        Assert.Equal(3, await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed));
         Assert.Equal(3, await versions.CurrentAsync("usr_a"));
     }
 
@@ -43,12 +43,12 @@ public class AccountVersionsTests
         using TempStore temp = new();
         IAccountVersions versions = Versions(temp);
 
-        await versions.NextAsync("usr_a", Now);
-        await versions.NextAsync("usr_a", Now);
+        await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+        await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
 
         // A shared counter would make one person's change look newer than another's, and every
         // replica would drop the older-numbered one.
-        Assert.Equal(1, await versions.NextAsync("usr_b", Now));
+        Assert.Equal(1, await versions.NextAsync("usr_b", Now, AccountAnnouncementKind.Changed));
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class AccountVersionsTests
         IAccountVersions versions = Versions(temp);
 
         long[] assigned = await Task.WhenAll(
-            Enumerable.Range(0, 20).Select(_ => versions.NextAsync("usr_a", Now)));
+            Enumerable.Range(0, 20).Select(_ => versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed)));
 
         // The read and the increment are one statement precisely so two changes cannot take the
         // same number and leave one of them undroppable by every replica.
@@ -162,5 +162,90 @@ public class AccountVersionsTests
 
         Assert.NotNull(await reopened.FindByIdAsync(user.UserId));
         Assert.Equal(UserSchema.Version, 1);
+    }
+
+    [Fact]
+    public async Task AVersionAndTheAnnouncementOwedForItAreOneWrite()
+    {
+        // The whole point of the table. A change that exists at a version with nothing owed for it is
+        // a change no member is ever told about, and nothing detects it — so the two are written in
+        // one transaction rather than one after the other.
+        using TempStore temp = new();
+        SqliteAccountVersions versions = Versions(temp);
+
+        long version = await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+
+        IReadOnlyList<AccountAnnouncement> owed = await versions.PendingAsync();
+        Assert.Equal([new AccountAnnouncement("usr_a", version, AccountAnnouncementKind.Changed)], owed);
+    }
+
+    [Fact]
+    public async Task TwoChangesToOnePersonAreOneThingToSend()
+    {
+        // An announcement carries the account's whole current state, so the older version describes
+        // nothing that is still true. Sending it first would put the current state on the wire under
+        // an earlier version's name.
+        using TempStore temp = new();
+        SqliteAccountVersions versions = Versions(temp);
+
+        await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+        long second = await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+
+        AccountAnnouncement owed = Assert.Single(await versions.PendingAsync());
+        Assert.Equal(second, owed.Version);
+    }
+
+    [Fact]
+    public async Task ARemovalIsWhatIsOwedAfterIt()
+    {
+        // Changed, then deleted. What the cluster needs is that the account is gone; announcing the
+        // state it briefly had would be telling members something that stopped being true.
+        using TempStore temp = new();
+        SqliteAccountVersions versions = Versions(temp);
+
+        await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+        long removed = await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Removed);
+
+        AccountAnnouncement owed = Assert.Single(await versions.PendingAsync());
+        Assert.Equal(new AccountAnnouncement("usr_a", removed, AccountAnnouncementKind.Removed), owed);
+    }
+
+    [Fact]
+    public async Task WhatHasBeenSentIsForgotten()
+    {
+        using TempStore temp = new();
+        SqliteAccountVersions versions = Versions(temp);
+
+        long version = await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+        await versions.NextAsync("usr_b", Now, AccountAnnouncementKind.Changed);
+
+        await versions.ClearAsync("usr_a", version);
+
+        AccountAnnouncement owed = Assert.Single(await versions.PendingAsync());
+        Assert.Equal("usr_b", owed.UserId);
+    }
+
+    [Fact]
+    public async Task AChangeMadeAfterASendIsStillOwed()
+    {
+        // Clearing names a version rather than an account, because a change made while the previous
+        // one was being sent must not be forgotten along with it.
+        using TempStore temp = new();
+        SqliteAccountVersions versions = Versions(temp);
+
+        long sent = await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+        long since = await versions.NextAsync("usr_a", Now, AccountAnnouncementKind.Changed);
+
+        await versions.ClearAsync("usr_a", sent);
+
+        AccountAnnouncement owed = Assert.Single(await versions.PendingAsync());
+        Assert.Equal(since, owed.Version);
+    }
+
+    [Fact]
+    public async Task NothingIsOwedWhenNothingHasChanged()
+    {
+        using TempStore temp = new();
+        Assert.Empty(await Versions(temp).PendingAsync());
     }
 }

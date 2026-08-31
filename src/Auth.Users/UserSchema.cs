@@ -118,4 +118,32 @@ public static class UserSchema
             updated_utc TEXT NOT NULL
         );
         """;
+
+    /// <summary>
+    /// Account changes that have been made here and not yet told to the cluster.
+    /// </summary>
+    /// <remarks>
+    /// <b>In the accounts' own file, which is the whole point.</b> A row here is written in the same
+    /// transaction as the version that orders the change, so a change cannot exist at a version and
+    /// have no announcement owed for it — which is what a queue in another database could never
+    /// promise, however carefully the two writes were sequenced.
+    /// <para>
+    /// Keyed by account and version so the same change is never owed twice, and rows are deleted once
+    /// the cluster has been told. An empty table is a member with nothing outstanding, which is the
+    /// ordinary state.
+    /// </para>
+    /// <para>
+    /// Like <c>account_versions</c>, a table older builds have never heard of, so
+    /// <see cref="Version"/> does not move and no surface reading this file is refused.
+    /// </para>
+    /// </remarks>
+    public const string CreateAccountAnnouncements = """
+        CREATE TABLE IF NOT EXISTS account_announcements (
+            user_id     TEXT NOT NULL,
+            version     INTEGER NOT NULL,
+            kind        TEXT NOT NULL,
+            created_utc TEXT NOT NULL,
+            PRIMARY KEY (user_id, version)
+        );
+        """;
 }
