@@ -72,6 +72,20 @@ internal sealed record AnchorOptions(
     public string LinkRedirectUri(string provider) =>
         $"{PublicBaseUrl.TrimEnd('/')}/auth/identities/{provider}/callback";
 
+    /// <summary>
+    /// Where the bootstrap administrator's one-time password is left, on an anchor whose account store
+    /// was empty when it first started.
+    /// </summary>
+    /// <remarks>
+    /// Beside the session store rather than beside the accounts: the accounts may be a file shared
+    /// with every other KGSM service on the machine, and a credential belongs to the daemon that
+    /// minted it, in the directory only that daemon writes.
+    /// </remarks>
+    public string InitialAdminPasswordPath =>
+        Path.Combine(
+            Path.GetDirectoryName(Path.GetFullPath(SessionStorePath)) is { Length: > 0 } dir ? dir : ".",
+            "initial-admin-password");
+
     /// <summary>Whether a browser is sent anywhere after a provider sign-in.</summary>
     public bool RedirectsToPanel => !string.IsNullOrWhiteSpace(FrontendUrl);
 

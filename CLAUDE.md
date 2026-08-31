@@ -173,6 +173,12 @@ This file is the authority for the auth design; the account-store design is also
   a password is set: an account an admin created or approved carries `TierSource.Granted` and is
   spared however long it waits, while a self-registered one holds a password and must still expire,
   or the cap fills with a queue nobody can drain.
+- **A store with no accounts gets one administrator, and `FirstAdmin` is where that lives.** Both a
+  host's API and a cluster's anchor open account stores, and both must agree on what the first account
+  is called, what the one-time password file holds and when it is removed — so there is one
+  implementation and whichever opens an empty store first wins. It reports failures rather than
+  logging them: this package holds no logger and should not, or every surface that opens a store takes
+  one too.
 - **A password is at least `Passwords.MinLength` characters, and length is the whole rule.** Every
   door that sets one — registration, an admin reset, a holder changing their own — reads the same
   constant, because a floor checked in three callers is three places for it to drift low.

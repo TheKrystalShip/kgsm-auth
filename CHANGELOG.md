@@ -7,6 +7,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a fresh anchor was a door nobody could open (`1.11.0`)
+
+An anchor whose account store is empty creates the administrator `admin` and leaves a one-time
+password in `initial-admin-password`, beside the session store. The file is removed the moment that
+account signs in with a password, and only by that account: a host can grow other accounts from a
+shell first, and somebody else's first sign-in must not tidy away a credential nobody has used.
+
+**Without it there was no way in at all.** Registration is off unless a cluster turns it on, and an
+account made through it holds `none` and waits for an approval only an administrator can give — so the
+first person to arrive was stuck behind an account nobody existed to approve, and the only way through
+was SQL against the account store.
+
+It goes unnoticed wherever an anchor shares a machine with a Control Panel: they share one account
+store and the panel bootstrapped it first. An anchor on a machine of its own — which nothing prevents,
+and which is what a small cluster wants — starts with nothing.
+
+**One implementation, not two.** `FirstAdmin` moved into `TheKrystalShip.KGSM.Auth.Users`, where the
+accounts are, so a host's API and a cluster's anchor cannot disagree about what the first account is
+called, what the file holds, or when it is removed. Whichever opens an empty store first creates the
+account and the other finds accounts and does nothing.
+
+### Changed — the account store still takes no logger (`TheKrystalShip.KGSM.Auth.Users` 1.4.0-dev.5)
+
+`FirstAdmin` reports what happened and each surface words it: `TryWritePasswordFile` and
+`TryConsumePasswordFile` hand back the failure instead of logging it. A caller that cannot write the
+file says the password out loud in its own log rather than leaving a host with an administrator nobody
+can be — and an account store that took a logger would take one into every surface that opens the
+store.
+
 ### Added — what this is, and what the cluster contains (`1.10.0`)
 
 `GET /auth/identity` and `GET /auth/cluster/members`. A panel deployed anywhere — a bucket, a static

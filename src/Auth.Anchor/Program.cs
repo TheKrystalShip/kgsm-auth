@@ -96,6 +96,12 @@ builder.Services.AddSingleton(sp => new LocalSignInService(
 builder.Services.AddKgsmJournal(AnchorJournal.ProducerId, typeof(AnchorJournal).Assembly);
 builder.Services.AddSingleton<AnchorJournal>();
 
+// The administrator an empty store gets. An anchor sharing a machine with a Control Panel inherits
+// the accounts that panel bootstrapped; one on a machine of its own starts with nothing, and without
+// this is a door nobody can open — registration is off unless a cluster turns it on, and an account
+// made through it waits for an approval only an administrator can give.
+builder.Services.AddHostedService<AnchorBootstrapper>();
+
 // Whether a session has proved lately that its holder owns it, and the links started against that
 // proof. Both in memory: a restart makes every session prove itself again, which is the safe
 // direction to fail in, and drops links in flight, which costs a click and cannot grant anything.

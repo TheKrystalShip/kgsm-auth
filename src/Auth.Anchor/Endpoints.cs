@@ -153,6 +153,12 @@ internal static class Endpoints
                 logger.LogInformation(
                     "'{Username}' signed in with a password at {Tier}",
                     user.Username, KgsmTiers.ToWire(principal.Tier));
+
+                // The one-time password file has done its job the moment the account it names signs
+                // in with a password: what it holds has stopped being the only way into this cluster.
+                // Scoped to that account, so somebody else's first sign-in does not tidy away a
+                // credential still nobody has used.
+                ConsumeBootstrapFile(ctx, user.Username, logger);
                 await MintSessionFor(ctx, principal.Identity, principal.Tier, user, now,
                     AsJson(ctx, user, principal.Tier, StatusCodes.Status200OK));
                 return;
@@ -676,6 +682,30 @@ internal static class Endpoints
                 fromStatus: UserStatuses.ToWire(before.Status),
                 toStatus: UserStatuses.ToWire(after.Status),
                 actor: actor, origin: AnchorJournal.OriginUi, ct: ct);
+        }
+    }
+
+    /// <summary>
+    /// Remove the bootstrap password file once the account it names has signed in.
+    /// </summary>
+    /// <remarks>
+    /// Never fails the sign-in. It worked; a file that could not be tidied away afterwards is a thing
+    /// to say in a log, not a reason to refuse somebody who has just proved who they are.
+    /// </remarks>
+    private static void ConsumeBootstrapFile(HttpContext ctx, string username, ILogger logger)
+    {
+        string path = ctx.RequestServices.GetRequiredService<AnchorOptions>().InitialAdminPasswordPath;
+
+        if (FirstAdmin.TryConsumePasswordFile(path, username, out Exception? error))
+        {
+            logger.LogInformation(
+                "'{Username}' has signed in, so the initial administrator password at {Path} is gone.",
+                username, path);
+        }
+        else if (error is not null)
+        {
+            logger.LogWarning(error,
+                "the initial administrator password at {Path} could not be removed.", path);
         }
     }
 
