@@ -20,6 +20,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="SessionStorePath">Where live sessions are recorded.</param>
 /// <param name="SigningKeyPath">The private signing key.</param>
 /// <param name="PublishedKeyPath">Where the public half is written, or null to publish no file.</param>
+/// <param name="ConfigDescriptorPath">The descriptor this anchor's own configuration surface is read from.</param>
+/// <param name="ConfigOverridePath">Where a change made through that surface is written.</param>
 /// <param name="AccessLifetime">How long an access bearer lives.</param>
 /// <param name="RefreshLifetime">The absolute session cap.</param>
 /// <param name="AllowedOrigins">Browser origins allowed to call this anchor.</param>
@@ -38,6 +40,8 @@ internal sealed record AnchorOptions(
     string SessionStorePath,
     string SigningKeyPath,
     string? PublishedKeyPath,
+    string ConfigDescriptorPath,
+    string ConfigOverridePath,
     TimeSpan AccessLifetime,
     TimeSpan RefreshLifetime,
     IReadOnlyList<string> AllowedOrigins,
@@ -105,6 +109,8 @@ internal sealed record AnchorOptions(
             // Blank is a decision, not an omission: an anchor with no member beside it publishes no
             // file and serves the key over HTTP alone.
             PublishedKeyPath: string.IsNullOrWhiteSpace(s.PublishedKeyPath) ? null : s.PublishedKeyPath.Trim(),
+            ConfigDescriptorPath: s.ConfigDescriptorPath.Trim(),
+            ConfigOverridePath: s.ConfigOverridePath.Trim(),
             AccessLifetime: TimeSpan.FromMinutes(
                 AtLeast(s.AccessLifetimeMinutes ?? 15, AnchorSettings.Floors.AccessLifetimeMinutes)),
             RefreshLifetime: TimeSpan.FromDays(

@@ -146,6 +146,15 @@ builder.Services.AddKgsmCluster(clusterOptions);
 // its addresses, its incarnation — is entirely what the package already holds; the node block exists
 // for facts an anchor does not have.
 builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>()));
+
+// The anchor's own configuration surface: the descriptor its build wrote, the overrides an
+// administrator has set, what this host's deploy files set beneath them, and the bounce that makes a
+// change take effect.
+builder.Services.AddSingleton<ConfigDescriptorStore>();
+builder.Services.AddSingleton<ConfigOverrideStore>();
+builder.Services.AddSingleton<ConfigFloorReader>();
+builder.Services.AddSingleton<SelfRestart>();
+builder.Services.AddSingleton<AnchorConfigService>();
 builder.Services.AddHostedService<ClusterMembershipWorker>();
 
 builder.Services.AddSingleton<ISessionRegistry>(_ => new SqliteSessionRegistry(options.SessionStorePath));
@@ -211,6 +220,12 @@ app.MapPost("/auth/sign-in", Endpoints.SignIn);
 app.MapPost("/auth/session/refresh", Endpoints.Refresh);
 app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
 app.MapGet("/auth/session", Endpoints.Session);
+// This anchor's own configuration surface. It answers for itself because nothing else can: a leaf is
+// configured through the node that runs it, and an anchor is a peer of every node rather than
+// something one hosts.
+app.MapGet("/auth/config", ConfigEndpoints.Read);
+app.MapPut("/auth/config", ConfigEndpoints.Apply);
+
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount);
 app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);

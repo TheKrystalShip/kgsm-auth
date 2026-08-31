@@ -55,7 +55,7 @@ internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options
             // browser at the preflight, which the daemon never sees and no log here records — so a
             // door added without its method appearing here reads as an unreachable endpoint rather
             // than as a policy that does not permit it.
-            headers.AccessControlAllowMethods = "GET, POST, PATCH, DELETE, OPTIONS";
+            headers.AccessControlAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
             headers.AccessControlMaxAge = "600";
 
             // Attaching an identity sets a one-time ticket cookie on an XHR response, and a browser

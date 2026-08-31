@@ -7,6 +7,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the anchor serves its own configuration surface (`1.14.0`)
+
+`GET /auth/config` and `PUT /auth/config`, admin, on the origin a panel already reaches this daemon
+at. Nothing else could offer them: a leaf is configured through the node that runs it, and an anchor
+is a peer of every node rather than something one of them hosts — on the ordinary topology there is
+no node beside it to ask.
+
+The surface is the descriptor this build generated, joined with what the host's deploy files set and
+what an administrator has overridden, in three tiers that are reported separately because resetting a
+key restores a different thing in each. Values are checked against the descriptor's own type, enum
+and bounds — the same declarations `AnchorSettings` clamps to — so the panel cannot accept a value
+this daemon would refuse or silently move. A change is written to `ConfigOverridePath`, fed back by a
+systemd drop-in ordered after everything else the unit loads, and picked up by a restart.
+
+**There is no canary and no rollback**, and that is the situation rather than a gap: the process that
+would watch the restart and put the old values back is the process being restarted. So every value is
+checked before anything is written, and the path to remove is logged before the bounce — deleting
+that file returns every knob to what the deploy set.
+
+The restart is queued with `systemctl restart --no-block`, which returns as soon as systemd owns the
+job, so this process ending is the job proceeding rather than the job being lost. The answer is
+written after, and reaches the caller because SIGTERM drains the requests already in flight — which
+is what lets it carry whether the restart was accepted. A refusal means the change is written and is
+NOT in force, and that is a different state from one being applied.
+
+### Fixed — the browser refused every `PUT` to this anchor (`1.14.0`)
+
+`PUT` was missing from the CORS allow-methods list, so a browser refused the preflight before the
+request was made. There is no status code and no log line for that: it surfaces as an endpoint that
+appears not to exist.
+
 ### Changed — the anchor is described in `/var/lib/kgsm/anchors/` (`1.13.0`)
 
 It declares `[assembly: Anchor(...)]` and its descriptor is written as `.anchor.json`, which is what

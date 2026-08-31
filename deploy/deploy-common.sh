@@ -141,6 +141,44 @@ render_polkit_rule() {
     printf '%s\n' "$rendered"
 }
 
+# ── The anchor's own configuration surface ────────────────────────────────────
+# This daemon serves the page its configuration is changed on, because nothing else can: a leaf is
+# configured through the node that runs it, and an anchor is a peer of every node rather than
+# something one of them hosts. Two things have to be in place for a change to take effect, and both
+# are installed once by setup.sh:
+#
+#   the drop-in   feeds the override file back to the unit, ordered after everything else it loads
+#   the grant     lets the account the daemon runs as bounce its own unit, and nothing else
+#
+# The override FILE is not installed by anything — the daemon writes it, unprivileged, in its own
+# state directory, and its absence is the normal state of an anchor nobody has changed.
+CONFIG_OVERRIDE_FILE="${KGSM_ANCHOR_CONFIG_OVERRIDE:-/var/lib/${PROJECT}/config-override.env}"
+CONFIG_DROPIN_TEMPLATE="${REPO_DIR}/deploy/config/50-${PROJECT}-config.conf"
+CONFIG_DROPIN_DST="${SYSTEMD_DIR}/${UNITS[0]}.d/50-${PROJECT}-config.conf"
+CONFIG_POLKIT_TEMPLATE="${REPO_DIR}/deploy/config/49-${PROJECT}-self-restart.rules.in"
+CONFIG_POLKIT_DST="/etc/polkit-1/rules.d/49-${PROJECT}-self-restart.rules"
+
+render_config_dropin() {
+    [[ -f "$CONFIG_DROPIN_TEMPLATE" ]] || { err "missing drop-in template: ${CONFIG_DROPIN_TEMPLATE}"; return 1; }
+    local rendered
+    rendered="$(< "$CONFIG_DROPIN_TEMPLATE")"
+    printf '%s\n' "${rendered//@OVERRIDE_FILE@/${CONFIG_OVERRIDE_FILE}}"
+}
+
+# The service account, which is what the grant names. render_unit rewrites the unit's User= to the
+# deploying user, so under deploy.sh these are one account and this grant restates what the deploy
+# grant already allows. It is installed anyway: the two say different things, they are read by
+# different templates, and a host where the service account is its own is exactly the host where
+# nobody would think to check.
+render_config_polkit() {
+    [[ -f "$CONFIG_POLKIT_TEMPLATE" ]] || { err "missing polkit template: ${CONFIG_POLKIT_TEMPLATE}"; return 1; }
+    local rendered
+    rendered="$(< "$CONFIG_POLKIT_TEMPLATE")"
+    rendered="${rendered//@SVC_USER@/${DEPLOY_USER}}"
+    rendered="${rendered//@UNIT@/${UNITS[0]}}"
+    printf '%s\n' "$rendered"
+}
+
 SERVICE="${UNITS[0]}"           # the primary unit, e.g. kgsm-api.service
 PUBLISH_DIR="${REPO_DIR}/artifacts/publish"
 

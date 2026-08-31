@@ -284,7 +284,7 @@ withdraws only a file whose contents are its own key, and the holder reconciles 
 ```
 
 Its whole configurable surface is `src/Auth.Anchor/kgsm-auth-anchor.settings.json`, which the build
-generates `deploy/kgsm-auth-anchor.leaf.json` from — so the Control Panel renders the page from the
+generates `deploy/kgsm-auth-anchor.anchor.json` from — so the Control Panel renders the page from the
 same declaration the daemon binds. Edit the settings class, never the JSON.
 
 The pacman package installs it **switched off**. A cluster has one anchor and which machine holds it

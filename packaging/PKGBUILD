@@ -69,10 +69,26 @@ package() {
     install -Dm640 "${repo}/deploy/kgsm-auth-anchor.env.example" \
         "${pkgdir}/etc/${pkgname}/${pkgname}.env"
 
-    # The config descriptor, in the directory kgsm-api scans. Packaged rather than installed by a
-    # script, so it can never describe a different build than the one beside it.
-    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.leaf.json" \
-        "${pkgdir}/var/lib/kgsm/leaves/auth-anchor.json"
+    # The config descriptor, in the ANCHORS directory — not where a node's leaves are scanned for.
+    # This daemon serves one capability to the whole cluster and is a peer of every node in it, so it
+    # belongs on no node's service board. Packaged rather than installed by a script, so it can never
+    # describe a different build than the one beside it.
+    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.anchor.json" \
+        "${pkgdir}/var/lib/kgsm/anchors/auth-anchor.json"
+
+    # What makes this anchor's own configuration page take effect: the drop-in that feeds a change
+    # back to the unit, and the grant that lets the service account bounce it. The override file
+    # itself is written by the daemon at runtime and belongs to no package.
+    install -Dm644 "${repo}/deploy/config/50-kgsm-auth-anchor-config.conf" \
+        "${pkgdir}/usr/lib/systemd/system/kgsm-auth-anchor.service.d/50-kgsm-auth-anchor-config.conf"
+    sed -i "s|@OVERRIDE_FILE@|/var/lib/kgsm-auth-anchor/config-override.env|" \
+        "${pkgdir}/usr/lib/systemd/system/kgsm-auth-anchor.service.d/50-kgsm-auth-anchor-config.conf"
+
+    sed -e "s|@SVC_USER@|kgsm|" -e "s|@UNIT@|kgsm-auth-anchor.service|" \
+        "${repo}/deploy/config/49-kgsm-auth-anchor-self-restart.rules.in" \
+        > "${srcdir}/49-kgsm-auth-anchor-self-restart.rules"
+    install -Dm644 "${srcdir}/49-kgsm-auth-anchor-self-restart.rules" \
+        "${pkgdir}/usr/share/polkit-1/rules.d/49-kgsm-auth-anchor-self-restart.rules"
 
     install -Dm644 "${repo}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

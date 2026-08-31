@@ -153,6 +153,26 @@
       "risk": "wiring"
     },
     {
+      "key": "configDescriptorPath",
+      "env": "Anchor__ConfigDescriptorPath",
+      "label": "Config descriptor",
+      "description": "The file describing what this anchor can be configured with, written by its own build and installed by its deploy. It is read to render this page; absent, there is no page.",
+      "group": "storage",
+      "type": "path",
+      "default": "/var/lib/kgsm/anchors/auth-anchor.json",
+      "risk": "wiring"
+    },
+    {
+      "key": "configOverridePath",
+      "env": "Anchor__ConfigOverridePath",
+      "label": "Config overrides",
+      "description": "Where a change made on this page is written. A systemd drop-in feeds the file back to this daemon, so it wins over everything the deploy set. Deleting it returns every knob to what the deploy set, which is how this anchor is recovered if a change stops it starting.",
+      "group": "storage",
+      "type": "path",
+      "default": "/var/lib/kgsm-auth-anchor/config-override.env",
+      "risk": "destructive"
+    },
+    {
       "key": "allowSelfRegistration",
       "env": "Anchor__AllowSelfRegistration",
       "label": "Let people register",

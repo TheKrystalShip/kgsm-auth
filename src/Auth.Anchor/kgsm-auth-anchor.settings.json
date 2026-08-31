@@ -7,7 +7,7 @@
   // declared here binds to nothing, which is what stops a stale override from looking applied.
   //
   // Every key below maps 1:1 onto a property of AnchorSettings, which the daemon binds in one step,
-  // and onto a [LeafField] the config descriptor is generated from. A knob that exists in one place
+  // and onto a [ConfigField] the config descriptor is generated from. A knob that exists in one place
   // and not the others fails the build.
 
   "Anchor": {
@@ -57,6 +57,17 @@
     // for what several members on one machine share. Blank publishes no file; the key is still
     // served over HTTP.
     "PublishedKeyPath": "/var/lib/kgsm/cluster/auth-public-key.json",
+
+    // The descriptor this anchor serves its own configuration page from — written by its build and
+    // installed by its deploy, into the anchors directory rather than where a node's leaves are
+    // scanned for. Absent, this daemon serves no configuration surface at all.
+    "ConfigDescriptorPath": "/var/lib/kgsm/anchors/auth-anchor.json",
+
+    // Where a change made on that page is written. A systemd drop-in feeds it back with
+    // EnvironmentFile=-, ordered after everything else the unit loads, so it wins. Deleting the file
+    // returns every knob to what this host's deploy set — which is how this anchor is recovered if a
+    // change stops it starting.
+    "ConfigOverridePath": "/var/lib/kgsm-auth-anchor/config-override.env",
 
     // How long an access bearer lives before it has to be refreshed. Short, because it bounds how
     // long a stolen one is worth anything.

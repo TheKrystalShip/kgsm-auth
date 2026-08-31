@@ -151,6 +151,21 @@ internal sealed class AnchorSettings
         Risk = ConfigRisk.Wiring)]
     public string PublishedKeyPath { get; set; } = "/var/lib/kgsm/cluster/auth-public-key.json";
 
+    /// <summary>The descriptor this anchor serves its own configuration surface from.</summary>
+    /// <panel>The file describing what this anchor can be configured with, written by its own build
+    /// and installed by its deploy. It is read to render this page; absent, there is no page.</panel>
+    [ConfigField("configDescriptorPath", "Config descriptor", Group = "storage", Type = ConfigType.Path,
+        Risk = ConfigRisk.Wiring)]
+    public string ConfigDescriptorPath { get; set; } = "/var/lib/kgsm/anchors/auth-anchor.json";
+
+    /// <summary>Where changes made through the Control Panel are written.</summary>
+    /// <panel>Where a change made on this page is written. A systemd drop-in feeds the file back to
+    /// this daemon, so it wins over everything the deploy set. Deleting it returns every knob to
+    /// what the deploy set, which is how this anchor is recovered if a change stops it starting.</panel>
+    [ConfigField("configOverridePath", "Config overrides", Group = "storage", Type = ConfigType.Path,
+        Risk = ConfigRisk.Destructive)]
+    public string ConfigOverridePath { get; set; } = "/var/lib/kgsm-auth-anchor/config-override.env";
+
     /// <summary>Access-token lifetime in minutes. Raised to <see cref="Floors.AccessLifetimeMinutes"/> if lower.</summary>
     /// <panel>How long a session's bearer lasts before it is refreshed. Short bounds how long a stolen
     /// one is worth anything; it does not affect how long somebody stays signed in.</panel>
