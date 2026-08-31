@@ -5,11 +5,16 @@ using TheKrystalShip.KGSM.LeafConfig;
 // deploy.sh installs that into /var/lib/kgsm/leaves/auth-anchor.json, where kgsm-api scans for it.
 // The daemon itself never reads any of this.
 
+// Anchor, not a leaf. This daemon serves one capability to the whole cluster and is a PEER of every
+// node in it — sharing a machine with one is a deployment coincidence, and the ordinary topology puts
+// it on its own. So it belongs on no node's service board, and the Control Panel reaches it as the
+// member it is: the anchor's own page, off the cluster's Anchors card.
 [assembly: Leaf(
     id: "auth-anchor",
     displayName: "Auth anchor",
     unit: "kgsm-auth-anchor.service",
-    role: "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.")]
+    role: "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.",
+    Anchor = true)]
 
 // Panel sections, in the order they render. Fields land in one by naming its id, and follow the
 // order they are declared in AnchorSettings.

@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>1.11.0</Version>
+    <Version>1.12.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.LeafConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -61,7 +61,7 @@
   <ItemGroup>
     <!-- Build-only: the descriptor attributes arrive as source and the generator as a tool, and the
          package declares no dependencies of its own, so none of it reaches the AOT publish. -->
-    <PackageReference Include="TheKrystalShip.KGSM.LeafConfig" Version="2.2.0" PrivateAssets="all" />
+    <PackageReference Include="TheKrystalShip.KGSM.LeafConfig" Version="2.3.0-dev.2" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

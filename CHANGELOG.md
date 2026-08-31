@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the anchor is a cluster member, not a node's leaf (`1.12.0`)
+
+Its descriptor declares `anchor: true`, so kgsm-api leaves it off the service board of whatever node
+it happens to share a machine with. It serves one capability to the whole cluster and is a peer of
+every node in it; sharing a machine with one is a deployment coincidence, and the ordinary topology
+puts it on its own. The Control Panel reaches it as the member it is — the anchor's own page, off the
+cluster's Anchors card — and nowhere else.
+
+The flag needs `TheKrystalShip.KGSM.LeafConfig` 2.3.0-dev.2, which is what the pin moves to.
+
 ### Fixed — a fresh anchor was a door nobody could open (`1.11.0`)
 
 An anchor whose account store is empty creates the administrator `admin` and leaves a one-time
