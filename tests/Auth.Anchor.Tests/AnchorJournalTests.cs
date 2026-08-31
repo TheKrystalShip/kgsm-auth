@@ -119,8 +119,20 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
             "/auth/session/sign-out", new { refresh = session.GetProperty("refresh").GetString() }, Wire);
         Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
 
+        JsonElement data = Line(AuthEvents.SignedOut, username).GetProperty("Data");
+
         // The same session id on both lines. It is the whole reason a sign-out carries one.
-        Assert.Equal(sid, Text(Line(AuthEvents.SignedOut, username).GetProperty("Data"), "Sid"));
+        Assert.Equal(sid, Text(data, "Sid"));
+
+        // The account, even though this caller arrived with a refresh token and not the row. Anyone
+        // filtering auth events by account otherwise gets every sign-in and silently no sign-outs,
+        // which reads as a person who never signed out rather than as a query that cannot answer.
+        string userId = Text(Line(AuthEvents.SignedIn, username).GetProperty("Data"), "UserId")!;
+        Assert.Equal(userId, Text(data, "UserId"));
+
+        // The tier belongs to the session as it was minted, and the sign-in row this pairs with
+        // already carries it. On two rows it would mean two different things.
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("Tier").ValueKind);
     }
 
     [Fact]

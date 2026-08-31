@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a sign-out did not name the account it ended (`1.9.2`)
+
+`auth.signed_out` carried a null `UserId` whenever the caller signed out with a refresh token, which
+is what a browser does. The token holds the identity and not the account row, and nothing looked the
+row up — so anyone filtering auth events by account got every sign-in and silently no sign-outs,
+which reads as a person who never signed out rather than as a query that cannot answer.
+
+The account is now looked up by the handle the token carries. It is a real query with a real answer
+rather than a value derived from the handle, and the id is the durable key a trail joins on where the
+username is renameable.
+
+`Tier` stays null on a sign-out, deliberately. A tier belongs to the session as it was minted, and the
+sign-in row this pairs with by `Sid` already carries it; on both rows the same field would mean two
+different things — granted-at-mint and happened-to-hold-at-exit — which no reader can tell apart.
+
 ### Added — ending one of somebody else's sessions (`1.9.1`)
 
 `POST /auth/cluster/users/{userId}/sessions/{sid}/revoke`, admin only.

@@ -435,16 +435,27 @@ internal static class Endpoints
                 await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
                     .RevokedAsync(sessionId, ctx.RequestAborted);
 
-            // UserId is null on the refresh-token path and that is honest: it holds the identity and
-            // nothing else, and deriving an id from the handle would record a lookup nothing made.
             if (ended && identity is { } who)
             {
+                // The account, looked up by the handle the token carries when the caller did not
+                // arrive with the row in hand. It is a real query with a real answer, not a value
+                // derived from the handle — and the id is the durable key a trail joins on, where the
+                // username is renameable. Leaving it null would mean anyone filtering auth events by
+                // account got every sign-in and silently no sign-outs, which reads as a person who
+                // never signed out rather than as a query that cannot answer.
+                user ??= await ctx.RequestServices.GetRequiredService<IUserStore>()
+                    .FindByCredentialAsync(who.Handle, ctx.RequestAborted);
+
                 await ctx.RequestServices.GetRequiredService<AnchorJournal>().SessionAsync(
                     AuthEvents.SignedOut,
                     userId: user?.UserId,
                     username: who.Username,
                     identity: who.Handle,
                     provider: who.Provider,
+                    // A tier belongs to the session as it was minted, and the sign-in row this pairs
+                    // with by Sid already carries it. Recording it again at the other end would put
+                    // the same field on two rows meaning two different things — granted-at-mint and
+                    // happened-to-hold-at-exit — which no reader can tell apart.
                     tier: null,
                     sid: sessionId,
                     userAgent: UserAgentOf(ctx),
