@@ -40,13 +40,28 @@ public enum LocalSignInOutcome
 /// <summary>What a sign-in attempt produced.</summary>
 /// <param name="Outcome">How it ended.</param>
 /// <param name="Principal">The identity and tier, on <see cref="LocalSignInOutcome.Success"/>.</param>
-/// <param name="User">The account, on success or on <see cref="LocalSignInOutcome.Disabled"/>.</param>
+/// <param name="User">
+/// The account, whenever the attempt named a real one. Null only when the username matched nobody,
+/// which is deliberately indistinguishable from a wrong password to the caller of the outcome.
+/// </param>
 /// <param name="RetryAfter">When the account can be tried again, on <see cref="LocalSignInOutcome.LockedOut"/>.</param>
+/// <param name="Lockout">
+/// The account's standing with the policy, on <see cref="LocalSignInOutcome.LockedOut"/>. It carries
+/// how many consecutive failures there have been, which is what says how far a run of guessing got.
+/// </param>
+/// <param name="JustLocked">
+/// Whether this attempt is the one that <em>caused</em> the lock, as opposed to one the lock refused.
+/// The two are the same answer to whoever is guessing and a different fact to whoever reads the
+/// record: an account under attack is retried immediately, so treating them alike turns the one row
+/// worth reading into a row per guess.
+/// </param>
 public sealed record LocalSignInResult(
     LocalSignInOutcome Outcome,
     ResolvedPrincipal? Principal,
     KgsmUser? User,
-    DateTimeOffset? RetryAfter)
+    DateTimeOffset? RetryAfter,
+    LoginLockout? Lockout = null,
+    bool JustLocked = false)
 {
     internal static readonly LocalSignInResult Invalid =
         new(LocalSignInOutcome.InvalidCredentials, null, null, null);
@@ -119,8 +134,15 @@ public sealed class LocalSignInService(
         LoginLockout standing = await store
             .GetLockoutAsync(user.UserId, _lockout, now, ct).ConfigureAwait(false);
 
+        // Refused BY a lock that already stood. Not the attempt that caused it, which is the only one
+        // worth recording — an account under attack is retried immediately, so a record per refusal
+        // would be a flood rather than a report of one.
         if (standing.IsLocked(now))
-            return new LocalSignInResult(LocalSignInOutcome.LockedOut, null, user, standing.LockedUntil);
+        {
+            return new LocalSignInResult(
+                LocalSignInOutcome.LockedOut, null, user, standing.LockedUntil, standing,
+                JustLocked: false);
+        }
 
         UserCredential? credential = await store
             .FindCredentialAsync(UserCredentials.LocalHandle(user.UserId), ct).ConfigureAwait(false);
@@ -138,8 +160,13 @@ public sealed class LocalSignInService(
             LoginLockout after = await store
                 .RecordFailureAsync(user.UserId, _lockout, now, ct).ConfigureAwait(false);
 
+            // The attempt that TRIPPED the lock, told apart from the ones it goes on to refuse. The
+            // two are the same answer to whoever is guessing and a different fact to whoever reads
+            // the record, and only the caller can tell them apart from here.
             return after.IsLocked(now)
-                ? new LocalSignInResult(LocalSignInOutcome.LockedOut, null, user, after.LockedUntil)
+                ? new LocalSignInResult(
+                    LocalSignInOutcome.LockedOut, null, user, after.LockedUntil, after,
+                    JustLocked: true)
                 : LocalSignInResult.Invalid;
         }
 

@@ -87,6 +87,11 @@
     // ever removes an account nobody has granted anything to.
     "PendingTtlDays": 14,
 
+    // How long after proving a password somebody may keep attaching or detaching sign-in methods.
+    // Holding a session is not the same as having proved you own it, and attaching an identity
+    // outlives the session: afterwards whoever holds that provider account can sign in as this one.
+    "ReauthWindowMinutes": 5,
+
     // How often dead session rows are swept. The sweep only deletes what is already past its cap;
     // it is housekeeping, not revocation.
     "SessionCleanupMinutes": 60

@@ -29,11 +29,17 @@ internal enum CallerRefusal
 /// <param name="User">The account, resolved from the store on this request.</param>
 /// <param name="Tier">What they may do, resolved on this request rather than read off the token.</param>
 /// <param name="SessionId">The session the bearer belongs to.</param>
+/// <param name="Identity">
+/// The identity the caller signed in with, as the token carries it. Kept beside the account because
+/// it says which door they came through, which the account alone cannot — somebody with a password
+/// and a Discord identity attached is one account and two ways in.
+/// </param>
 internal readonly record struct Caller(
     CallerRefusal Refusal,
     KgsmUser? User,
     KgsmTier Tier,
-    string? SessionId)
+    string? SessionId,
+    KgsmIdentity? Identity = null)
 {
     /// <summary>Whether there is a caller at all.</summary>
     public bool IsAuthenticated => Refusal == CallerRefusal.None && User is not null;
@@ -103,14 +109,14 @@ internal sealed class AnchorAuth(
         return answer.Outcome switch
         {
             AuthorityOutcome.Disabled =>
-                new Caller(CallerRefusal.AccountDisabled, answer.User, KgsmTier.None, sessionId),
+                new Caller(CallerRefusal.AccountDisabled, answer.User, KgsmTier.None, sessionId, identity),
 
             // An account that has been deleted since the session was minted is a stranger holding a
             // token, which is exactly an unauthenticated caller.
             AuthorityOutcome.NoAccount =>
                 new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, sessionId),
 
-            _ => new Caller(CallerRefusal.None, answer.User, answer.Tier, sessionId),
+            _ => new Caller(CallerRefusal.None, answer.User, answer.Tier, sessionId, identity),
         };
     }
 

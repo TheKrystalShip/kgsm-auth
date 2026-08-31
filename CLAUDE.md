@@ -177,6 +177,24 @@ This file is the authority for the auth design; the account-store design is also
   door that sets one — registration, an admin reset, a holder changing their own — reads the same
   constant, because a floor checked in three callers is three places for it to drift low.
 
+## `Auth.Journal` — locked decisions
+
+- **It has ZERO package dependencies, and that is the whole design.** It is a wire shape two
+  components must agree on, and one of them is a Native AOT daemon holding a cluster's account store.
+  Anything that needs a logger, a container or a journal writer belongs in the caller.
+- **The names and the payload writers live together and are called, never copied.** kgsm-api writes
+  these lines on a host that holds its own accounts; the anchor writes them when a cluster's accounts
+  are held by one. A reader deserializes into a fixed shape, so a field spelled differently by one
+  writer does not throw — it lands as a null and the row renders with a name missing and nothing
+  reported. That failure is why one implementation exists rather than two descriptions of it.
+- **An absent value is a real null, never an empty string.** "Nobody looked this up" and "this is
+  blank" are different facts, and a reader that meets `""` cannot tell which it has.
+- **Facts, not sentences.** No summary, no severity, no formatted value: a reader builds those at read
+  time, which is what lets one fact be worded one way in a Control Panel and another in a chat
+  surface, and what keeps a wording improvement from applying only to rows written after it.
+- **It never takes a password parameter.** What is recorded is that a credential was set and by whom —
+  the only signal an account takeover leaves — and the credential is not part of that fact.
+
 ## `Auth.Anchor` — locked decisions
 
 - **A session's audience is the CLUSTER, not a machine.** That single value is what makes one
@@ -223,6 +241,37 @@ This file is the authority for the auth design; the account-store design is also
   filesystem path is scoped by nothing. A member withdraws only a file whose contents are its own
   key — one holding a different key belongs to whoever holds the capability, and removing it would
   break every member reading it.
+- **The anchor writes its own event journal, and it is the only witness there is.** Signing in,
+  creating an account and moving somebody's authority happen here for the whole cluster, so a line the
+  anchor does not write is a fact that exists nowhere. The producer id has to be the name in the
+  unit's `StateDirectory=`, because a reader establishes the producer from the path it read a line out
+  of — a journal written anywhere else is not reported as misplaced, it is simply never found, and
+  looks exactly like a daemon that recorded nothing. A test run relocates it with
+  `KGSM_JOURNAL_STATE_ROOT`; left at its default, a suite that signs people in appends invented
+  sign-ins to a live audit page.
+- **A sign-in is recorded where a session is minted, which is one place.** Every door — a password, a
+  registration, a provider redirect — goes through `MintSessionFor`, and they differ only in how they
+  answer. A second mint site is a second place to forget the line, and forgetting is silent: the
+  person is signed in and nothing says so.
+- **One line per fact that changed, never one per request**, and only when the action actually
+  happened. A patch moving both a tier and a status writes two lines; one moving neither writes none;
+  a sign-out for a session that had already ended writes none. An access review reads for one fact at
+  a time, and a line per request fills it with rows saying nothing.
+- **Changing what proves an account asks for the credential again; nothing else here does.** Holding
+  a session is not the same as having proved you own it, and attaching an identity outlives the
+  session that attached it — afterwards whoever holds that provider account signs in as this one.
+  Detaching carries the same gate, because it is the half that locks somebody out. Signing in counts
+  as proving it, stamped at the one mint site, and a proof dies with its session.
+- **Attaching and detaching ship together or not at all.** Signing in again with a provider you just
+  detached does not give the account back: nothing claims that handle, so it provisions a second
+  account and the person is a stranger on it.
+- **The link callback is a different address from the sign-in one.** One mints a session for whoever
+  comes back; the other attaches whoever comes back to an account already signed in. One address for
+  both lets a link return through the sign-in door and mint a session instead. Both have to be
+  registered against the provider's application, or the bounce is refused where no log here sees it.
+- **Freshness is checked when a link STARTS, never on the way back.** The bounce takes as long as it
+  takes, and re-checking fails a link somebody legitimately began while adding nothing — the ticket is
+  already one-use, short-lived and unforgeable.
 - **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
   no default store, and sessions are not accounts: a member replicating the cluster's accounts
   replicates none of the sign-ins.
@@ -235,11 +284,12 @@ This file is the authority for the auth design; the account-store design is also
 
 ## Version tracking
 
-Each package versions on its own clock, and the daemon on a fifth. `deploy/version.sh` reads the
-daemon's, because that is the one the pacman package ships.
+Each package versions on its own clock, and the daemon on one of its own. `deploy/version.sh` reads
+the daemon's, because that is the one the pacman package ships.
 
-**Tags carry the prefix of the thing they version**, since one repo's commits move five numbers:
-`auth-v*`, `sessions-v*`, `users-v*`, `discord-v*` for the packages, and a bare `v*` for the daemon.
+**Tags carry the prefix of the thing they version**, since one repo's commits move several numbers:
+`auth-v*`, `sessions-v*`, `users-v*`, `discord-v*`, `journal-v*` for the packages, and a bare `v*`
+for the daemon.
 Only the bare `v*` fires the release workflow, which asserts the tag against `deploy/version.sh` — so
 a package tag can never publish a pacman package by accident.
 

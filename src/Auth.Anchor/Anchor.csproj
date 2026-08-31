@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>1.7.2</Version>
+    <Version>1.8.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.LeafConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -37,6 +37,19 @@
     <ProjectReference Include="../Auth.Users/Auth.Users.csproj" />
     <ProjectReference Include="../Auth.Sessions/Auth.Sessions.csproj" />
     <ProjectReference Include="../Auth.Discord/Auth.Discord.csproj" />
+
+    <!-- The shape of an account event. Shared rather than spelled out here because a host that holds
+         its own accounts writes the same lines from its own API, and a field spelled differently by
+         one of the two writers deserializes to null at the reader instead of failing. -->
+    <ProjectReference Include="../Auth.Journal/Auth.Journal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The write half of a producer's event journal: the envelope, the append, and the layout rule a
+         reader inverts to attribute a line. Its whole dependency surface is a logger and a service
+         collection, which is what lets a Native AOT daemon record what it did without the
+         engine-interop library arriving behind it. -->
+    <PackageReference Include="TheKrystalShip.KGSM.Journal" Version="2.1.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
 using TheKrystalShip.KGSM.Auth;
+using TheKrystalShip.KGSM.Auth.Journal;
+using TheKrystalShip.KGSM.Events;
 using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
 
@@ -48,7 +50,7 @@ internal static class Endpoints
     /// holds the machine's accounts, and every door is open exactly as it was.
     /// </para>
     /// </remarks>
-    private static async Task<bool> RequireAuthorityAsync(HttpContext ctx)
+    internal static async Task<bool> RequireAuthorityAsync(HttpContext ctx)
     {
         var role = ctx.RequestServices.GetRequiredService<AnchorRole>();
         if (role.IsAuthority)
@@ -117,6 +119,26 @@ internal static class Endpoints
                 logger.LogWarning(
                     "sign-in refused for '{Username}': locked out until {Until}",
                     body.Username, result.RetryAfter);
+
+                // Recorded on the attempt that CAUSED the lock and on none of the ones it then
+                // refuses. Whoever is guessing retries at once, so a line per refusal would bury the
+                // one line that reports the run.
+                if (result is { JustLocked: true, User: { } locked, Lockout: { } standing }
+                    && result.RetryAfter is { } lockedUntil)
+                {
+                    KgsmIdentity who = locked.AsIdentity();
+                    await ctx.RequestServices.GetRequiredService<AnchorJournal>().LockedOutAsync(
+                        userId: locked.UserId,
+                        username: locked.Username,
+                        identity: who.Handle,
+                        failedCount: standing.FailedCount,
+                        until: lockedUntil,
+                        // The account the attempts were made against. Not a claim about who made
+                        // them: nobody authenticated, so there is nobody to name.
+                        actor: who.ActorString,
+                        ct: ctx.RequestAborted);
+                }
+
                 await Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
                     "Too many failed attempts. Try again shortly.");
                 return;
@@ -131,7 +153,8 @@ internal static class Endpoints
                 logger.LogInformation(
                     "'{Username}' signed in with a password at {Tier}",
                     user.Username, KgsmTiers.ToWire(principal.Tier));
-                await MintSession(ctx, principal.Identity, principal.Tier, user, now);
+                await MintSessionFor(ctx, principal.Identity, principal.Tier, user, now,
+                    AsJson(ctx, user, principal.Tier, StatusCodes.Status200OK));
                 return;
 
             default:
@@ -148,18 +171,29 @@ internal static class Endpoints
         }
     }
 
-    private static Task MintSession(
-        HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now) =>
-        MintSessionFor(ctx, identity, tier, user, now, StatusCodes.Status200OK);
 
     /// <summary>
     /// Record a session and answer with it. One path, so a session that arrives through any door is
     /// the same session recorded the same way — the doors differ in what proves a person and in
     /// nothing after that.
     /// </summary>
+    /// <remarks>
+    /// <b>The one place a session begins, and therefore the one place a sign-in is recorded.</b> A
+    /// second mint site would be a second place to remember to write the line, and the failure of
+    /// forgetting is silent: the person is signed in and no record says so.
+    /// </remarks>
+    /// <param name="ctx">The request the session is being minted for.</param>
+    /// <param name="identity">Who was proved, and by which provider.</param>
+    /// <param name="tier">What the account store says they may do, resolved now.</param>
+    /// <param name="user">The account behind that identity.</param>
+    /// <param name="now">The clock, so a session's row and its tokens agree on when it started.</param>
+    /// <param name="respond">
+    /// Answers the caller with the session. A door that returns JSON and one that redirects a browser
+    /// carrying the tokens in the URL fragment differ here and nowhere else.
+    /// </param>
     internal static async Task MintSessionFor(
         HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now,
-        int status)
+        Func<MintedToken, MintedToken, Task> respond)
     {
         var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
@@ -182,17 +216,43 @@ internal static class Endpoints
                 CurrentJti: refresh.Jti),
             ctx.RequestAborted);
 
-        await WriteJson(ctx, status, new SignInResult(
+        // Arriving IS proving a credential, so somebody who has just signed in changes how they sign
+        // in without being asked for anything, and somebody returning to a week-old tab is asked
+        // once. Stamped here because this is the one place a session begins.
+        ctx.RequestServices.GetRequiredService<ReauthGate>().Stamp(sessionId);
+
+        // Recorded after the session exists and before the caller is answered. The actor is the
+        // identity that arrived rather than this daemon: nobody else was involved in a sign-in, and
+        // naming the component that minted the token would hide who came through the door.
+        await ctx.RequestServices.GetRequiredService<AnchorJournal>().SessionAsync(
+            AuthEvents.SignedIn,
+            userId: user.UserId,
+            username: user.Username,
+            identity: identity.Handle,
+            provider: identity.Provider,
+            tier: KgsmTiers.ToWire(tier),
+            sid: sessionId,
+            userAgent: UserAgentOf(ctx),
+            actor: identity.ActorString,
+            origin: AnchorJournal.OriginUi,
+            ct: ctx.RequestAborted);
+
+        await respond(access, refresh);
+    }
+
+    /// <summary>Answer a caller with the session itself, as JSON.</summary>
+    internal static Func<MintedToken, MintedToken, Task> AsJson(
+        HttpContext ctx, KgsmUser user, KgsmTier tier, int status) =>
+        (access, refresh) => WriteJson(ctx, status, new SignInResult(
             Token: access.Token,
             Refresh: refresh.Token,
             Tier: KgsmTiers.ToWire(tier),
             UserId: user.UserId,
             Status: UserStatuses.ToWire(user.Status),
-            Cluster: options.ClusterId,
+            Cluster: ctx.RequestServices.GetRequiredService<AnchorOptions>().ClusterId,
             AccessTokenExpiresAt: access.ExpiresAt,
             RefreshExpiresAt: refresh.ExpiresAt),
             AnchorJsonContext.Default.SignInResult);
-    }
 
     // ── Keep a session ────────────────────────────────────────────────────────
 
@@ -251,8 +311,25 @@ internal static class Endpoints
             // the other members is what stops that bearer from being spent on them meanwhile.
             await registry.RevokeAsync(claims.SessionId, ctx.RequestAborted);
             validator.Evict(claims.SessionId);
+            ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(claims.SessionId);
             await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
                 .RevokedAsync(claims.SessionId, ctx.RequestAborted);
+
+            // A separate fact from the disable that caused it, and worth its own line because the two
+            // can be hours apart: an account switched off at noon keeps working until its access
+            // bearer runs out and the client comes back here. This is when the access actually ended.
+            //
+            // The actor is this daemon, honestly: nobody acted just now. It carried out a standing
+            // instruction, which is what a system actor is for.
+            await ctx.RequestServices.GetRequiredService<AnchorJournal>().SessionRevokedAsync(
+                scope: SessionRevokeScopes.Withdrawn,
+                userId: answer.User?.UserId ?? string.Empty,
+                username: answer.User?.Username ?? claims.Identity.Username,
+                sid: claims.SessionId,
+                count: 1,
+                actor: JournalProducer.SystemActorFor(AnchorJournal.ProducerId),
+                origin: null,
+                ct: ctx.RequestAborted);
 
             await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
                 "This account has been switched off.");
@@ -306,10 +383,16 @@ internal static class Endpoints
         var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
 
         string? sessionId = null;
+        KgsmIdentity? identity = null;
+        KgsmUser? user = null;
 
         RefreshRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.RefreshRequest);
-        if (body?.Refresh is { Length: > 0 } presented)
-            sessionId = (await tokens.ReadRefreshAsync(presented))?.SessionId;
+        if (body?.Refresh is { Length: > 0 } presented
+            && await tokens.ReadRefreshAsync(presented) is { } claims)
+        {
+            sessionId = claims.SessionId;
+            identity = claims.Identity;
+        }
 
         // A caller that sent no refresh token still ends the session its bearer belongs to, so
         // signing out works from a client that holds only the access token.
@@ -318,7 +401,10 @@ internal static class Endpoints
             var auth = ctx.RequestServices.GetRequiredService<AnchorAuth>();
             try
             {
-                sessionId = (await auth.ResolveAsync(ctx.Request, ctx.RequestAborted)).SessionId;
+                Caller caller = await auth.ResolveAsync(ctx.Request, ctx.RequestAborted);
+                sessionId = caller.SessionId;
+                identity = caller.Identity;
+                user = caller.User;
             }
             catch (KgsmAuthProviderException)
             {
@@ -329,14 +415,43 @@ internal static class Endpoints
 
         if (sessionId is not null)
         {
-            await registry.RevokeAsync(sessionId, ctx.RequestAborted);
+            // Whether this call is what ENDED it. A client retrying a sign-out, or one holding a
+            // token whose session was revoked from somewhere else, presents a session that is
+            // already over — and everything below is about a session ending, which is not what just
+            // happened. The caller still gets its 204 either way: somebody wanting to be signed out
+            // is signed out, and reporting "there was no such session" would tell a stranger holding
+            // a stolen token whether it was still live.
+            bool ended = await registry.RevokeAsync(sessionId, ctx.RequestAborted);
             validator.Evict(sessionId);
+
+            // A proof belongs to a session, so it dies with one. Left standing, a session id reissued
+            // or replayed would arrive already trusted to change what proves the account.
+            ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(sessionId);
 
             // The row is here and the session is accepted everywhere. Ending it locally without
             // saying so leaves somebody signed out on the door they used and signed in on every
             // other one.
-            await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
-                .RevokedAsync(sessionId, ctx.RequestAborted);
+            if (ended)
+                await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
+                    .RevokedAsync(sessionId, ctx.RequestAborted);
+
+            // UserId is null on the refresh-token path and that is honest: it holds the identity and
+            // nothing else, and deriving an id from the handle would record a lookup nothing made.
+            if (ended && identity is { } who)
+            {
+                await ctx.RequestServices.GetRequiredService<AnchorJournal>().SessionAsync(
+                    AuthEvents.SignedOut,
+                    userId: user?.UserId,
+                    username: who.Username,
+                    identity: who.Handle,
+                    provider: who.Provider,
+                    tier: null,
+                    sid: sessionId,
+                    userAgent: UserAgentOf(ctx),
+                    actor: who.ActorString,
+                    origin: AnchorJournal.OriginUi,
+                    ct: ctx.RequestAborted);
+            }
         }
 
         ctx.Response.StatusCode = StatusCodes.Status204NoContent;
@@ -499,6 +614,8 @@ internal static class Endpoints
         var broadcast = ctx.RequestServices.GetRequiredService<AccountBroadcast>();
         await broadcast.PublishAsync(updated, version, ctx.RequestAborted);
 
+        await RecordAccountChangesAsync(ctx, user, updated, caller, ctx.RequestAborted);
+
         IReadOnlyList<UserCredential> credentials =
             await store.ListCredentialsAsync(updated.UserId, ctx.RequestAborted);
 
@@ -507,8 +624,52 @@ internal static class Endpoints
             AnchorJsonContext.Default.AccountChanged);
     }
 
+    /// <summary>
+    /// Record one line per fact that changed, rather than one "updated" line.
+    /// </summary>
+    /// <remarks>
+    /// An access review reads for a tier change, or for a disable. A combined line would make both
+    /// queries a text search over a sentence.
+    /// </remarks>
+    private static async Task RecordAccountChangesAsync(
+        HttpContext ctx, KgsmUser before, KgsmUser after, Caller caller, CancellationToken ct)
+    {
+        var journal = ctx.RequestServices.GetRequiredService<AnchorJournal>();
+
+        // The admin who acted is the actor; the account acted UPON rides in the payload. It is the
+        // split every administrative action uses, so "who did this" and "to whom" never have to be
+        // told apart by reading a sentence.
+        string actor = caller.Identity?.ActorString
+            ?? (caller.User is { } self ? self.AsIdentity().ActorString : string.Empty);
+
+        if (before.Tier != after.Tier)
+        {
+            await journal.AccountAsync(
+                AuthEvents.UserTierChanged, after.UserId, after.Username,
+                fromTier: KgsmTiers.ToWire(before.Tier),
+                toTier: KgsmTiers.ToWire(after.Tier),
+                actor: actor, origin: AnchorJournal.OriginUi, ct: ct);
+        }
+
+        if (before.Status != after.Status)
+        {
+            // Which event this is comes from where the account LANDED, not from a verb chosen here:
+            // the from/to pair travels on the line, so a reader tells "switched off" from "returned
+            // to awaiting approval" without either being spelled into the record.
+            string type = after.Status == UserStatus.Active
+                ? AuthEvents.UserApproved
+                : AuthEvents.UserDisabled;
+
+            await journal.AccountAsync(
+                type, after.UserId, after.Username,
+                fromStatus: UserStatuses.ToWire(before.Status),
+                toStatus: UserStatuses.ToWire(after.Status),
+                actor: actor, origin: AnchorJournal.OriginUi, ct: ct);
+        }
+    }
+
     /// <summary>Whether any other account is a usable administrator.</summary>
-    private static async Task<bool> AnotherAdminExistsAsync(
+    internal static async Task<bool> AnotherAdminExistsAsync(
         IUserStore store, string excluding, CancellationToken ct)
     {
         IReadOnlyList<KgsmUser> all = await store.ListAsync(ct);
@@ -543,7 +704,7 @@ internal static class Endpoints
     /// unauthenticated caller signs in, an ended session signs in again, a disabled account is told
     /// so, and an insufficient tier is a person who is signed in and may not do this.
     /// </remarks>
-    private static async Task<Caller?> RequireCaller(HttpContext ctx, KgsmTier required)
+    internal static async Task<Caller?> RequireCaller(HttpContext ctx, KgsmTier required)
     {
         var auth = ctx.RequestServices.GetRequiredService<AnchorAuth>();
 
@@ -593,7 +754,7 @@ internal static class Endpoints
     /// 503, never 403. "We could not find out what this person may do" is a different fact from "they
     /// may do nothing", and reporting the first as the second locks out an admin mid-incident.
     /// </remarks>
-    private static Task Unavailable(HttpContext ctx) =>
+    internal static Task Unavailable(HttpContext ctx) =>
         Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
             "The account store could not be read.");
 

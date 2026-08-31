@@ -186,6 +186,18 @@
       "risk": "safe"
     },
     {
+      "key": "reauthWindowMinutes",
+      "env": "Anchor__ReauthWindowMinutes",
+      "label": "Re-authentication window",
+      "description": "How long after proving your password you may keep attaching or detaching sign-in methods. Holding a session is not the same as having proved you own it, and attaching an identity outlives the session — afterwards whoever holds that account can sign in as yours.",
+      "group": "sessions",
+      "type": "int",
+      "default": "5",
+      "min": 1,
+      "unit": "minutes",
+      "risk": "safe"
+    },
+    {
       "key": "accessLifetimeMin",
       "env": "Anchor__AccessLifetimeMinutes",
       "label": "Access token lifetime",

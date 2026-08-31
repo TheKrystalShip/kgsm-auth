@@ -6,6 +6,7 @@ using TheKrystalShip.KGSM.Auth.Anchor;
 using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
+using TheKrystalShip.KGSM.Extensions;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
 var builder = WebApplication.CreateSlimBuilder(args);
@@ -84,6 +85,22 @@ builder.Services.AddSingleton(sp => new LocalSignInService(
     sp.GetRequiredService<IUserStore>(),
     sp.GetRequiredService<IUserPasswordHasher>(),
     sp.GetRequiredService<UserStoreAuthority>()));
+
+// This anchor's own event journal — the record of what happened to the cluster's accounts. It writes
+// to this daemon's state directory under its own producer name, which is the same rule a reader
+// inverts to attribute a line, so writer and reader agree on the location without either being told.
+//
+// A Control Panel on this machine finds it by scanning for journals and serves it merged with every
+// other producer's. One on a DIFFERENT machine does not: a journal is a local file, and an anchor
+// running where no API does keeps a complete record that no panel renders.
+builder.Services.AddKgsmJournal(AnchorJournal.ProducerId, typeof(AnchorJournal).Assembly);
+builder.Services.AddSingleton<AnchorJournal>();
+
+// Whether a session has proved lately that its holder owns it, and the links started against that
+// proof. Both in memory: a restart makes every session prove itself again, which is the safe
+// direction to fail in, and drops links in flight, which costs a click and cannot grant anything.
+builder.Services.AddSingleton(sp => new ReauthGate(sp.GetRequiredService<AnchorOptions>().ReauthWindow));
+builder.Services.AddSingleton<LinkTicketStore>();
 
 // Sessions are cluster-scoped: the audience is the cluster, not this machine, because a session
 // minted here is presented to every member of it. Signed with the private key above, so a member can
@@ -178,6 +195,24 @@ app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
 app.MapGet("/auth/session", Endpoints.Session);
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);
+
+// What somebody may do to their OWN account. A person holds one account across the whole cluster, so
+// this is the only place any of it can be changed — a member writing to its replica would be
+// overwritten by the next thing published about that account.
+app.MapPost("/auth/password", AccountEndpoints.ChangePassword);
+app.MapGet("/auth/identities", AccountEndpoints.Identities);
+
+// Changing what proves an account asks for a credential again. Holding a session is not the same as
+// having proved you own it, and attaching an identity outlives the session that attached it.
+app.MapPost("/auth/reauth", IdentityEndpoints.Reauth);
+app.MapPost("/auth/identities/{provider}/start", IdentityEndpoints.StartLink);
+app.MapGet("/auth/identities/{provider}/callback", IdentityEndpoints.CompleteLink);
+app.MapDelete("/auth/identities/{credentialId}", AccountEndpoints.Unlink);
+
+// What an administrator may do to somebody else's. Setting a password knows no current one, because
+// the case it exists for is a person who has lost theirs.
+app.MapPost("/auth/cluster/users/{userId}/password", AccountEndpoints.SetPassword);
+app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount);
 
 // What this anchor serves to other MEMBERS: the accounts, so each can answer for itself who somebody
 // is and what they may do. Authenticated by a member service token, never by a person's session.

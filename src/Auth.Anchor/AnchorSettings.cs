@@ -77,6 +77,14 @@ internal sealed class AnchorSettings
         Risk = LeafRisk.Safe, Min = 1, Unit = "days")]
     public int? PendingTtlDays { get; set; }
 
+    /// <summary>How long a proved credential lets somebody keep changing what proves their account.</summary>
+    /// <panel>How long after proving your password you may keep attaching or detaching sign-in
+    /// methods. Holding a session is not the same as having proved you own it, and attaching an
+    /// identity outlives the session — afterwards whoever holds that account can sign in as yours.</panel>
+    [LeafField("reauthWindowMinutes", "Re-authentication window", Group = "sessions",
+        Risk = LeafRisk.Safe, Min = 1, Unit = "minutes")]
+    public int? ReauthWindowMinutes { get; set; }
+
     /// <summary>Where Kestrel listens. TCP, because a browser signs in here directly.</summary>
     /// <panel>The address a person's browser reaches this anchor at. Sign-in happens here directly,
     /// once, for the whole cluster.</panel>

@@ -7,6 +7,128 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the anchor records what happens to the cluster's accounts (`1.8.0`)
+
+The anchor writes its own event journal, at `/var/lib/kgsm-auth-anchor/events`. A Control Panel on
+the same machine finds it by scanning for journals and serves it merged with every other producer's,
+so no configuration connects the two.
+
+**It is the only witness there is.** The anchor is where a person signs in, where an account is
+created, and where authority is granted and taken away — for the whole cluster. Nothing else sees any
+of it, so a line the anchor does not write is a fact that exists nowhere.
+
+Eleven types are recorded: a session beginning and ending, a session withdrawn when the account
+behind it is switched off, an account provisioned, approved, disabled, deleted, its tier moved or its
+password set, an identity attached or detached, and a run of wrong passwords that locked an account.
+
+**One line per fact, never one per request.** A patch that moves both a tier and a status writes two
+lines, because an access review reads for one or the other and a combined line makes both queries a
+text search. A patch that moves neither writes none.
+
+**A sign-in is recorded where a session is minted, which is one place.** Every door — a password, a
+registration, a provider redirect — mints through the same call, so the record cannot be forgotten in
+one of them. Forgetting is silent: the person is signed in and nothing says so.
+
+**`auth.locked_out` is emitted when a lock begins and never on the attempts it then refuses.** An
+account under attack is retried immediately, so a line per refused attempt is the flood that buries
+the line reporting the run. A wrong username never reaches it — there is nothing to lock — so the
+event names an account that exists, which is what separates it from a failed attempt.
+
+**A sign-out is recorded only when this call is what ended the session.** A client retrying, or one
+holding a token revoked from elsewhere, presents a session that is already over. It still gets its
+204, because somebody wanting to be signed out is signed out and reporting "there was no such
+session" would tell a stranger holding a stolen token whether it was still live.
+
+### Added — changing an account, not just opening one (`1.8.0`)
+
+A person can change their own password, list the ways into their account, and detach one. An
+administrator can set somebody's password and delete an account.
+
+**They are the anchor's because the accounts are.** A member writing any of them lands in that
+member's replica, unversioned by the anchor, and is overwritten by the next thing published about the
+account — appearing to work and then quietly not having happened.
+
+`POST /auth/password` requires the password currently held. A bearer left open on a shared machine is
+otherwise enough to lock its owner out of their own account for good, and it is the one door where
+being signed in is not the whole of the proof. It is verified through the sign-in path, so the door
+that checks a password and the door that changes one cannot reach different conclusions about the
+same one.
+
+`POST /auth/cluster/users/{userId}/password` knows no current password, because the case it exists
+for is a person who has lost theirs. It clears the lockout with it: an admin resetting a password for
+somebody locked out has plainly resolved what the lockout existed for.
+
+`DELETE /auth/cluster/users/{userId}` travels as a versioned tombstone rather than as an absence, so
+a member that was down learns of the removal when it returns instead of handing the account back at
+its next snapshot. Nothing announces the sessions: a member resolves authority against its replica on
+every request, and an account that is not there answers "no account".
+
+`GET /auth/identities` carries the credential id a detach names — a door addressed by an id a caller
+cannot learn is unreachable. It never lists the password, because there is nothing about one to
+detach; that it exists is said separately, since it decides whether removing the last identity would
+leave a way in.
+
+### Added — changing what proves an account (`1.8.0`)
+
+`POST /auth/reauth`, `POST /auth/identities/{provider}/start` and
+`GET /auth/identities/{provider}/callback` attach an account at a provider; `GET /auth/identities`
+now carries what this cluster can attach and whether the caller may change it right now.
+
+**Attaching and detaching exist together, and shipping one without the other would strand people.**
+Signing in again with a provider you have just detached does not give the account back — nothing
+claims that handle any more, so it provisions a second account and you are a stranger on it.
+
+**These doors ask for a credential again, and the rest of the anchor does not.** Holding a session is
+not the same as having proved you own it, and the two come apart exactly where it matters: an
+unlocked laptop, a browser left signed in, a token lifted from storage. Most of what a session does is
+bounded by that session's own life. Attaching an identity is not — afterwards whoever holds that
+provider account can sign in as this one for as long as the account exists. Detaching carries the same
+gate, because it is the half that locks somebody out.
+
+**Signing in counts as proving it**, stamped at the one place a session is minted, so a new arrival is
+never asked for anything and somebody returning to a week-old tab is asked once. Freshness is checked
+when a link is *started*, never on the way back: the bounce takes as long as it takes, and the ticket
+is already one-use, short-lived and unforgeable. A proof dies with its session, so a session id
+reissued or replayed never arrives already trusted.
+
+**The link callback is a different address from the sign-in one**, and both must be registered against
+the provider's application. The two arrivals mean different things: one mints a session for whoever
+comes back, the other attaches whoever comes back to an account already signed in. One address for
+both would let a link return through the sign-in door and mint a session instead.
+
+The browser carries an opaque ticket and never its own account id — a browser holding that would be
+the authority on whose account is being changed. The provider screen is `consent`, not the silent
+`none` a sign-in uses: somebody attaching an account is choosing *which* account, and a silent bounce
+attaches whichever one that browser happens to be signed into without ever showing them which.
+
+`Anchor__ReauthWindowMinutes` sets how long a proof lasts.
+
+### Added — the link flow belongs to the flow, not to a surface (`TheKrystalShip.KGSM.Auth` 3.3.0)
+
+`ReauthGate` and `LinkTicketStore` are part of the authorization-code flow rather than of any one
+provider or any one component that runs it — the same reason `OAuthHandshake` is here. Two components
+run that flow now, and a second copy of a security-relevant store is a second set of rules free to
+drift from the first.
+
+### Added — the shape of an account event (`TheKrystalShip.KGSM.Auth.Journal` 1.0.0)
+
+The type names and payload writers for signing in, signing out, revocation, account lifecycle,
+identity links and lockouts.
+
+**One implementation, because two fail silently.** Two components write these — a host's own API when
+it holds its accounts, the anchor when a cluster's are held by one — and one reads them back by
+deserializing into a fixed shape. A field spelled differently by one writer does not throw: it lands
+as a null, and the row renders with a name missing and nothing reported.
+
+The package has **no dependencies at all**, which is the point. It is a wire shape both writers must
+agree on, and one of them is a Native AOT daemon holding a cluster's account store.
+
+### Added — telling the attempt that locks an account from the ones it refuses (`TheKrystalShip.KGSM.Auth.Users` 1.4.0-dev.4)
+
+`LocalSignInResult` carries the account's standing with the lockout policy and whether this attempt is
+what *caused* the lock. The two are the same answer to whoever is guessing and a different fact to
+whoever reads the record, and only the caller can tell them apart.
+
 ### Fixed — a refused sign-in says so (`1.7.2`)
 
 A wrong password, a forged callback and a refused registration were all silent. A browser was the only

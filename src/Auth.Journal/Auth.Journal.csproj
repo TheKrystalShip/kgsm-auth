@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <RootNamespace>TheKrystalShip.KGSM.Auth.Journal</RootNamespace>
+    <AssemblyName>TheKrystalShip.KGSM.Auth.Journal</AssemblyName>
+
+    <PackageId>TheKrystalShip.KGSM.Auth.Journal</PackageId>
+    <Authors>Heisenberg</Authors>
+    <Version>1.0.0</Version>
+    <Description>
+      The wire shape of a KGSM account event — the type names and the payload writers for signing in,
+      signing out, revocation, account lifecycle, identity links and lockouts. Two components record
+      these (a host's own API when it holds its accounts, a cluster's auth anchor when one does) and
+      one reads them back, so the shape lives here rather than in either.
+    </Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- No package references, and that is the point. This is a wire shape: the type names a producer
+       writes and the bytes it writes for each. Anything more would make the contract carry a
+       dependency into every process that has to agree on it, one of which is a Native AOT daemon
+       holding a cluster's account store. -->
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

@@ -24,6 +24,100 @@ internal sealed record SignInRequest(string? Username, string? Password);
 /// </remarks>
 internal sealed record RegisterRequest(string? Username, string? Password, string? DisplayName);
 
+/// <summary>
+/// What an account's own holder posts to change their password.
+/// </summary>
+/// <remarks>
+/// The current password is required and is not a formality: a bearer token left open on a shared
+/// machine would otherwise be enough to lock its owner out of their own account permanently. An admin
+/// setting somebody's password is a different door, and does not know the old one.
+/// </remarks>
+/// <param name="Current">The password held now.</param>
+/// <param name="Password">The password to hold instead.</param>
+internal sealed record PasswordChangeRequest(string? Current, string? Password);
+
+/// <summary>What an administrator posts to set somebody's password.</summary>
+/// <param name="Password">The password the account will hold.</param>
+internal sealed record PasswordSetRequest(string? Password);
+
+/// <summary>
+/// One way into an account.
+/// </summary>
+/// <remarks>
+/// Carries the credential id, because detaching one is addressed by id and an id a caller cannot
+/// learn makes the door unreachable. Never carries a secret in any form — a password credential is
+/// not listed here at all, since there is nothing about it to detach.
+/// </remarks>
+/// <param name="CredentialId">What a detach names.</param>
+/// <param name="Provider">The provider it comes from.</param>
+/// <param name="Handle">The identity, as <c>provider:name</c>.</param>
+/// <param name="Label">What the provider called them when it was attached, if it said.</param>
+/// <param name="Created">When it was attached.</param>
+/// <param name="LastUsed">When it last proved the account, or null if it never has.</param>
+internal sealed record IdentityRecord(
+    string CredentialId,
+    string Provider,
+    string Handle,
+    string? Label,
+    DateTimeOffset Created,
+    DateTimeOffset? LastUsed);
+
+/// <summary>A provider this cluster can attach, and whether it is attached already.</summary>
+/// <param name="Provider">The provider's name.</param>
+/// <param name="Configured">
+/// Whether this anchor is wired to it at all. Unconfigured is not an error and not a failure to
+/// report later — a surface simply does not offer it.
+/// </param>
+/// <param name="Linked">Whether the calling account already has one attached.</param>
+internal sealed record LinkableProvider(string Provider, bool Configured, bool Linked);
+
+/// <summary>
+/// How long the caller may keep changing their sign-in methods, and whether they may right now.
+/// </summary>
+/// <param name="Fresh">Whether a credential has been proved recently enough.</param>
+/// <param name="ExpiresAt">When the current proof lapses, or null when there is none.</param>
+/// <param name="WindowMinutes">How long a proof lasts here, so a surface can say so.</param>
+internal sealed record ReauthState(bool Fresh, DateTimeOffset? ExpiresAt, int WindowMinutes);
+
+/// <summary>Every external identity attached to the calling account, and what more could be.</summary>
+/// <param name="UserId">The calling account.</param>
+/// <param name="Username">What it is called.</param>
+/// <param name="HasPassword">
+/// Whether the account also holds a password. It is what says whether detaching the last identity
+/// would leave a way in, so a surface can warn before the refusal rather than after it.
+/// </param>
+/// <param name="Identities">The attachments.</param>
+/// <param name="Providers">What this cluster can attach, attached or not.</param>
+/// <param name="Reauth">
+/// Whether this session may change what proves it. Read so a surface asks for a password
+/// <em>before</em> starting a link rather than after bouncing somebody to a provider and back.
+/// </param>
+internal sealed record IdentitiesResult(
+    string UserId,
+    string Username,
+    bool HasPassword,
+    IReadOnlyList<IdentityRecord> Identities,
+    IReadOnlyList<LinkableProvider> Providers,
+    ReauthState Reauth);
+
+/// <summary>What the caller posts to prove their password again.</summary>
+/// <param name="Password">The password the account holds.</param>
+internal sealed record ReauthRequest(string? Password);
+
+/// <summary>The proof, and when it lapses.</summary>
+/// <param name="ExpiresAt">When the caller stops being allowed to change what proves them.</param>
+internal sealed record ReauthResult(DateTimeOffset ExpiresAt);
+
+/// <summary>
+/// Where to send the browser to attach an account at a provider.
+/// </summary>
+/// <remarks>
+/// A URL rather than a redirect: the caller is an authenticated request carrying a bearer, and a
+/// bearer does not survive the redirect chain a browser would follow.
+/// </remarks>
+/// <param name="Url">The provider's authorize URL, with the one-time ticket cookie set alongside it.</param>
+internal sealed record LinkStartResponse(string Url);
+
 /// <summary>What a browser posts to rotate or end a session.</summary>
 /// <param name="Refresh">The refresh token currently held.</param>
 internal sealed record RefreshRequest(string? Refresh);
@@ -183,4 +277,10 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(AccountChanged))]
 [JsonSerializable(typeof(SessionRevoke))]
 [JsonSerializable(typeof(ProvidersResult))]
+[JsonSerializable(typeof(PasswordChangeRequest))]
+[JsonSerializable(typeof(PasswordSetRequest))]
+[JsonSerializable(typeof(IdentitiesResult))]
+[JsonSerializable(typeof(ReauthRequest))]
+[JsonSerializable(typeof(ReauthResult))]
+[JsonSerializable(typeof(LinkStartResponse))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

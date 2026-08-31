@@ -1,7 +1,10 @@
+using System.Text.Json;
+
 using Microsoft.AspNetCore.Mvc.Testing;
 
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster.Identity;
+using TheKrystalShip.KGSM.Extensions;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
@@ -65,6 +68,13 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__PublicBaseUrl", SignInUrl);
         Environment.SetEnvironmentVariable("Anchor__FrontendUrl", PanelUrl);
         Environment.SetEnvironmentVariable("Anchor__AllowSelfRegistration", "true");
+
+        // The journal's state root, relocated into the fixture. Left at its default, a test run
+        // appends to the REAL /var/lib/kgsm-auth-anchor/events — where a Control Panel on this
+        // machine scans for journals, so a suite that signs people in would put invented sign-ins on
+        // a live audit page.
+        Environment.SetEnvironmentVariable(
+            JournalServiceCollectionExtensions.StateRootVariable, Path.Combine(Root, "state"));
 
         // The host's shared OAuth application, as /etc/kgsm/kgsm-auth.env supplies it on a real
         // machine. Present so the provider door is wired at all — nothing here reaches a provider,
@@ -165,6 +175,44 @@ public sealed class AnchorFixture : IDisposable
     /// </remarks>
     public string MintMemberToken() =>
         ((IClusterTokenService)_factory.Services.GetService(typeof(IClusterTokenService))!).Mint().Token;
+
+    /// <summary>
+    /// Every line this anchor has recorded, in the order it recorded them.
+    /// </summary>
+    /// <remarks>
+    /// Read off the files rather than through a reader, because what has to be asserted is the bytes
+    /// on disk: a consumer establishes the shape by deserializing into its own type, where a field
+    /// spelled wrong lands as a null instead of an error. A test going through the same deserializer
+    /// would agree with the writer about a name neither of them has right.
+    /// </remarks>
+    public IReadOnlyList<JsonElement> Journal()
+    {
+        string directory = Path.Combine(Root, "state", "kgsm-auth-anchor", "events");
+        if (!Directory.Exists(directory))
+            return [];
+
+        var lines = new List<JsonElement>();
+        foreach (string segment in Directory.GetFiles(directory, "*.ndjson").Order(StringComparer.Ordinal))
+        {
+            // Copied first: the daemon holds the segment open for append, and a plain read of a file
+            // another handle is writing fails on the share mode rather than on anything under test.
+            using var stream = new FileStream(
+                segment, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+
+            while (reader.ReadLine() is { } line)
+            {
+                if (line.Length > 0)
+                    lines.Add(JsonDocument.Parse(line).RootElement.Clone());
+            }
+        }
+
+        return lines;
+    }
+
+    /// <summary>Every line of one type, most recent last.</summary>
+    public IReadOnlyList<JsonElement> Journal(string eventType) =>
+        [.. Journal().Where(e => e.GetProperty("EventType").GetString() == eventType)];
 
     public void Dispose()
     {

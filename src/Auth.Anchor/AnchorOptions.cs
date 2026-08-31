@@ -27,6 +27,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="FrontendUrl">Where a browser lands after a provider sign-in, or null to answer as JSON.</param>
 /// <param name="Pending">What is allowed to accumulate while nobody has approved it.</param>
 /// <param name="AllowSelfRegistration">Whether somebody with no account may make one.</param>
+/// <param name="ReauthWindow">How long a proved credential lets somebody change what proves them.</param>
 internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
@@ -43,7 +44,8 @@ internal sealed record AnchorOptions(
     TimeSpan SessionCleanup,
     string? FrontendUrl,
     PendingPolicy Pending,
-    bool AllowSelfRegistration)
+    bool AllowSelfRegistration,
+    TimeSpan ReauthWindow)
 {
     /// <summary>
     /// Where a provider sends the browser back, for one provider.
@@ -56,6 +58,19 @@ internal sealed record AnchorOptions(
     /// </remarks>
     public string RedirectUri(string provider) =>
         $"{PublicBaseUrl.TrimEnd('/')}/auth/{provider}/callback";
+
+    /// <summary>
+    /// Where a provider sends the browser back when somebody is <em>attaching</em> an account rather
+    /// than signing in with one.
+    /// </summary>
+    /// <remarks>
+    /// A separate address because the two arrivals mean different things and must not be confused: one
+    /// mints a session for whoever comes back, the other attaches whoever comes back to an account
+    /// that is already signed in. Both have to be registered against the provider's application, or
+    /// the bounce is refused at the provider where no log here sees it.
+    /// </remarks>
+    public string LinkRedirectUri(string provider) =>
+        $"{PublicBaseUrl.TrimEnd('/')}/auth/identities/{provider}/callback";
 
     /// <summary>Whether a browser is sent anywhere after a provider sign-in.</summary>
     public bool RedirectsToPanel => !string.IsNullOrWhiteSpace(FrontendUrl);
@@ -91,7 +106,8 @@ internal sealed record AnchorOptions(
             AllowSelfRegistration: s.AllowSelfRegistration ?? false,
             Pending: new PendingPolicy(
                 Cap: Math.Max(0, s.PendingCap ?? 25),
-                Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))));
+                Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))),
+            ReauthWindow: TimeSpan.FromMinutes(AtLeast(s.ReauthWindowMinutes ?? 5, 1)));
     }
 
     /// <summary>

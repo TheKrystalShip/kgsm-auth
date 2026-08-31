@@ -8,9 +8,9 @@
 # The version is declared in exactly ONE place and read from there, so the package, the binary and
 # the changelog can never disagree about what this is.
 #
-# This repo publishes four NuGet packages beside the daemon, each versioning on its own schedule.
-# The package ships the DAEMON, so this points at the daemon's csproj and the two can never be
-# confused for one another.
+# This repo publishes several NuGet packages beside the daemon, each versioning on its own schedule
+# (src/*/*.csproj is the list). The package ships the DAEMON, so this points at the daemon's csproj
+# and the two can never be confused for one another.
 
 # A pacman pkgver may not contain a hyphen, so --pkgver strips it. That keeps prerelease ordering
 # correct under vercmp: 3.16.0rc3 < 3.16.0rc4 < 3.16.0.

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 
 using TheKrystalShip.KGSM.Auth.Discord;
+using TheKrystalShip.KGSM.Auth.Journal;
 using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
 
@@ -62,6 +63,36 @@ internal sealed class ProviderCatalog(
 
     /// <summary>Whether an application is configured for <paramref name="provider"/>.</summary>
     internal bool IsConfigured(string provider) => Application(provider) is not null;
+
+    /// <summary>
+    /// Every provider this build knows how to speak, wired up or not.
+    /// </summary>
+    /// <remarks>
+    /// A surface offering somebody a way to attach an account needs both lists: what exists, so it can
+    /// say a provider is not set up here, and what is configured, so it does not offer a button that
+    /// bounces to nothing.
+    /// </remarks>
+    internal IReadOnlyList<string> Known => [.. Registrations.Select(r => r.Provider)];
+
+    /// <summary>
+    /// The provider pointed at this anchor's <em>link</em> callback, or <see langword="null"/> when
+    /// this anchor does not offer it.
+    /// </summary>
+    /// <remarks>
+    /// The same provider as <see cref="Identity"/> with a different redirect, because attaching an
+    /// account and signing in with one are different arrivals: one mints a session for whoever comes
+    /// back, the other attaches whoever comes back to an account already signed in. Building them from
+    /// one method with one address would let a link come back through the sign-in door and mint a
+    /// session instead.
+    /// </remarks>
+    internal IIdentityProvider? Link(string provider)
+    {
+        if (Find(provider) is not { } registration || Application(registration.Provider) is not { } application)
+            return null;
+
+        return registration.Create(
+            httpClientFactory, application, options.LinkRedirectUri(registration.Provider));
+    }
 
     /// <summary>
     /// The provider, pointed at this anchor's callback — or <see langword="null"/> when this anchor
@@ -241,11 +272,28 @@ internal static class RegisterEndpoint
 
         logger.LogInformation("'{Username}' registered and is awaiting approval", username);
 
+        // The account exists and every member has been told. Recording it here is what puts the
+        // person in front of an administrator: the row is what a Control Panel renders and what a
+        // push notification asking for approval is raised from, so an account created and unrecorded
+        // is one nobody is asked about.
+        //
+        // No "from" side: the account did not exist a moment ago, and a from/to pair here would
+        // invent a previous state to have moved out of.
+        await ctx.RequestServices.GetRequiredService<AnchorJournal>().AccountAsync(
+            AuthEvents.UserProvisioned,
+            account.UserId,
+            account.Username,
+            toTier: KgsmTiers.ToWire(account.Tier),
+            toStatus: UserStatuses.ToWire(account.Status),
+            actor: account.AsIdentity().ActorString,
+            origin: AnchorJournal.OriginUi,
+            ct: ctx.RequestAborted);
+
         // A real session at `none`, deliberately. A bare refusal tells somebody who has just made an
         // account nothing about what happens next; a session lets a surface say they are waiting on
         // an administrator, and lets that administrator see them.
         await Endpoints.MintSessionFor(ctx, account.AsIdentity(), account.EffectiveTier, account, now,
-            StatusCodes.Status201Created);
+            Endpoints.AsJson(ctx, account, account.EffectiveTier, StatusCodes.Status201Created));
     }
 }
 
@@ -432,46 +480,57 @@ internal static class ProviderEndpoints
             return;
         }
 
-        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
-        var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
-
         KgsmTier tier = account.EffectiveTier;
-        string sessionId = "sid_" + Guid.NewGuid().ToString("N");
-        MintedToken access = tokens.MintAccess(verified, tier, sessionId);
-        MintedToken refresh = tokens.MintRefresh(verified, tier, sessionId);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var journal = ctx.RequestServices.GetRequiredService<AnchorJournal>();
 
-        await registry.CreateAsync(
-            new SessionRegistration(
-                sessionId, verified.Handle, options.ClusterId,
-                DateTimeOffset.UtcNow, refresh.ExpiresAt,
-                ctx.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null,
-                refresh.Jti),
-            ctx.RequestAborted);
+        // An account that did not exist until this login, and the identity that now proves it. Two
+        // facts rather than one: the account is a person to approve, and the link is what lets
+        // whoever controls that provider account sign in as this one. Recorded before the session, so
+        // the order on the record is the order they happened.
+        if (link.Outcome == LinkOutcome.Provisioned)
+        {
+            await journal.AccountAsync(
+                AuthEvents.UserProvisioned,
+                account.UserId,
+                account.Username,
+                toTier: KgsmTiers.ToWire(account.Tier),
+                toStatus: UserStatuses.ToWire(account.Status),
+                actor: verified.ActorString,
+                origin: AnchorJournal.OriginUi,
+                ct: ctx.RequestAborted);
+
+            await journal.IdentityAsync(
+                AuthEvents.IdentityLinked,
+                account.UserId,
+                account.Username,
+                provider,
+                verified.Handle,
+                actor: verified.ActorString,
+                origin: AnchorJournal.OriginUi,
+                ct: ctx.RequestAborted);
+        }
 
         logger.LogInformation(
             "{Handle} signed in with {Provider} at {Tier}", verified.Handle, provider, KgsmTiers.ToWire(tier));
 
-        if (options.RedirectsToPanel)
+        // The same mint every other door uses, so a session that arrives through a provider is the
+        // same session recorded the same way. This door differs only in how it answers.
+        await Endpoints.MintSessionFor(ctx, verified, tier, account, now, (access, refresh) =>
         {
-            // The tokens ride the URL FRAGMENT, never the query: a fragment is not sent to the server,
-            // so it stays out of access logs and out of the Referer header. The panel reads them,
-            // adopts the session and strips the fragment.
-            ctx.Response.Redirect(
-                $"{options.FrontendUrl}#access={Uri.EscapeDataString(access.Token)}"
-                + $"&refresh={Uri.EscapeDataString(refresh.Token)}");
-            return;
-        }
+            if (options.RedirectsToPanel)
+            {
+                // The tokens ride the URL FRAGMENT, never the query: a fragment is not sent to the
+                // server, so it stays out of access logs and out of the Referer header. The panel
+                // reads them, adopts the session and strips the fragment.
+                ctx.Response.Redirect(
+                    $"{options.FrontendUrl}#access={Uri.EscapeDataString(access.Token)}"
+                    + $"&refresh={Uri.EscapeDataString(refresh.Token)}");
+                return Task.CompletedTask;
+            }
 
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new SignInResult(
-            Token: access.Token,
-            Refresh: refresh.Token,
-            Tier: KgsmTiers.ToWire(tier),
-            UserId: account.UserId,
-            Status: UserStatuses.ToWire(account.Status),
-            Cluster: options.ClusterId,
-            AccessTokenExpiresAt: access.ExpiresAt,
-            RefreshExpiresAt: refresh.ExpiresAt),
-            AnchorJsonContext.Default.SignInResult);
+            return Endpoints.AsJson(ctx, account, tier, StatusCodes.Status200OK)(access, refresh);
+        });
     }
 
     /// <summary>
