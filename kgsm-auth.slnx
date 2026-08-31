@@ -3,10 +3,12 @@
   <Project Path="src/Auth.Discord/Auth.Discord.csproj" />
   <Project Path="src/Auth.Sessions/Auth.Sessions.csproj" />
   <Project Path="src/Auth.Users/Auth.Users.csproj" />
+  <Project Path="src/Auth.Cluster/Auth.Cluster.csproj" />
   <Project Path="src/Auth.Anchor/Anchor.csproj" />
   <Project Path="tests/Auth.Tests/Auth.Tests.csproj" />
   <Project Path="tests/Auth.Discord.Tests/Auth.Discord.Tests.csproj" />
   <Project Path="tests/Auth.Sessions.Tests/Auth.Sessions.Tests.csproj" />
   <Project Path="tests/Auth.Users.Tests/Auth.Users.Tests.csproj" />
+  <Project Path="tests/Auth.Cluster.Tests/Auth.Cluster.Tests.csproj" />
   <Project Path="tests/Auth.Anchor.Tests/Auth.Anchor.Tests.csproj" />
 </Solution>

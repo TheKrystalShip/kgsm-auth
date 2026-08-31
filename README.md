@@ -16,6 +16,7 @@ once. A standalone host runs no daemon and reads the same file through the same 
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot |
+| **`TheKrystalShip.KGSM.Auth.Cluster`** | what a cluster *member* does about identity: verify a session it cannot mint, refuse the doors whichever member holds the accounts owns, apply `account.*` and `session.revoke` from the bus, and take its first full copy from the holder. | kgsm-api |
 
 The deployable is **`kgsm-auth-anchor`** (`src/Auth.Anchor`), built from those libraries and shipped
 as a pacman package and a systemd unit. It publishes nothing to NuGet.

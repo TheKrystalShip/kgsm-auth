@@ -201,6 +201,41 @@ This file is the authority for the auth design; the account-store design is also
 - **It never takes a password parameter.** What is recorded is that a credential was set and by whom —
   the only signal an account takeover leaves — and the credential is not part of that fact.
 
+## `Auth.Cluster` — locked decisions
+
+What a **member** does about identity, as opposed to what the anchor does. The anchor holds the
+accounts and mints the sessions; every other member verifies, resolves and applies. That half runs on
+kgsm-api, on the assistant and on the bot, so it is one package rather than one implementation each.
+
+- **A published fact is read through the capability's holder, never off whichever member states it.**
+  `ClusterFacts.FromHolderAsync`, for the keys, the audience and the issuer alike. A key taken from any
+  member would let any member substitute the one sessions are verified against.
+- **Knowing nothing fails closed.** A member with no cluster, or one that has not heard who holds the
+  accounts, accepts no cluster session at all and goes on serving its own. Guessing would accept a
+  token minted for a different cluster.
+- **A door closes because somebody else holds the accounts, not because a setting says so.**
+  `AnchorHeldGate` reads cluster state, so an anchor joining or being reassigned needs no
+  reconfiguration anywhere. A standalone host and a clustered one whose cluster has no anchor are the
+  same fact from here: there is nowhere else to send anybody, so the door stays open.
+- **The refusal's code and header are named once; the body is not.** Every surface already has its own
+  error envelope, and imposing one shape on all of them would be a second wire contract to keep in step
+  for no reader's benefit. What a client routes on is shared.
+- **A session a member minted is held to an allow-list; one the anchor minted is held to a deny-list.**
+  Opposite questions about the same session id, which is why they are separate methods rather than one
+  store — a surface answering one with the other refuses every cluster session or accepts every ended
+  one.
+- **No handler throws.** A `500` is the only answer that keeps a message in the sender's outbox, so it
+  is reserved for a transient failure. A stale change never becomes newer and a username conflict never
+  resolves itself, so both are logged and acknowledged; throwing would wedge the sender's queue behind
+  a message it can never deliver, taking every later account change with it, including a disable.
+- **The snapshot is taken once and then the stream carries everything.** Both paths carry the same
+  per-account version and the replica refuses anything not newer, so "snapshot, then follow" is a
+  sequence rather than a handover, and re-reading the whole set on a timer would be a poll standing in
+  for a push that works.
+- **Three seams, and the package owns none of them:** `IReplicatedAccounts` is the member's own store,
+  `IClusterSessionAuthority` its own sessions, `ISessionValidator` its own cache. Opening a file and
+  serving a route stay the member's business.
+
 ## `Auth.Anchor` — locked decisions
 
 - **A session's audience is the CLUSTER, not a machine.** That single value is what makes one
@@ -305,8 +340,8 @@ Each package versions on its own clock, and the daemon on one of its own. `deplo
 the daemon's, because that is the one the pacman package ships.
 
 **Tags carry the prefix of the thing they version**, since one repo's commits move several numbers:
-`auth-v*`, `sessions-v*`, `users-v*`, `discord-v*`, `journal-v*` for the packages, and a bare `v*`
-for the daemon.
+`auth-v*`, `sessions-v*`, `users-v*`, `discord-v*`, `journal-v*`, `cluster-v*` for the packages, and a
+bare `v*` for the daemon.
 Only the bare `v*` fires the release workflow, which asserts the tag against `deploy/version.sh` — so
 a package tag can never publish a pacman package by accident.
 

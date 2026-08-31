@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TheKrystalShip.KGSM.Auth.Cluster</RootNamespace>
+    <AssemblyName>TheKrystalShip.KGSM.Auth.Cluster</AssemblyName>
+
+    <PackageId>TheKrystalShip.KGSM.Auth.Cluster</PackageId>
+    <Authors>Heisenberg</Authors>
+    <Version>1.0.0-dev.1</Version>
+    <Description>
+      What a cluster member does about identity that is not the anchor's job: verify a session it
+      cannot mint, resolve the person from a replica of the cluster's accounts, refuse the auth doors
+      that belong to whichever member holds them, and apply the account and session changes that
+      arrive over the bus. One implementation for every member, because two surfaces that answer "who
+      is this" differently is the one disagreement identity cannot survive.
+    </Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Auth/Auth.csproj" />
+    <ProjectReference Include="../Auth.Sessions/Auth.Sessions.csproj" />
+    <ProjectReference Include="../Auth.Users/Auth.Users.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.16" />
+    <!-- BackgroundService, for the two workers that follow cluster state rather than answering a
+         request. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+    <!-- The snapshot is one HTTP call to the holder, made through the factory so its handler rotates
+         like every other member-to-member call's. -->
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same scoped advisory the account store carries, reaching here through it: a native SQLite
+         lib where 2.1.11 is the latest published build and there is nothing to move to. Suppressions
+         do not flow across a package boundary, so it is restated rather than inherited. Delete this
+         the moment a patched SQLitePCLRaw bundle ships. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

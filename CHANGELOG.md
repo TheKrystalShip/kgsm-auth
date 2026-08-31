@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — `TheKrystalShip.KGSM.Auth.Cluster`, what a member does about identity
+
+Every member of a cluster verifies a session the anchor minted, resolves the person from its own
+replica, refuses the auth doors that belong to whichever member holds the accounts, and applies what
+the bus delivers about both. All of it existed once, inside kgsm-api, where the assistant and the bot
+could not reach it — and two surfaces answering "who is this" differently is the one disagreement
+identity cannot survive.
+
+- `AnchorHeldGate` reads who holds the `auth` capability from cluster state, so a member closes its
+  own doors when an anchor joins and opens them when one is reassigned, with nothing reconfigured.
+  `AnchorHeld` names the refusal's code and header once; the response body stays each surface's, which
+  already has its own error envelope.
+- `ClusterSessionKeys` follows the anchor's published keys, audience and issuer **through the holder**
+  of the capability, so a member that states a key for accounts it does not hold is never consulted.
+- `ClusterSessionRevocations` over `IClusterSessionDenyList` — the deny-list a session nobody here
+  minted is held to, cached on the request path and evicted by an arriving revoke.
+- `SessionRevokeHandler` ends both kinds of session without having to know which it was handed. Its
+  `user` scope names a person by handle, and reads a bare Discord id as the Discord identity it is.
+- `AccountReplicationHandler`, `AccountRemovalHandler` and `AccountSnapshotWorker` — the stream and the
+  first full copy, applied through `AccountReplica` so every member reads the rules identically.
+
+A member supplies three seams: `IReplicatedAccounts` for its own store, `IClusterSessionAuthority` for
+its own sessions, and `ISessionValidator` as before. Nothing here opens a file or serves a route.
+
+## [Unreleased]
+
 ### Added — the anchor serves its own journal (`1.15.0`)
 
 `GET /auth/logs?lines=N`, admin, in the shape every KGSM log surface renders — so an anchor's journal
