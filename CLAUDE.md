@@ -327,6 +327,30 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
 - **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
   no default store, and sessions are not accounts: a member replicating the cluster's accounts
   replicates none of the sign-ins.
+- **The anchor administers itself, because on the ordinary topology nothing else is there to.** A
+  leaf is configured and read through the node that runs it; an anchor is a peer of every node rather
+  than something one of them hosts, and the machine it sits on need run no Control Panel at all. So
+  `/auth/config` and `/auth/logs` are served by the daemon being configured and the daemon being read,
+  and both are admin-only — a daemon's log is the account store described from the side.
+- **The unit both surfaces name is the descriptor's, never a second setting.** One name in one place
+  cannot disagree with itself, and a log surface reading the wrong unit reports somebody else's
+  silence as this one's. The unit carries `SupplementaryGroups=systemd-journal`, without which
+  `journalctl` exits 0 having printed nothing — a success indistinguishable from a daemon that has
+  logged nothing.
+- **One `journalctl -f` for however many people are watching.** The first subscriber starts the
+  follow, the last one to leave stops it, and an unwatched page costs nothing. A subscriber that
+  falls behind drops its own oldest lines rather than stalling the follow for everybody else — the
+  journal on disk is the durable record, and a reconnect re-reads it. The stream carries no backlog:
+  the caller hydrated its scrollback from the read, and sending history here shows every line twice
+  on every attach.
+- **An idle journal and a dropped connection look identical on screen.** The stream opens with a
+  comment line, which is what makes a proxy release a response that has carried no bytes, and
+  heartbeats after it — so a viewer can show a tail that has stopped as stopped rather than as quiet.
+- **A test relocates every absolute path this daemon reads, not only the ones it writes.**
+  `ConfigDescriptorPath` and `ConfigOverridePath` join the stores and the journal root: left at their
+  defaults, a run resolves the descriptor the deployed daemon carries, names the live unit and
+  follows its journal — and passes only on a host where the thing under test is already installed,
+  which is measuring the host.
 
 ## Conventions
 
