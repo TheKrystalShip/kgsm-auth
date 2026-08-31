@@ -100,6 +100,60 @@ internal sealed record IdentitiesResult(
     IReadOnlyList<LinkableProvider> Providers,
     ReauthState Reauth);
 
+/// <summary>What an administrator posts to create an account.</summary>
+/// <remarks>
+/// A password is optional: an account can be made for somebody who will only ever arrive through a
+/// provider. One that <em>is</em> set answers to the same floor as every other, or the door with the
+/// least scrutiny becomes the one that admits the weakest password on the cluster.
+/// </remarks>
+/// <param name="Username">The name it is keyed by for people, not for the store.</param>
+/// <param name="DisplayName">What to show, defaulting to the username.</param>
+/// <param name="Tier">What it may do. An admin choosing one is the deliberate grant this records.</param>
+/// <param name="Password">Optional.</param>
+/// <param name="Status">
+/// <c>active</c> or <c>pending</c>. Creating one already disabled is a shape with no use — an admin
+/// wanting that creates it and disables it, and the trail then says both things happened.
+/// </param>
+internal sealed record CreateAccountRequest(
+    string? Username, string? DisplayName, string? Tier, string? Password, string? Status);
+
+/// <summary>One live session, as a person reviewing their own devices sees it.</summary>
+/// <param name="Sid">The session id.</param>
+/// <param name="UserId">Whose it is, as the handle it was keyed by.</param>
+/// <param name="Created">When they signed in.</param>
+/// <param name="Expires">The absolute cap on it.</param>
+/// <param name="UserAgent">The device, or absent when it sent none.</param>
+/// <param name="LastSeen">
+/// When this session last rotated its tokens, or absent for one that has not. It is the only contact
+/// the anchor has with a live session — every other request goes to a member and is verified offline
+/// — so it is a rotation, named as the nearest true thing rather than as a request count nothing
+/// counts.
+/// </param>
+/// <param name="Current">True on exactly the session the calling bearer belongs to.</param>
+internal sealed record SessionRecord(
+    string Sid,
+    string UserId,
+    DateTimeOffset Created,
+    DateTimeOffset Expires,
+    string? UserAgent,
+    DateTimeOffset? LastSeen,
+    bool Current);
+
+/// <summary>Every live session for one account.</summary>
+/// <param name="Data">The sessions, most recent first.</param>
+internal sealed record SessionsPage(IReadOnlyList<SessionRecord> Data);
+
+/// <summary>
+/// What the caller posts to end sessions of their own.
+/// </summary>
+/// <param name="Sid">One session, which must be theirs. Ending somebody else's is an admin's door.</param>
+/// <param name="All">Every session they hold, the calling one included.</param>
+internal sealed record RevokeRequest(string? Sid, bool? All);
+
+/// <summary>How many sessions a revocation ended.</summary>
+/// <param name="Revoked">The count.</param>
+internal sealed record RevokeResult(int Revoked);
+
 /// <summary>What the caller posts to prove their password again.</summary>
 /// <param name="Password">The password the account holds.</param>
 internal sealed record ReauthRequest(string? Password);
@@ -283,4 +337,9 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(ReauthRequest))]
 [JsonSerializable(typeof(ReauthResult))]
 [JsonSerializable(typeof(LinkStartResponse))]
+[JsonSerializable(typeof(CreateAccountRequest))]
+[JsonSerializable(typeof(AccountRecord))]
+[JsonSerializable(typeof(SessionsPage))]
+[JsonSerializable(typeof(RevokeRequest))]
+[JsonSerializable(typeof(RevokeResult))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

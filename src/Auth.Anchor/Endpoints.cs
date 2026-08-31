@@ -679,7 +679,7 @@ internal static class Endpoints
     }
 
     /// <summary>A tier a caller asked for, refusing anything that is not one.</summary>
-    private static bool TryReadTier(string wire, out KgsmTier tier)
+    internal static bool TryReadTier(string wire, out KgsmTier tier)
     {
         tier = KgsmTiers.Parse(wire);
         return tier != KgsmTier.None
@@ -687,7 +687,7 @@ internal static class Endpoints
     }
 
     /// <summary>A status a caller asked for, refusing anything that is not one.</summary>
-    private static bool TryReadStatus(string wire, out UserStatus status)
+    internal static bool TryReadStatus(string wire, out UserStatus status)
     {
         status = UserStatuses.Parse(wire);
         return status != UserStatus.Disabled
@@ -759,7 +759,7 @@ internal static class Endpoints
             "The account store could not be read.");
 
     /// <summary>An account as this surface renders one. Never carries a secret in any form.</summary>
-    private static AccountRecord ToRecord(KgsmUser user, IReadOnlyList<UserCredential> credentials) =>
+    internal static AccountRecord ToRecord(KgsmUser user, IReadOnlyList<UserCredential> credentials) =>
         new(
             Id: user.UserId,
             Username: user.Username,

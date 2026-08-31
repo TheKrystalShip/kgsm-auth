@@ -22,6 +22,128 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 internal static class AccountEndpoints
 {
+    // ── An account arriving ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Create an account, as an administrator.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to registration and the door an admin needs: somebody who will never register
+    /// themselves, or who arrives through a provider and should already hold a tier when they do.
+    /// </remarks>
+    internal static async Task CreateAccount(HttpContext ctx)
+    {
+        if (!await Endpoints.RequireAuthorityAsync(ctx))
+            return;
+
+        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.Admin);
+        if (maybe is not { } caller)
+            return;
+
+        CreateAccountRequest? body =
+            await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.CreateAccountRequest);
+
+        if (body is null || !Usernames.IsValid(body.Username))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_username",
+                $"A username is {Usernames.MinLength}-{Usernames.MaxLength} characters of letters, "
+                + "digits, '.', '_' or '-', beginning with a letter or a digit.");
+            return;
+        }
+
+        // Parsed strictly, not fail-closed. Everywhere else an unreadable tier means "grants
+        // nothing", which is the safe reading of a value somebody else wrote; here it is what the
+        // caller is asking for, and silently creating at none instead of refusing a typo would make
+        // an admin think they had granted something.
+        if (!Endpoints.TryReadTier(body.Tier ?? KgsmTiers.None, out KgsmTier tier))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_tier",
+                $"'{body.Tier}' is not a tier. Use admin, operator, viewer or none.");
+            return;
+        }
+
+        // Only the two states an admin can mean. Creating one already disabled is a shape with no
+        // use — an admin wanting that creates it and disables it, and the trail then says both
+        // things happened.
+        if (!Endpoints.TryReadStatus(body.Status ?? UserStatuses.Active, out UserStatus status)
+            || status == UserStatus.Disabled)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_status",
+                $"A new account is '{UserStatuses.Active}' or '{UserStatuses.Pending}'.");
+            return;
+        }
+
+        // Optional: an account can be made for somebody who will only ever arrive through a
+        // provider. One that IS set answers to the same floor as every other, or the door with the
+        // least scrutiny becomes the one that admits the weakest password on the cluster.
+        if (!string.IsNullOrEmpty(body.Password) && !Passwords.IsAcceptable(body.Password))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "password_too_short",
+                $"A password must be at least {Passwords.MinLength} characters.");
+            return;
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        string username = body.Username!.Trim();
+        var account = new KgsmUser(
+            UserIds.NewUserId(),
+            username,
+            string.IsNullOrWhiteSpace(body.DisplayName) ? username : body.DisplayName.Trim(),
+            tier,
+            // An admin choosing a tier IS the deliberate grant this records, which is what expiry
+            // reads to tell an approved account from one that arrived on its own.
+            TierSource.Granted,
+            status,
+            now,
+            now);
+
+        try
+        {
+            await ctx.RequestServices.GetRequiredService<IUserStore>()
+                .CreateAsync(account, ctx.RequestAborted);
+        }
+        catch (DuplicateUsernameException)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "username_taken",
+                $"'{username}' is already taken on this cluster.");
+            return;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.AccountEndpoints")
+                .LogError(ex, "could not create the account '{Username}'", username);
+            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
+                "The account store could not be written.");
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(body.Password))
+        {
+            await ctx.RequestServices.GetRequiredService<LocalSignInService>()
+                .SetPasswordAsync(account.UserId, body.Password, now, ctx.RequestAborted);
+        }
+
+        await AnnounceAsync(ctx, account, now);
+
+        // No "from": the account did not exist a moment ago, and a from/to pair would invent a
+        // previous state to have moved out of.
+        await ctx.RequestServices.GetRequiredService<AnchorJournal>().AccountAsync(
+            AuthEvents.UserProvisioned, account.UserId, account.Username,
+            toTier: KgsmTiers.ToWire(tier),
+            toStatus: UserStatuses.ToWire(status),
+            actor: ActorOf(caller),
+            origin: AnchorJournal.OriginUi,
+            ct: ctx.RequestAborted);
+
+        IReadOnlyList<UserCredential> credentials = await ctx.RequestServices
+            .GetRequiredService<IUserStore>()
+            .ListCredentialsAsync(account.UserId, ctx.RequestAborted);
+
+        await Endpoints.WriteJson(ctx, StatusCodes.Status201Created,
+            Endpoints.ToRecord(account, credentials), AnchorJsonContext.Default.AccountRecord);
+    }
+
     // ── A person's own password ───────────────────────────────────────────────
 
     /// <summary>

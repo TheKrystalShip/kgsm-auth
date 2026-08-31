@@ -194,6 +194,7 @@ app.MapPost("/auth/session/refresh", Endpoints.Refresh);
 app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
 app.MapGet("/auth/session", Endpoints.Session);
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
+app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount);
 app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);
 
 // What somebody may do to their OWN account. A person holds one account across the whole cluster, so
@@ -213,6 +214,15 @@ app.MapDelete("/auth/identities/{credentialId}", AccountEndpoints.Unlink);
 // the case it exists for is a person who has lost theirs.
 app.MapPost("/auth/cluster/users/{userId}/password", AccountEndpoints.SetPassword);
 app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount);
+
+// The devices somebody is signed in on, and ending them. Listed here because they exist ONLY here: a
+// member verifies a cluster session offline against a published key and stores nothing, so a member
+// asked what devices somebody holds answers honestly with none — an empty card rather than a wrong
+// question. Ending one is never gated on holding the capability, because revoking takes authority
+// away and a member that has stood down still holds the rows for what it minted.
+app.MapGet("/auth/sessions", SessionEndpoints.List);
+app.MapPost("/auth/session/revoke", SessionEndpoints.Revoke);
+app.MapPost("/auth/cluster/users/{userId}/sessions/revoke-all", SessionEndpoints.RevokeAll);
 
 // What this anchor serves to other MEMBERS: the accounts, so each can answer for itself who somebody
 // is and what they may do. Authenticated by a member service token, never by a person's session.

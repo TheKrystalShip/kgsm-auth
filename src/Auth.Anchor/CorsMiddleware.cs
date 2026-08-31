@@ -41,6 +41,13 @@ internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options
             // than as a policy that does not permit it.
             headers.AccessControlAllowMethods = "GET, POST, PATCH, DELETE, OPTIONS";
             headers.AccessControlMaxAge = "600";
+
+            // Attaching an identity sets a one-time ticket cookie on an XHR response, and a browser
+            // discards both the cookie and the whole answer without this — so the callback can only
+            // ever report that the link did not verify. Safe only because the allowance above is a
+            // configured origin and never the wildcard: the two together are what the specification
+            // refuses to combine, and what this daemon therefore never sends.
+            headers.AccessControlAllowCredentials = "true";
         }
 
         // A preflight asks whether the real request is permitted and carries nothing to act on.

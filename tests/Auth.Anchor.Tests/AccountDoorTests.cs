@@ -49,6 +49,106 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     private async Task<HttpResponseMessage> SignInRawAsync(string username, string password) =>
         await anchor.Client.PostAsJsonAsync("/auth/sign-in", new { username, password }, Wire);
 
+    // ── An account arriving ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task An_admin_creates_an_account_with_a_tier_it_already_holds()
+    {
+        string admin = Unique("creator-");
+        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        string bearer = await BearerAsync(admin, Long);
+
+        string subject = Unique("created-");
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post, "/auth/cluster/users", bearer,
+            new { username = subject, tier = "operator", password = Long });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        JsonElement account = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("operator", account.GetProperty("tier").GetString());
+
+        // An admin choosing a tier IS the deliberate grant, which is what expiry reads to tell an
+        // approved account from one that arrived on its own and was never looked at.
+        Assert.Equal("granted", account.GetProperty("tierSource").GetString());
+        Assert.True(account.GetProperty("hasPassword").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.OK, (await SignInRawAsync(subject, Long)).StatusCode);
+
+        JsonElement data = Assert.Single(
+            anchor.Journal(AuthEvents.UserProvisioned),
+            e => e.GetProperty("Data").GetProperty("Username").GetString() == subject)
+            .GetProperty("Data");
+
+        Assert.Equal("operator", data.GetProperty("ToTier").GetString());
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("FromTier").ValueKind);
+    }
+
+    [Fact]
+    public async Task An_account_can_be_created_for_somebody_who_will_only_arrive_by_provider()
+    {
+        string admin = Unique("provisioner-");
+        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        string bearer = await BearerAsync(admin, Long);
+
+        string subject = Unique("awaited-");
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post, "/auth/cluster/users", bearer,
+            new { username = subject, tier = "viewer" });
+
+        // No password, deliberately. The account exists and holds a tier before its owner has ever
+        // signed in, which is the whole point of an admin creating one.
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.False((await response.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("hasPassword").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_new_account_cannot_be_created_already_switched_off()
+    {
+        string admin = Unique("offswitch-");
+        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        string bearer = await BearerAsync(admin, Long);
+
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post, "/auth/cluster/users", bearer,
+            new { username = Unique("stillborn-"), tier = "viewer", status = "disabled" });
+
+        // A shape with no use: an admin wanting that creates it and disables it, and the trail then
+        // says both things happened rather than one thing that reads like neither.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_weak_password_is_refused_at_creation_like_everywhere_else()
+    {
+        string admin = Unique("floor-");
+        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        string bearer = await BearerAsync(admin, Long);
+
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post, "/auth/cluster/users", bearer,
+            new { username = Unique("weak-"), tier = "viewer", password = "short" });
+
+        // Or the door with the least scrutiny becomes the one that admits the weakest password on
+        // the cluster.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Creating_an_account_needs_admin()
+    {
+        string viewer = Unique("presumptuous-");
+        await anchor.SeedAsync(viewer, Long, KgsmTier.Viewer);
+        string bearer = await BearerAsync(viewer, Long);
+
+        HttpResponseMessage response = await SendAsync(
+            HttpMethod.Post, "/auth/cluster/users", bearer,
+            new { username = Unique("uninvited-"), tier = "admin" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     // ── A person's own password ───────────────────────────────────────────────
 
     [Fact]

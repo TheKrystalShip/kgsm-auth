@@ -309,7 +309,10 @@ internal static class IdentityEndpoints
     {
         if (options.RedirectsToPanel)
         {
-            ctx.Response.Redirect($"{options.FrontendUrl}#error={Uri.EscapeDataString(code)}");
+            // link_error, never error. A panel reads the fragment once at boot and cannot tell two
+            // failures apart by their value, so a failed ATTACH reported as `error` is shown on the
+            // sign-in card — telling somebody who is signed in that their sign-in failed.
+            ctx.Response.Redirect($"{options.FrontendUrl}#link_error={Uri.EscapeDataString(code)}");
             return Task.CompletedTask;
         }
 

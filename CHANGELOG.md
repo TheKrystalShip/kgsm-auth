@@ -7,6 +7,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — creating an account, and the devices somebody is signed in on (`1.9.0`)
+
+`POST /auth/cluster/users` creates an account as an administrator — the counterpart to registration,
+and the door for somebody who will never register themselves or who arrives through a provider and
+should already hold a tier when they do. A password is optional; one that is set answers to the same
+floor as every other, or the door with the least scrutiny becomes the one that admits the weakest
+password on the cluster. A new account is `active` or `pending` and never `disabled`: an admin wanting
+that creates it and disables it, and the trail then says both things happened.
+
+`GET /auth/sessions`, `POST /auth/session/revoke` and
+`POST /auth/cluster/users/{userId}/sessions/revoke-all` are the sessions surface, and it is **here
+because the sessions are**. A member verifies a cluster session offline against a published key and
+stores nothing, so a member asked what devices an account holds answers honestly with none — an empty
+card rather than a wrong question.
+
+**Sessions are found under every handle an account can be proved by.** A session is keyed by the
+handle somebody *arrived* with, so one account signed in with a password and with Discord has two
+keys; asking under one finds half the devices and reports the other half as nothing.
+
+A named session must be the caller's own. A sid is opaque and unguessable, but one that leaks must not
+become a way to sign somebody else out — and "not yours" answers the same as "not real", because
+telling those apart says whether an id exists. Ending sessions is never gated on holding the
+capability: revoking takes authority away, and a member that has stood down still holds the rows for
+what it minted.
+
+Sessions carry `lastSeen`, which is the last time that session **rotated its tokens**. It is the only
+contact the anchor has with a live session — every other request goes to a member and is verified
+offline — so it is named for the nearest true thing rather than for a request count nothing counts,
+and it is absent for a session that has not rotated.
+
+### Fixed — a browser could not attach an identity at all (`1.9.0`)
+
+The cross-origin allowance never sent `Access-Control-Allow-Credentials`, so a browser discarded both
+the one-time ticket cookie and the whole response to `POST /auth/identities/{provider}/start`. The
+callback could then only ever report that the link did not verify. Safe to send because the allowance
+is a configured origin and never the wildcard — the two together are what the specification refuses to
+combine.
+
+### Fixed — a failed attach reported itself as a failed sign-in (`1.9.0`)
+
+The link callback redirected with `#error=`, which is what a *sign-in* failure carries. A panel reads
+the fragment once at boot and cannot tell two failures apart by their value, so a failed attach landed
+on the sign-in card — telling somebody who is signed in that their sign-in failed. It carries
+`#link_error=` now, which is what the same callback on a host holding its own accounts already sends.
+
 ### Fixed — a browser could not reach the doors that detach (`1.8.1`)
 
 The cross-origin allowance named `GET, POST, PATCH, OPTIONS`, so a panel on another origin was

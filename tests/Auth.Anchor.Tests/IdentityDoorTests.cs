@@ -261,7 +261,11 @@ public sealed class IdentityDoorTests(AnchorFixture anchor)
         // Redirected back to the panel with the reason in the fragment rather than left on a JSON
         // error page at an address nobody typed.
         Assert.Equal(HttpStatusCode.Found, response.StatusCode);
-        Assert.Contains("error=invalid_state", response.Headers.Location!.Fragment);
+
+        // link_error, never error. A panel reads the fragment once at boot and cannot tell two
+        // failures apart by their value, so a failed ATTACH reported as `error` lands on the sign-in
+        // card — telling somebody who is signed in that their sign-in failed.
+        Assert.Contains("link_error=invalid_state", response.Headers.Location!.Fragment);
     }
 
     // ── Detaching ─────────────────────────────────────────────────────────────
@@ -327,6 +331,17 @@ public sealed class IdentityDoorTests(AnchorFixture anchor)
         // panel on another origin.
         foreach (string method in new[] { "GET", "POST", "PATCH", "DELETE", "OPTIONS" })
             Assert.Contains(method, allowed);
+
+        // Attaching an identity sets a one-time ticket cookie on an XHR response, and a browser
+        // discards both the cookie and the whole answer without this — so the callback could only
+        // ever report that the link did not verify.
+        Assert.Equal("true", response.Headers.GetValues("Access-Control-Allow-Credentials").Single());
+
+        // Never with a wildcard origin. The two together are what the specification refuses to
+        // combine, and a surface that mints credentials must not be the one that tries.
+        Assert.Equal(
+            AnchorFixture.PanelUrl,
+            response.Headers.GetValues("Access-Control-Allow-Origin").Single());
     }
 
     // ── What a surface is told ────────────────────────────────────────────────

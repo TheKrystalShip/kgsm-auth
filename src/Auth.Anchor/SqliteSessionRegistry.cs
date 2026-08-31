@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 using TheKrystalShip.KGSM.Auth.Sessions;
@@ -67,7 +68,41 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
             CREATE INDEX IF NOT EXISTS ix_sessions_user ON sessions (user_id);
             """;
         cmd.ExecuteNonQuery();
+
+        // Additive, and nullable on purpose. Rows written before this column existed have no answer,
+        // and null reads as "not known" — where a default would state a time nothing observed.
+        using SqliteCommand add = connection.CreateCommand();
+        add.CommandText = "ALTER TABLE sessions ADD COLUMN last_seen TEXT NULL;";
+        try
+        {
+            add.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // Already there. SQLite has no ADD COLUMN IF NOT EXISTS, and reading the schema back to
+            // decide would be the same round trip with more code.
+        }
     }
+
+    /// <summary>One live session, as a person reviewing their own devices sees it.</summary>
+    /// <param name="SessionId">The session.</param>
+    /// <param name="UserId">Whose it is, as the provider-qualified handle it was keyed by.</param>
+    /// <param name="Created">When they signed in.</param>
+    /// <param name="Expires">The absolute cap on it.</param>
+    /// <param name="UserAgent">The device, or null when it sent none.</param>
+    /// <param name="LastSeen">
+    /// When this session last rotated its tokens, or null for one that has not since this was
+    /// recorded. It is the only contact the anchor has with a live session — every other request goes
+    /// to a member and is verified offline — so it is a rotation, named as the nearest true thing
+    /// rather than as a request count nothing counts.
+    /// </param>
+    internal sealed record LiveSession(
+        string SessionId,
+        string UserId,
+        DateTimeOffset Created,
+        DateTimeOffset Expires,
+        string? UserAgent,
+        DateTimeOffset? LastSeen);
 
     public Task CreateAsync(SessionRegistration session, CancellationToken ct = default)
     {
@@ -122,7 +157,7 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
             cmd.CommandText =
                 """
                 UPDATE sessions
-                   SET current_jti = $new, expires = $expires
+                   SET current_jti = $new, expires = $expires, last_seen = $now
                  WHERE session_id = $sid
                    AND current_jti = $presented
                    AND revoked = 0
@@ -154,6 +189,128 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
 
             return Task.FromResult(cmd.ExecuteNonQuery() == 1);
         }
+    }
+
+    /// <summary>
+    /// Every live session belonging to one account.
+    /// </summary>
+    /// <remarks>
+    /// Live means not revoked and not past its cap. A revoked row is kept as a tombstone until the
+    /// sweep takes it, and listing those would show somebody a device they had already signed out.
+    /// </remarks>
+    /// <param name="handles">
+    /// Every credential handle the account can be proved by. Sessions are keyed by the handle
+    /// somebody <em>arrived</em> with, so one account signed in with a password and with Discord has
+    /// two keys — asking under one of them finds half the devices and reports the other half as
+    /// nothing, which reads as an empty card rather than as a wrong question.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The sessions, most recent first.</returns>
+    internal Task<IReadOnlyList<LiveSession>> ListAsync(
+        IReadOnlyList<string> handles, CancellationToken ct = default)
+    {
+        if (handles.Count == 0)
+            return Task.FromResult<IReadOnlyList<LiveSession>>([]);
+
+        using SqliteConnection connection = Open();
+        using SqliteCommand cmd = connection.CreateCommand();
+
+        // Parameterised per handle rather than joined into the text. The values are credential
+        // handles read out of the store, but a query built by concatenation is one refactor away from
+        // being built from something a caller sent.
+        string slots = Bind(cmd, handles);
+        cmd.CommandText =
+            $"""
+            SELECT session_id, user_id, created, expires, user_agent, last_seen
+              FROM sessions
+             WHERE user_id IN ({slots}) AND revoked = 0 AND expires > $now
+             ORDER BY created DESC;
+            """;
+        cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+
+        var sessions = new List<LiveSession>();
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            sessions.Add(new LiveSession(
+                reader.GetString(0),
+                reader.GetString(1),
+                DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture),
+                DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5)
+                    ? null
+                    : DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture)));
+        }
+
+        return Task.FromResult<IReadOnlyList<LiveSession>>(sessions);
+    }
+
+    /// <summary>
+    /// Whose session this is, or <see langword="null"/> when there is no live session with that id.
+    /// </summary>
+    /// <remarks>
+    /// Read before revoking one by id, so a caller ending "a session" can be held to it being theirs.
+    /// A sid is opaque and unguessable, but an id that leaks must not become a way to sign somebody
+    /// else out.
+    /// </remarks>
+    /// <param name="sessionId">The session.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The account handle, or null.</returns>
+    internal Task<string?> OwnerAsync(string sessionId, CancellationToken ct = default)
+    {
+        using SqliteConnection connection = Open();
+        using SqliteCommand cmd = connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT user_id FROM sessions WHERE session_id = $sid AND revoked = 0 AND expires > $now;";
+        cmd.Parameters.AddWithValue("$sid", sessionId);
+        cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+
+        return Task.FromResult(cmd.ExecuteScalar() as string);
+    }
+
+    /// <summary>
+    /// End every live session belonging to one account, and say which they were.
+    /// </summary>
+    /// <remarks>
+    /// The ids come back because each has to be announced to the other members: a cluster session is
+    /// accepted everywhere and has a row only here, so ending one locally ends it nowhere else.
+    /// </remarks>
+    /// <param name="handles">Every credential handle the account can be proved by.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The sessions that were live and now are not.</returns>
+    internal async Task<IReadOnlyList<string>> RevokeAllAsync(
+        IReadOnlyList<string> handles, CancellationToken ct = default)
+    {
+        IReadOnlyList<LiveSession> live = await ListAsync(handles, ct).ConfigureAwait(false);
+        if (live.Count == 0)
+            return [];
+
+        lock (_writeGate)
+        {
+            using SqliteConnection connection = Open();
+            using SqliteCommand cmd = connection.CreateCommand();
+            string slots = Bind(cmd, handles);
+            cmd.CommandText =
+                $"UPDATE sessions SET revoked = 1, current_jti = NULL "
+                + $"WHERE user_id IN ({slots}) AND revoked = 0;";
+            cmd.ExecuteNonQuery();
+        }
+
+        return [.. live.Select(s => s.SessionId)];
+    }
+
+    /// <summary>Bind one parameter per handle and return the placeholder list for an IN clause.</summary>
+    private static string Bind(SqliteCommand cmd, IReadOnlyList<string> handles)
+    {
+        var slots = new string[handles.Count];
+        for (int i = 0; i < handles.Count; i++)
+        {
+            slots[i] = $"$h{i}";
+            cmd.Parameters.AddWithValue(slots[i], handles[i]);
+        }
+
+        return string.Join(", ", slots);
     }
 
     public Task<int> DeleteExpiredAsync(DateTimeOffset now, CancellationToken ct = default)

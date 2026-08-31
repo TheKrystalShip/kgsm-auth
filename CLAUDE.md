@@ -272,6 +272,12 @@ This file is the authority for the auth design; the account-store design is also
 - **Freshness is checked when a link STARTS, never on the way back.** The bounce takes as long as it
   takes, and re-checking fails a link somebody legitimately began while adding nothing — the ticket is
   already one-use, short-lived and unforgeable.
+- **Sessions are listed and ended HERE, because they exist only here.** A member verifies a cluster
+  session offline against a published key and stores nothing, so a member asked what devices an
+  account holds answers honestly with none — an empty card rather than a wrong question. They are
+  looked up under **every credential handle the account holds**: a session is keyed by the handle
+  somebody arrived with, so one account signed in with a password and with Discord has two keys.
+  Ending one is never gated on holding the capability, for the same reason sign-out is not.
 - **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
   no default store, and sessions are not accounts: a member replicating the cluster's accounts
   replicates none of the sign-ins.
