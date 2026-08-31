@@ -155,6 +155,44 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
     }
 
     [Fact]
+    public async Task A_member_behind_several_public_names_is_given_by_the_one_it_was_configured_with()
+    {
+        // The live candidate list for a node that used to serve the panel and now has a name of its
+        // own. Copied verbatim from a real roster rather than composed here: what is under test is
+        // that the resolved answer is the configured name and not the observation, and a list written
+        // to make that come out right would only be testing itself.
+        string node = Unique("moved-");
+        await anchor.Service<MembersStore>().UpsertAsync(
+            MemberRow.New(node, MemberKind.Node) with
+            {
+                Id = "member_" + node,
+                Url = "https://kgsm.thekrystalship.com",
+                Candidates =
+                    """
+                    [{"url":"https://hotrod.example","client":true},
+                     {"url":"https://panel.example","client":true},
+                     {"url":"http://192.168.1.128","client":false}]
+                    """,
+                Status = "reachable",
+                MembershipState = "alive",
+            },
+            default);
+
+        JsonElement member = Assert.Single(
+            (await RosterAsync(await BearerAsync())).GetProperty("members").EnumerateArray(),
+            m => m.GetProperty("memberId").GetString() == node);
+
+        // The configured name, which sorts first. The second is a true observation — a browser really
+        // did reach this node there — that stops being about this node the day the panel moves, and
+        // handing it over would point a panel at itself.
+        Assert.Equal("https://hotrod.example", member.GetProperty("url").GetString());
+
+        // And never the proven peer address, whatever else is present: a secure page cannot fetch a
+        // plaintext origin at all.
+        Assert.NotEqual("http://192.168.1.128", member.GetProperty("url").GetString());
+    }
+
+    [Fact]
     public async Task Other_anchors_are_listed_and_named_as_anchors()
     {
         string second = Unique("assistant-anchor-");
