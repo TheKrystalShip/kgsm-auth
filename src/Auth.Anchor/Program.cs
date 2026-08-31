@@ -184,6 +184,18 @@ app.MapClusterEndpoints();
 // Unified ecosystem liveness probe: 200 means this anchor is up and serving.
 app.MapGet("/health", () => Results.Text("ok\n"));
 
+// What this is. Unauthenticated, because a client handed one address has to establish what is behind
+// it before it can do anything, and a caller with no session is exactly who is asking. An anchor and
+// a standalone node both answer /auth/providers with a provider list, so that question cannot tell
+// them apart — and guessing wrong sends somebody to sign in at a machine that does not hold their
+// account.
+app.MapGet("/auth/identity", DiscoveryEndpoints.Identity);
+
+// What the cluster contains, behind a session. The only place a client learns it: a member of a
+// cluster tells nobody what cluster it is in, so a panel signs in here and drives the roster it is
+// handed rather than holding a list of its own.
+app.MapGet("/auth/cluster/members", DiscoveryEndpoints.Roster);
+
 app.MapGet("/auth/providers", ProviderEndpoints.Providers);
 app.MapGet("/auth/{provider}/start", ProviderEndpoints.Start);
 app.MapGet("/auth/{provider}/callback", ProviderEndpoints.Callback);

@@ -7,6 +7,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — what this is, and what the cluster contains (`1.10.0`)
+
+`GET /auth/identity` and `GET /auth/cluster/members`. A panel deployed anywhere — a bucket, a static
+host, a laptop — knows about no cluster until somebody types an address into it, and these are how it
+finds out what it has been given.
+
+**`/auth/identity` is unauthenticated**, because a caller with no session is exactly who is asking. It
+names a kind, a cluster and a build, and says whether this anchor currently holds the accounts — a
+second installation is a promotion candidate rather than a second authority, and answering otherwise
+would send somebody to sign in at a door that refuses them. It exists because `/auth/providers`
+answers on an anchor and on a standalone node alike, so that question cannot tell the two apart, and
+guessing wrong sends somebody to sign in at a machine that does not hold their account.
+
+It carries **no member and no address**. Knowing which machines exist is behind a session; an address
+alone does not buy it.
+
+**`/auth/cluster/members` is the only place a client learns what a cluster contains**, and it is
+authenticated at the floor: any account may see the machines it might drive, and what it may then do
+on each is that member's own answer per request. A member of a cluster tells nobody what cluster it is
+in, so a panel signs in here and drives the roster it is handed rather than holding a list of its own
+— which would be a second answer able to disagree with this one about which machines exist.
+
+**Browser addresses, never peer-to-peer ones.** The roster carries both, and only the address a member
+says a browser should use belongs in an answer to a browser: a secure page cannot fetch a plaintext
+origin at all, so handing over the other registers a connection that can only ever read as down and
+reports a healthy machine as broken. A member advertising no browser address is **left out** rather
+than given its peer address — genuinely not drivable from a browser, and saying so by omission is
+honest where an unusable address is a machine that appears present and never works.
+
+Nodes and other anchors are both listed, with `kind`. A cluster holds more than one anchor as
+capabilities are added and exactly one of them holds the accounts, so the kind is what lets a client
+drive the others without ever trying to sign in against them.
+
 ### Fixed — a client could not add a header without every call failing (`1.9.3`)
 
 `Access-Control-Allow-Headers` was a fixed `Authorization, Content-Type`. A browser states exactly

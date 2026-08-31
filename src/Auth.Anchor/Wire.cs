@@ -12,6 +12,62 @@ internal sealed record ErrorEnvelope(ErrorBody Error);
 /// </summary>
 internal sealed record ErrorBody(string Code, string Message);
 
+/// <summary>
+/// What this daemon is, answered to anybody who asks.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A client is given one address and has to know what is behind it before it can do anything. An
+/// anchor and a standalone node both answer <c>/auth/providers</c> with a provider list, so that
+/// question cannot tell them apart — and guessing wrong sends somebody to sign in at a machine that
+/// does not hold their account.
+/// </para>
+/// <para>
+/// Unauthenticated, because a caller with no session is exactly who is asking. It names a kind and a
+/// cluster and nothing else: what this is, and which cluster's accounts it holds. No member list, no
+/// addresses, nothing about who else exists — that is behind a session.
+/// </para>
+/// </remarks>
+/// <param name="Name">Always <c>kgsm-auth-anchor</c>. What a client matches on.</param>
+/// <param name="Cluster">The cluster whose accounts this holds, and the audience of every session it mints.</param>
+/// <param name="Version">This build.</param>
+/// <param name="Holding">
+/// Whether this anchor currently holds the cluster's <c>auth</c> capability. A second installation is
+/// a promotion candidate rather than a second authority, and it answers here honestly so a client is
+/// not sent to sign in at one that would refuse it.
+/// </param>
+internal sealed record AnchorIdentity(string Name, string Cluster, string Version, bool Holding);
+
+/// <summary>One member of the cluster, as a browser needs it.</summary>
+/// <param name="MemberId">The name other members know it by.</param>
+/// <param name="Kind">
+/// <c>node</c> or <c>anchor</c>. A client drives a node and signs in at an anchor, and there is
+/// exactly one anchor holding accounts however many exist.
+/// </param>
+/// <param name="Url">
+/// The address a <b>browser</b> can reach it at. Never the address members use between themselves: a
+/// secure page cannot fetch a plaintext origin, so handing over a peer-to-peer address registers a
+/// connection that can only ever read as down and names a healthy machine as broken.
+/// </param>
+/// <param name="Nickname">What a person called it, or null.</param>
+/// <param name="Status">Whether it answered the last probe.</param>
+/// <param name="Membership">What gossip says about it — alive, suspect, or gone.</param>
+internal sealed record ClusterMemberRecord(
+    string MemberId, string Kind, string Url, string? Nickname, string Status, string Membership);
+
+/// <summary>
+/// The cluster this anchor holds the accounts for.
+/// </summary>
+/// <remarks>
+/// <b>The only place a client learns what a cluster contains.</b> A member of a cluster tells nobody
+/// what cluster it is in, so a panel that has signed in here is handed the whole roster and drives it
+/// from there — rather than holding a list of its own, which would be a second answer able to
+/// disagree with this one about which machines exist.
+/// </remarks>
+/// <param name="Cluster">The cluster's id.</param>
+/// <param name="Members">Every enabled member, this anchor included.</param>
+internal sealed record ClusterRoster(string Cluster, IReadOnlyList<ClusterMemberRecord> Members);
+
 /// <summary>What a browser posts to sign in.</summary>
 internal sealed record SignInRequest(string? Username, string? Password);
 
@@ -338,6 +394,8 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(ReauthResult))]
 [JsonSerializable(typeof(LinkStartResponse))]
 [JsonSerializable(typeof(CreateAccountRequest))]
+[JsonSerializable(typeof(AnchorIdentity))]
+[JsonSerializable(typeof(ClusterRoster))]
 [JsonSerializable(typeof(AccountRecord))]
 [JsonSerializable(typeof(SessionsPage))]
 [JsonSerializable(typeof(RevokeRequest))]
