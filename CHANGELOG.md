@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a password, a new account and an unlink tell the cluster what they are (1.18.0)
+
+Four doors announced a removal for something that was not one: setting somebody's password, changing
+your own, an account an administrator creates, and unlinking an identity. A member acts on the two
+messages differently, so each of those deleted the account from every replica while the anchor went on
+showing it present. Nothing on the writing side reported a problem, and the person became a stranger
+everywhere but the machine holding the accounts.
+
+The kind is asserted per door now rather than left to the call site, including the one removal that is
+one.
+
 ### Added — deciding a member-acting call, once for every member (`Auth.Cluster 1.0.0-dev.5`)
 
 `MemberActingResolver` decides one member calling another for somebody who is not signed in to it:

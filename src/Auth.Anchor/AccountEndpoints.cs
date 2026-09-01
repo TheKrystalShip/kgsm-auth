@@ -503,8 +503,8 @@ internal static class AccountEndpoints
     /// </remarks>
     private static async Task AnnounceAsync(HttpContext ctx, KgsmUser user, DateTimeOffset now)
     {
-        long version = await ctx.RequestServices.GetRequiredService<IAccountVersions>()
-            .NextAsync(user.UserId, now, AccountAnnouncementKind.Removed, ctx.RequestAborted);
+        await ctx.RequestServices.GetRequiredService<IAccountVersions>()
+            .NextAsync(user.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);
 
         await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
             .DrainAsync(ctx.RequestAborted);
