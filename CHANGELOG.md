@@ -7,6 +7,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — deciding a member-acting call, once for every member (`Auth.Cluster 1.0.0-dev.5`)
+
+`MemberActingResolver` decides one member calling another for somebody who is not signed in to it:
+validate the caller's service token, refuse a member the roster has disabled, parse the
+`provider:subject` handle, and resolve it against this member's own replica of the cluster's accounts.
+A person this member has never heard of is refused rather than provisioned, which is exactly what a
+username collision looks like from the far end; an unreadable store refuses and says so, because an
+outage is never a denial.
+
+**The caller asserts who, never what.** No tier crosses the wire in either direction — the tier comes
+from the replica on every call. What a compromised member could do is act as somebody it names, bounded
+by what that person actually holds, which is narrower than a shared secret that forwards an authority
+along with an identity.
+
+A refusal carries a typed reason as well as a message, because they do not all mean the same thing to
+whoever reads a log: `NoSuchAccount` is what a username collision looks like from the far end — a person
+who exists in the cluster and resolves to nobody here, with everything else healthy — and it has to be
+findable, while a token that failed to validate is ordinary noise. A surface matching on message text to
+tell them apart would break on a reworded sentence. The acting member is named as soon as its token
+validates, refusal or not, so a member can report *who* asked for something it would not do.
+
+It decides and returns: it reads no request and writes no response. How the handle and the token were
+carried, and what a refusal looks like on the wire, belong to the surface — every one of which has its
+own error envelope already, and one shape imposed on all of them is a second wire contract kept in step
+for no reader. A member supplies its own accounts through `IMemberAccounts`, so this opens no file.
+
+The header spellings themselves are `TheKrystalShip.KGSM.Cluster`'s: a surface that only ever *sends* an
+acting handle needs the spelling and nothing about accounts at all, and making it take the account stack
+for a string constant is the coupling this split exists to avoid.
+
+
 ### Fixed — an account change and the announcement owed for it are one write (`1.17.0`)
 
 The change was applied to the accounts and the announcement enqueued onto the cluster bus afterwards,

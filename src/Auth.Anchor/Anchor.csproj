@@ -55,7 +55,7 @@
   <ItemGroup>
     <!-- Cluster membership and durable member-to-member messaging. The anchor is a member like any
          other: it joins directly, answers the same wire, and needs no kgsm-api to do it. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.16" />
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.18" />
   </ItemGroup>
 
   <ItemGroup>
