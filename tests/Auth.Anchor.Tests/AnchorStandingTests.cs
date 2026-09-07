@@ -59,9 +59,9 @@ public sealed class AnchorStandingTests
 
         // The §7·a safeguard: a member that believed it was the anchor while the cluster names
         // another serves nothing on the strength of its own opinion.
-        Assert.True(role.Update(AnchorStanding.StandingBy, "hotbox-auth"));
+        Assert.True(role.Update(AnchorStanding.StandingBy, "node-b-auth"));
         Assert.False(role.IsAuthority);
-        Assert.Equal("hotbox-auth", role.Holder);
+        Assert.Equal("node-b-auth", role.Holder);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class AnchorStandingTests
 
         // "Nobody has it yet" and "somebody else has it" are the same standing and different facts,
         // and an operator reading a refusal needs the second one.
-        Assert.True(role.Update(AnchorStanding.StandingBy, "hotbox-auth"));
+        Assert.True(role.Update(AnchorStanding.StandingBy, "node-b-auth"));
     }
 }
 

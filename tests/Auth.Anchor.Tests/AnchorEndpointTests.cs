@@ -354,7 +354,7 @@ public sealed class AnchorStandDownTests(AnchorFixture anchor)
         string bearer = (await before.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("token").GetString()!;
 
-        await anchor.StandingBy("hotbox-auth", async () =>
+        await anchor.StandingBy("node-b-auth", async () =>
         {
             // 503 and not 403: this is an outage with a named cause, not a denial of the person.
             HttpResponseMessage refused = await anchor.Client.PostAsJsonAsync(
@@ -363,10 +363,10 @@ public sealed class AnchorStandDownTests(AnchorFixture anchor)
             Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
             JsonElement body = await refused.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal("not_the_anchor", body.GetProperty("error").GetProperty("code").GetString());
-            Assert.Contains("hotbox-auth", body.GetProperty("error").GetProperty("message").GetString());
+            Assert.Contains("node-b-auth", body.GetProperty("error").GetProperty("message").GetString());
 
             // And the holder is on a header, so a client can route rather than retry.
-            Assert.Equal("hotbox-auth", refused.Headers.GetValues("X-Kgsm-Auth-Holder").Single());
+            Assert.Equal("node-b-auth", refused.Headers.GetValues("X-Kgsm-Auth-Holder").Single());
 
             // A session it minted before standing down buys nothing further from it.
             using var whoami = new HttpRequestMessage(HttpMethod.Get, "/auth/session");
@@ -382,7 +382,7 @@ public sealed class AnchorStandDownTests(AnchorFixture anchor)
     [Fact]
     public async Task Standing_by_still_answers_health_and_still_publishes_its_key()
     {
-        await anchor.StandingBy("hotbox-auth", async () =>
+        await anchor.StandingBy("node-b-auth", async () =>
         {
             // A candidate is a running daemon, not a broken one — and its key stays discoverable so
             // a later promotion needs no restart anywhere.
@@ -402,7 +402,7 @@ public sealed class AnchorStandDownTests(AnchorFixture anchor)
             "/auth/sign-in", new { username, password = "sign me out regardless" }, Wire);
         JsonElement session = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-        await anchor.StandingBy("hotbox-auth", async () =>
+        await anchor.StandingBy("node-b-auth", async () =>
         {
             // Ending a session takes authority away rather than granting it, and this member still
             // holds the row. Refusing would strand whoever is signed in to it.

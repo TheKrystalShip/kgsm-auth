@@ -122,14 +122,14 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
     [Fact]
     public async Task A_member_is_given_by_the_address_a_browser_can_reach()
     {
-        await Learn(anchor, Unique("node-"), MemberKind.Node, provenUrl: "http://192.168.1.129:8080",
-            new MemberCandidate("https://hotbox.example", true),
-            new MemberCandidate("http://192.168.1.129:8080", false));
+        await Learn(anchor, Unique("node-"), MemberKind.Node, provenUrl: "http://192.168.1.200:8080",
+            new MemberCandidate("https://node-b.example", true),
+            new MemberCandidate("http://192.168.1.200:8080", false));
 
         JsonElement roster = await RosterAsync(await BearerAsync());
 
         JsonElement member = roster.GetProperty("members").EnumerateArray()
-            .First(m => m.GetProperty("url").GetString() == "https://hotbox.example");
+            .First(m => m.GetProperty("url").GetString() == "https://node-b.example");
 
         // Never the address members prove between themselves. A secure page cannot fetch a plaintext
         // origin at all, so a peer-to-peer address registers a connection that can only ever read as
