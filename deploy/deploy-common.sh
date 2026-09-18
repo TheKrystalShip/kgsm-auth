@@ -77,15 +77,9 @@ health_probe() {
 # ownership is that package's answer and not this one's.
 CLUSTER_SHARED_DIR="${KGSM_CLUSTER_SHARED_DIR:-/var/lib/kgsm/cluster}"
 
-# This anchor's own nginx server block, if the host runs nginx as its public multiplexer. A person
-# signs in here directly, so unlike a leaf it needs a name a browser can reach. The :80 ACME block and
-# the certificate lifecycle stay host-level: a component that claimed those would make every other one
-# on the box depend on it. Skipped cleanly where nginx is not installed.
-NGINX_FRAGMENT="${REPO_DIR}/deploy/nginx/${PROJECT}.conf"
-
 # Serving the names the cluster's DNS anchor gives this anchor: its keys, the site it generates, its proxy
-# rules (which the vhost above includes too), the include that loads the site, and the grant to reload
-# the web server after writing it.
+# rules, the include that loads the site, and the grant to reload the web server after writing it. A
+# person signs in here directly, so the accounts capability's name is what a browser reaches.
 TLS_DIR="/var/lib/kgsm/tls/${PROJECT}"
 SITES_DIR="/var/lib/kgsm/nginx"
 LOCATIONS_SRC="${REPO_DIR}/deploy/nginx/${PROJECT}.locations"
@@ -128,22 +122,7 @@ setup_serving() {
 }
 
 setup_project_extras() {
-    # The serving pieces go in first: the vhost includes the proxy rules they install.
     setup_serving
-
-    if [[ -n "${NGINX_FRAGMENT:-}" && -f "$NGINX_FRAGMENT" && -d /etc/nginx/conf.d ]]; then
-        log "installing the nginx vhost → /etc/nginx/conf.d/$(basename "$NGINX_FRAGMENT")"
-        $SUDO install -m 0644 -o root -g root "$NGINX_FRAGMENT" "/etc/nginx/conf.d/$(basename "$NGINX_FRAGMENT")"
-        # Validated before reloading: a bad fragment must fail here, loudly, rather than at the next
-        # reload for an unrelated reason — by which point nobody would connect the two.
-        if $SUDO nginx -t > /dev/null 2>&1; then
-            $SUDO systemctl reload nginx 2>/dev/null || true
-        else
-            warn "nginx -t failed after installing the fragment — NOT reloading; run 'sudo nginx -t' to see why"
-        fi
-    elif [[ -n "${NGINX_FRAGMENT:-}" && -f "$NGINX_FRAGMENT" ]]; then
-        log "nginx is not installed on this host — skipping the vhost fragment"
-    fi
 
     if [[ -d "$CLUSTER_SHARED_DIR" ]]; then
         log "shared cluster directory ${CLUSTER_SHARED_DIR} already exists — leaving its ownership alone"

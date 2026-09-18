@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the anchor is reached at the name it serves (1.20.0)
+
+In a cluster with a DNS anchor, `Anchor__PublicBaseUrl` is left blank: the anchor advertises the
+accounts capability's name to the cluster while it serves it, and builds its provider callbacks from
+that name — `https://auth.anchors.<zone>/auth/<provider>/callback` for signing in and
+`/auth/identities/<provider>/callback` for attaching an identity. Those are the redirect URIs a
+provider's application registers. A configured address still wins.
+
+- **No address, no provider.** An anchor standing by, or one whose certificate is not installed yet,
+  has nothing a provider could send a browser back to, so it offers no provider sign-in rather than a
+  bounce that fails at the provider.
+- **`deploy/setup.sh` installs no host vhost.** The anchor's names are served from the site it
+  generates; the proxy rules in `kgsm-auth-anchor.locations` are included by those blocks alone.
+- Takes `TheKrystalShip.KGSM.Cluster 1.0.0-dev.20` and `TheKrystalShip.KGSM.Dns 0.2.0-dev.7`.
+
 ### Added — the accounts capability's name, served by whichever anchor holds it (1.19.0)
 
 In a cluster with a DNS anchor, `auth.anchors.<zone>` points at the host the holder of `auth` states,

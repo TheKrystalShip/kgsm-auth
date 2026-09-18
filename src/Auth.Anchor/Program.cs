@@ -182,10 +182,13 @@ builder.Services.AddSingleton<AnchorAuth>();
 // Transient like the typed HttpClient underneath it: holding one for the process lifetime pins its
 // handler and silently stops the factory rotating it, so DNS changes never land.
 builder.Services.AddHttpClient(nameof(DiscordDirectory), c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddSingleton(sp => new AnchorAddress(
+    sp.GetRequiredService<AnchorOptions>(),
+    sp.GetServices<ISelfAddressSource>()));
 builder.Services.AddTransient(sp => new ProviderCatalog(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<IHttpClientFactory>(),
-    sp.GetRequiredService<AnchorOptions>()));
+    sp.GetRequiredService<AnchorAddress>()));
 builder.Services.AddSingleton(sp => new IdentityLinkService(sp.GetRequiredService<IUserStore>()));
 builder.Services.AddSingleton<MemberTargets>();
 builder.Services.AddSingleton<AccountBroadcast>();

@@ -102,12 +102,13 @@ internal sealed class AnchorSettings
     public string MemberId { get; set; } = "";
 
     /// <summary>
-    /// The address other members reach this anchor at, when it has one a person can state. Blank
-    /// leaves it to the addresses the join exchange reflects back.
+    /// The address browsers and other members reach this anchor at, and the origin its provider callbacks
+    /// are built on. Blank uses the accounts capability's name while this anchor serves it, in a cluster
+    /// with a DNS anchor.
     /// </summary>
-    /// <panel>The address other members of the cluster reach this anchor at. Set it when this machine
-    /// sits behind a reverse proxy and cannot see its own public address; otherwise leave it blank and
-    /// the addresses are learned when a member joins.</panel>
+    /// <panel>The address people and other members of the cluster reach this anchor at, and where a
+    /// sign-in provider sends people back to. In a cluster with a DNS anchor leave it blank: the accounts
+    /// capability's own name is used. Set it only for an anchor with no DNS anchor to name it.</panel>
     [ConfigField("publicBaseUrl", "Public address", Group = "network", Risk = ConfigRisk.Wiring)]
     public string PublicBaseUrl { get; set; } = "";
 

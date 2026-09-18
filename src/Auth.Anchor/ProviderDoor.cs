@@ -44,7 +44,7 @@ internal sealed record ProviderRegistration(
 internal sealed class ProviderCatalog(
     IConfiguration configuration,
     IHttpClientFactory httpClientFactory,
-    AnchorOptions options)
+    AnchorAddress address)
 {
     private static readonly ProviderRegistration[] Registrations =
     [
@@ -61,8 +61,11 @@ internal sealed class ProviderCatalog(
     internal IReadOnlyList<string> Configured =>
         [.. Registrations.Select(r => r.Provider).Where(IsConfigured)];
 
-    /// <summary>Whether an application is configured for <paramref name="provider"/>.</summary>
-    internal bool IsConfigured(string provider) => Application(provider) is not null;
+    /// <summary>
+    /// Whether <paramref name="provider"/> can be used here: an application is configured for it, and
+    /// this anchor has an address for the provider to send the browser back to.
+    /// </summary>
+    internal bool IsConfigured(string provider) => Application(provider) is not null && address.Base is not null;
 
     /// <summary>
     /// Every provider this build knows how to speak, wired up or not.
@@ -87,11 +90,11 @@ internal sealed class ProviderCatalog(
     /// </remarks>
     internal IIdentityProvider? Link(string provider)
     {
-        if (Find(provider) is not { } registration || Application(registration.Provider) is not { } application)
+        if (Find(provider) is not { } registration || Application(registration.Provider) is not { } application
+            || address.LinkRedirectUri(registration.Provider) is not { } redirect)
             return null;
 
-        return registration.Create(
-            httpClientFactory, application, options.LinkRedirectUri(registration.Provider));
+        return registration.Create(httpClientFactory, application, redirect);
     }
 
     /// <summary>
@@ -100,11 +103,11 @@ internal sealed class ProviderCatalog(
     /// </summary>
     internal IIdentityProvider? Identity(string provider)
     {
-        if (Find(provider) is not { } registration || Application(registration.Provider) is not { } application)
+        if (Find(provider) is not { } registration || Application(registration.Provider) is not { } application
+            || address.RedirectUri(registration.Provider) is not { } redirect)
             return null;
 
-        return registration.Create(
-            httpClientFactory, application, options.RedirectUri(registration.Provider));
+        return registration.Create(httpClientFactory, application, redirect);
     }
 
     /// <summary>

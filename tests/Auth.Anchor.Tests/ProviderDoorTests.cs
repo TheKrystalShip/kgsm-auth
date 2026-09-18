@@ -390,6 +390,35 @@ public sealed class RegisterTests(AnchorFixture anchor)
     }
 
     [Fact]
+    public void The_callback_names_the_capability_name_this_anchor_serves_when_none_is_configured()
+    {
+        AnchorOptions unconfigured = AnchorOptions.FromSettings(new AnchorSettings { PublicBaseUrl = "" });
+        var served = new Served("https://auth.anchors.example.com");
+        var address = new AnchorAddress(unconfigured, [served]);
+
+        Assert.Equal("https://auth.anchors.example.com/auth/discord/callback", address.RedirectUri("discord"));
+        Assert.Equal(
+            "https://auth.anchors.example.com/auth/identities/discord/callback", address.LinkRedirectUri("discord"));
+
+        // Standing by, or before the certificate is installed, the name answers nobody here: a bounce
+        // built from it would send a person to a handshake that fails, so there is no callback at all.
+        served.Now = [];
+        Assert.Null(address.RedirectUri("discord"));
+
+        // An operator's address wins over the served name.
+        AnchorOptions configured = AnchorOptions.FromSettings(new AnchorSettings { PublicBaseUrl = "https://sign-in.example.com/" });
+        Assert.Equal(
+            "https://sign-in.example.com/auth/discord/callback",
+            new AnchorAddress(configured, [new Served("https://auth.anchors.example.com")]).RedirectUri("discord"));
+    }
+
+    private sealed class Served(params string[] addresses) : TheKrystalShip.KGSM.Cluster.Membership.ISelfAddressSource
+    {
+        public IReadOnlyList<string> Now { get; set; } = addresses;
+        public IReadOnlyList<string> Addresses => Now;
+    }
+
+    [Fact]
     public async Task A_member_that_does_not_hold_the_accounts_creates_none()
     {
         await anchor.StandingBy("some-other-anchor", async () =>

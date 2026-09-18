@@ -13,7 +13,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 /// <param name="MemberId">This anchor's identity as a cluster member.</param>
 /// <param name="ListenAddress">Where Kestrel binds.</param>
-/// <param name="PublicBaseUrl">Where other members reach it, when it cannot see its own address.</param>
+/// <param name="PublicBaseUrl">Where browsers and other members reach it, when configured.</param>
 /// <param name="PublicHost">Where it is reached from the internet, as the DNS anchor points its name.</param>
 /// <param name="ClusterId">The token audience: the cluster a session is valid on.</param>
 /// <param name="Issuer">The <c>iss</c> claim.</param>
@@ -53,31 +53,6 @@ internal sealed record AnchorOptions(
     bool AllowSelfRegistration,
     TimeSpan ReauthWindow)
 {
-    /// <summary>
-    /// Where a provider sends the browser back, for one provider.
-    /// </summary>
-    /// <remarks>
-    /// Built from this anchor's own public address rather than configured per provider, so the two
-    /// callbacks a provider needs registered against it can never name different origins. A provider
-    /// accepts only redirect URIs registered on the application, so this exact string has to be one
-    /// of them or the bounce is refused at the provider, where no log here sees it.
-    /// </remarks>
-    public string RedirectUri(string provider) =>
-        $"{PublicBaseUrl.TrimEnd('/')}/auth/{provider}/callback";
-
-    /// <summary>
-    /// Where a provider sends the browser back when somebody is <em>attaching</em> an account rather
-    /// than signing in with one.
-    /// </summary>
-    /// <remarks>
-    /// A separate address because the two arrivals mean different things and must not be confused: one
-    /// mints a session for whoever comes back, the other attaches whoever comes back to an account
-    /// that is already signed in. Both have to be registered against the provider's application, or
-    /// the bounce is refused at the provider where no log here sees it.
-    /// </remarks>
-    public string LinkRedirectUri(string provider) =>
-        $"{PublicBaseUrl.TrimEnd('/')}/auth/identities/{provider}/callback";
-
     /// <summary>
     /// Where the bootstrap administrator's one-time password is left, on an anchor whose account store
     /// was empty when it first started.
