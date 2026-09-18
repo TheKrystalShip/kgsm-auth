@@ -111,6 +111,18 @@ internal sealed class AnchorSettings
     [ConfigField("publicBaseUrl", "Public address", Group = "network", Risk = ConfigRisk.Wiring)]
     public string PublicBaseUrl { get; set; } = "";
 
+    /// <summary>
+    /// Where this anchor is reached from the internet, for the cluster's DNS anchor to point the
+    /// capability's name at.
+    /// </summary>
+    /// <panel>Where this machine is reached from the internet — normally the dynamic-DNS name its network
+    /// keeps pointed at a changing home address, such as example.ddns.net. In a cluster with a DNS anchor,
+    /// the accounts capability's name points at it while this anchor holds it, and this anchor serves that
+    /// name on a certificate the DNS anchor issues. A fixed public address works too. Empty means the name
+    /// is not published.</panel>
+    [ConfigField("publicHost", "Public host", Group = "network", Risk = ConfigRisk.Wiring, NoDefault = true)]
+    public string PublicHost { get; set; } = "";
+
     /// <summary>The cluster a session is scoped to, and the token audience.</summary>
     /// <panel>The cluster this anchor holds the accounts for. A session it mints is valid on every
     /// member of this cluster and on nothing else. Changing it signs everybody out.</panel>

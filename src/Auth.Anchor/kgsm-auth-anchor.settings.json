@@ -26,6 +26,11 @@
     // exchange reflects back, which is the right answer on a machine that can see its own.
     "PublicBaseUrl": "",
 
+    // Where this machine is reached from the internet — normally its network's dynamic-DNS name. The
+    // cluster's DNS anchor points the accounts capability's name at it while this anchor holds it.
+    // Blank states no host, and the name is not published.
+    "PublicHost": "",
+
     // Where a browser is sent back to after signing in with an external provider — the Control
     // Panel's own address. The session rides the URL fragment, which is never sent to a server, so
     // it stays out of access logs and out of the Referer header. Blank answers the callback with

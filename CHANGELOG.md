@@ -7,6 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the accounts capability's name, served by whichever anchor holds it (1.19.0)
+
+In a cluster with a DNS anchor, `auth.anchors.<zone>` points at the host the holder of `auth` states,
+and the holder serves it on a certificate the DNS anchor issues. The anchor states its host from
+`Anchor__PublicHost` (normally the network's dynamic-DNS name), keeps a key per name under
+`/var/lib/kgsm/tls/kgsm-auth-anchor/`, writes its site to `/var/lib/kgsm/nginx/`, and reloads nginx
+through a grant allowing that alone. Taken through `TheKrystalShip.KGSM.Dns 0.2.0-dev.4`.
+
+- **The proxy rules are one file**, `/etc/nginx/kgsm/kgsm-auth-anchor.locations`, included by the host
+  vhost and by every generated block, so a name served either way is handled the same way.
+- **The package ships the serving pieces**: the rules, the include, the directories as `tmpfiles.d`
+  entries, and the reload grant for the service account. `setup.sh` installs the same for a dev deploy.
+
 ### Fixed — a password, a new account and an unlink tell the cluster what they are (1.18.0)
 
 Four doors announced a removal for something that was not one: setting somebody's password, changing

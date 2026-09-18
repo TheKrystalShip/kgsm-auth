@@ -14,6 +14,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="MemberId">This anchor's identity as a cluster member.</param>
 /// <param name="ListenAddress">Where Kestrel binds.</param>
 /// <param name="PublicBaseUrl">Where other members reach it, when it cannot see its own address.</param>
+/// <param name="PublicHost">Where it is reached from the internet, as the DNS anchor points its name.</param>
 /// <param name="ClusterId">The token audience: the cluster a session is valid on.</param>
 /// <param name="Issuer">The <c>iss</c> claim.</param>
 /// <param name="UserStorePath">The account store.</param>
@@ -34,6 +35,7 @@ internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
     string PublicBaseUrl,
+    string PublicHost,
     string ClusterId,
     string Issuer,
     string UserStorePath,
@@ -101,6 +103,7 @@ internal sealed record AnchorOptions(
             // Blank is the ordinary case, not a gap: a machine that can see its own address has one
             // reflected back to it when a member joins.
             PublicBaseUrl: s.PublicBaseUrl?.Trim() ?? "",
+            PublicHost: s.PublicHost?.Trim() ?? "",
             ClusterId: Text(s.ClusterId, "kgsm-cluster"),
             Issuer: Text(s.Issuer, "kgsm"),
             UserStorePath: Text(s.UserStorePath, UserStoreOptions.DefaultPath),

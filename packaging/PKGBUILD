@@ -90,5 +90,21 @@ package() {
     install -Dm644 "${srcdir}/49-kgsm-auth-anchor-self-restart.rules" \
         "${pkgdir}/usr/share/polkit-1/rules.d/49-kgsm-auth-anchor-self-restart.rules"
 
+    # Serving the name the cluster's DNS anchor gives the accounts capability: the proxy rules every
+    # server block for this anchor includes, the include that loads the site it generates, its key and
+    # site directories, and the grant to reload the web server after writing the site — reload and
+    # nothing else. Inert on a machine with no nginx.
+    install -Dm644 "${repo}/deploy/nginx/kgsm-auth-anchor.locations" \
+        "${pkgdir}/etc/nginx/kgsm/kgsm-auth-anchor.locations"
+    install -Dm644 "${repo}/deploy/nginx/kgsm-auth-anchor.sites.conf" \
+        "${pkgdir}/etc/nginx/conf.d/00-kgsm-auth-anchor-sites.conf"
+    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.serving.tmpfiles" \
+        "${pkgdir}/usr/lib/tmpfiles.d/kgsm-auth-anchor-serving.conf"
+    sed -e "s|@PROJECT@|kgsm-auth-anchor|g" -e "s|@SVC_USER@|kgsm|g" \
+        "${repo}/deploy/polkit/47-kgsm-auth-anchor-nginx-reload.rules.in" \
+        > "${srcdir}/47-kgsm-auth-anchor-nginx-reload.rules"
+    install -Dm644 "${srcdir}/47-kgsm-auth-anchor-nginx-reload.rules" \
+        "${pkgdir}/usr/share/polkit-1/rules.d/47-kgsm-auth-anchor-nginx-reload.rules"
+
     install -Dm644 "${repo}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

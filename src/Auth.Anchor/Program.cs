@@ -8,6 +8,7 @@ using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Extensions;
 using TheKrystalShip.KGSM.Cluster.Membership;
+using TheKrystalShip.KGSM.Dns.Member;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -145,6 +146,11 @@ var clusterOptions = new ClusterOptions
     PublicBaseUrl = options.PublicBaseUrl,
 };
 builder.Services.AddKgsmCluster(clusterOptions);
+
+// The accounts capability's name, when a DNS anchor holds the cluster's zone: this anchor says where it
+// is reached, and while it holds the capability it keeps a certificate for the name and serves it. Inert
+// with no cluster and with nobody holding dns.
+builder.Services.AddKgsmDnsMember(options.PublicHost, "kgsm-auth-anchor");
 
 // An anchor registers no card source of its own. What it has to say about itself — its id, its kind,
 // its addresses, its incarnation — is entirely what the package already holds; the node block exists

@@ -83,7 +83,54 @@ CLUSTER_SHARED_DIR="${KGSM_CLUSTER_SHARED_DIR:-/var/lib/kgsm/cluster}"
 # on the box depend on it. Skipped cleanly where nginx is not installed.
 NGINX_FRAGMENT="${REPO_DIR}/deploy/nginx/${PROJECT}.conf"
 
+# Serving the names the cluster's DNS anchor gives this anchor: its keys, the site it generates, its proxy
+# rules (which the vhost above includes too), the include that loads the site, and the grant to reload
+# the web server after writing it.
+TLS_DIR="/var/lib/kgsm/tls/${PROJECT}"
+SITES_DIR="/var/lib/kgsm/nginx"
+LOCATIONS_SRC="${REPO_DIR}/deploy/nginx/${PROJECT}.locations"
+SITES_INCLUDE_SRC="${REPO_DIR}/deploy/nginx/${PROJECT}.sites.conf"
+NGINX_RELOAD_TEMPLATE="${REPO_DIR}/deploy/polkit/47-${PROJECT}-nginx-reload.rules.in"
+NGINX_RELOAD_DST="/etc/polkit-1/rules.d/47-${PROJECT}-nginx-reload.rules"
+
+setup_serving() {
+    if [[ ! -d /etc/nginx ]]; then
+        log "nginx is not installed on this host — this anchor's names are published, and served by nothing here"
+        return 0
+    fi
+
+    # Keys live here, readable by this component alone; the web server reads them as root.
+    if [[ ! -d /var/lib/kgsm/tls ]]; then
+        $SUDO install -d -m 0755 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" /var/lib/kgsm/tls
+    fi
+    $SUDO install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" "$TLS_DIR"
+
+    # Shared by every component on the machine, each writing and including only its own file. Setgid so
+    # a file keeps the directory's group whichever component writes it.
+    if [[ ! -d "$SITES_DIR" ]]; then
+        log "creating ${SITES_DIR} — the sites KGSM components generate"
+        $SUDO install -d -m 2775 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" "$SITES_DIR"
+    fi
+
+    $SUDO install -D -m 0644 -o root -g root "$LOCATIONS_SRC" "/etc/nginx/kgsm/${PROJECT}.locations"
+    # This component's own include, one per component, so two components on one machine never claim
+    # the same file.
+    $SUDO install -m 0644 -o root -g root "$SITES_INCLUDE_SRC" "/etc/nginx/conf.d/00-${PROJECT}-sites.conf"
+
+    local rendered
+    rendered="$(mktemp)"
+    sed -e "s|@PROJECT@|${PROJECT}|g" -e "s|@SVC_USER@|${DEPLOY_USER}|g" "$NGINX_RELOAD_TEMPLATE" > "$rendered"
+    if ! $SUDO cmp -s "$rendered" "$NGINX_RELOAD_DST" 2>/dev/null; then
+        log "installing the web-server reload grant → ${NGINX_RELOAD_DST}"
+        $SUDO install -D -m 0644 "$rendered" "$NGINX_RELOAD_DST"
+    fi
+    rm -f "$rendered"
+}
+
 setup_project_extras() {
+    # The serving pieces go in first: the vhost includes the proxy rules they install.
+    setup_serving
+
     if [[ -n "${NGINX_FRAGMENT:-}" && -f "$NGINX_FRAGMENT" && -d /etc/nginx/conf.d ]]; then
         log "installing the nginx vhost → /etc/nginx/conf.d/$(basename "$NGINX_FRAGMENT")"
         $SUDO install -m 0644 -o root -g root "$NGINX_FRAGMENT" "/etc/nginx/conf.d/$(basename "$NGINX_FRAGMENT")"
