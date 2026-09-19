@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — a removed member's departure is held for seven days (1.21.0)
+
+Takes `TheKrystalShip.KGSM.Cluster 1.0.0-dev.21`: this anchor's roster keeps a removed member's `left`
+row for seven days rather than five minutes, so a member that was down when the removal was made
+still learns it from this one. Takes `TheKrystalShip.KGSM.Dns 0.2.0-dev.10` too: the anchor restates
+where it is reached the moment its incarnation rises, so a refuted removal gives back its capability's
+name at once.
+
 ### Changed — the anchor is reached at the name it serves (1.20.0)
 
 In a cluster with a DNS anchor, `Anchor__PublicBaseUrl` is left blank: the anchor advertises the
