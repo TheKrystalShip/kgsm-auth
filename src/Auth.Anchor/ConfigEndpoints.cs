@@ -93,4 +93,31 @@ internal static class ConfigEndpoints
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, outcome.Result,
             ApiContractsJson.Default.ComponentConfigApplyResult);
     }
+
+    /// <summary>
+    /// <c>GET /auth/system</c> — what systemd reports about this anchor's own unit.
+    /// </summary>
+    /// <remarks>
+    /// The row a node's API reads for each of its leaves, read here by the component itself because no
+    /// node above it will. Same shape either way, so one panel component renders both.
+    /// </remarks>
+    internal static async Task System(HttpContext ctx)
+    {
+        if (!await Endpoints.RequireAuthorityAsync(ctx))
+            return;
+
+        if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is null)
+            return;
+
+        var units = ctx.RequestServices.GetRequiredService<ComponentUnitReader>();
+        if (await units.ReadAsync(ctx.RequestAborted) is not { } row)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_descriptor",
+                "This anchor has no config descriptor installed, so it names no unit to report on.");
+            return;
+        }
+
+        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, row,
+            ApiContractsJson.Default.ComponentService);
+    }
 }

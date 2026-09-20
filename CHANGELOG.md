@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — what systemd reports about this anchor's own unit (1.24.0)
+
+`GET /auth/system` answers a `ComponentService`: the unit, its load and active state, whether it is
+enabled at boot, when it last started, its main pid and the memory charged to that process's own
+cgroup. Admin, like every other surface here.
+
+It is the row a node's API reads for each of its leaves, read here by the component itself because no
+node above it will — so one panel body renders a component's unit wherever it runs, and a System tab
+means the same thing on an anchor's page as on a leaf's.
+
 ### Changed — this anchor's own surface comes from the shared component library (1.23.0)
 
 Takes `TheKrystalShip.KGSM.ComponentSurface 1.0.0-dev.2` and `TheKrystalShip.KGSM.Api.Contracts

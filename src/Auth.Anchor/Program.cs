@@ -169,6 +169,7 @@ builder.Services.AddSingleton<ComponentOverrideStore>();
 builder.Services.AddSingleton<ComponentFloorReader>();
 builder.Services.AddSingleton<ComponentUnitControl>();
 builder.Services.AddSingleton<ComponentConfigService>();
+builder.Services.AddSingleton<ComponentUnitReader>();
 builder.Services.AddSingleton<ComponentJournal>();
 builder.Services.AddSingleton<ComponentJournalFollower>();
 builder.Services.AddHostedService<ClusterMembershipWorker>();
@@ -248,6 +249,7 @@ app.MapGet("/auth/session", Endpoints.Session);
 // something one hosts.
 app.MapGet("/auth/config", ConfigEndpoints.Read);
 app.MapPut("/auth/config", ConfigEndpoints.Apply);
+app.MapGet("/auth/system", ConfigEndpoints.System);
 app.MapGet("/auth/logs", LogEndpoints.Read);
 app.MapGet("/auth/logs/stream", LogEndpoints.Stream);
 
