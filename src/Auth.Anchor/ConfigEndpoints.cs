@@ -1,3 +1,6 @@
+using TheKrystalShip.Api.Contracts;
+using TheKrystalShip.KGSM.ComponentSurface;
+
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
@@ -5,18 +8,24 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// could be.
 /// </summary>
 /// <remarks>
-/// A leaf is configured through the node that runs it: the node's API scans its disk for descriptors
-/// and delivers a change to a process on the same machine. An anchor is a peer of every node rather
-/// than something one of them hosts, and is reached by address from a browser that is usually nowhere
-/// near it — so it answers for its own configuration, on the origin the panel already talks to it on
-/// for accounts and sessions.
+/// <para>
+/// A component owns its own configuration wherever it runs; what differs is the way a browser reaches
+/// it. A leaf is reached through the node that runs it, which relays to the socket it already serves.
+/// An anchor is a peer of every node rather than something one of them hosts, and is reached by
+/// address from a browser that is usually nowhere near it — so it answers here, on the origin the
+/// panel already talks to it on for accounts and sessions.
+/// </para>
+/// <para>
+/// Everything below the transport is <see cref="ComponentConfigService"/>, the one implementation of
+/// the descriptor's rules.
+/// </para>
 /// </remarks>
 internal static class ConfigEndpoints
 {
     /// <summary>
     /// <c>GET /auth/config</c> — what this anchor can be configured with, and what it is running on.
-    /// Admin, like every account surface here: the values name where the account store and the
-    /// signing key live.
+    /// Admin, like every account surface here: the values name where the account store and the signing
+    /// key live.
     /// </summary>
     internal static async Task Read(HttpContext ctx)
     {
@@ -26,7 +35,7 @@ internal static class ConfigEndpoints
         if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is null)
             return;
 
-        var service = ctx.RequestServices.GetRequiredService<AnchorConfigService>();
+        var service = ctx.RequestServices.GetRequiredService<ComponentConfigService>();
         if (service.Read() is not { } config)
         {
             await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_descriptor",
@@ -34,18 +43,19 @@ internal static class ConfigEndpoints
             return;
         }
 
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, config, AnchorJsonContext.Default.AnchorConfig);
+        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, config,
+            ApiContractsJson.Default.ComponentConfigView);
     }
 
     /// <summary>
     /// <c>PUT /auth/config</c> — set or reset keys, then restart to pick them up.
     /// </summary>
     /// <remarks>
-    /// The restart is queued before this answer is written, and the answer still arrives: systemd
-    /// stops the unit with SIGTERM, the host drains the requests already in flight, and this is one
-    /// of them. Queueing first is what lets the answer carry whether systemd accepted the job —
-    /// <c>restarting: false</c> means the change is written and is NOT in force, which is a different
-    /// state from a change that is being applied and a person has to be told which they are in.
+    /// The restart is queued before this answer is written, and the answer still arrives: systemd stops
+    /// the unit with SIGTERM, the host drains the requests already in flight, and this is one of them.
+    /// Queueing first is what lets the answer carry whether systemd accepted the job — a refused
+    /// restart means the change is written and is NOT in force, which is a different state from one
+    /// being applied and a person has to be told which they are in.
     /// </remarks>
     internal static async Task Apply(HttpContext ctx)
     {
@@ -55,7 +65,8 @@ internal static class ConfigEndpoints
         if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is null)
             return;
 
-        AnchorConfigUpdate? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.AnchorConfigUpdate);
+        ComponentConfigUpdate? body =
+            await Endpoints.ReadBodyAsync(ctx, ApiContractsJson.Default.ComponentConfigUpdate);
         if (body is null)
         {
             await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
@@ -63,8 +74,8 @@ internal static class ConfigEndpoints
             return;
         }
 
-        var service = ctx.RequestServices.GetRequiredService<AnchorConfigService>();
-        (AnchorConfigApplyResult? result, string? error) = service.Apply(body);
+        var service = ctx.RequestServices.GetRequiredService<ComponentConfigService>();
+        (ComponentApplyOutcome? outcome, string? error) = service.Apply(body);
 
         if (error is not null)
         {
@@ -72,14 +83,14 @@ internal static class ConfigEndpoints
             return;
         }
 
-        if (result is null)
+        if (outcome is null)
         {
             await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_descriptor",
                 "This anchor has no config descriptor installed, so there is nothing to configure.");
             return;
         }
 
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, result,
-            AnchorJsonContext.Default.AnchorConfigApplyResult);
+        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, outcome.Result,
+            ApiContractsJson.Default.ComponentConfigApplyResult);
     }
 }

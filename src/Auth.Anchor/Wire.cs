@@ -1,16 +1,8 @@
 using System.Text.Json.Serialization;
 
+using TheKrystalShip.Api.Contracts;
+
 namespace TheKrystalShip.KGSM.Auth.Anchor;
-
-/// <summary>The error contract, the same shape every KGSM surface answers with.</summary>
-/// <param name="Error">The body.</param>
-internal sealed record ErrorEnvelope(ErrorBody Error);
-
-/// <summary>
-/// A refusal. <paramref name="Code"/> is stable and machine-matchable, <paramref name="Message"/> is
-/// for a person.
-/// </summary>
-internal sealed record ErrorBody(string Code, string Message);
 
 /// <summary>
 /// What this daemon is, answered to anybody who asks.
@@ -375,7 +367,6 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-[JsonSerializable(typeof(ErrorEnvelope))]
 [JsonSerializable(typeof(SignInRequest))]
 [JsonSerializable(typeof(RegisterRequest))]
 [JsonSerializable(typeof(RefreshRequest))]
@@ -395,12 +386,6 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(LinkStartResponse))]
 [JsonSerializable(typeof(CreateAccountRequest))]
 [JsonSerializable(typeof(AnchorIdentity))]
-[JsonSerializable(typeof(AnchorConfig))]
-[JsonSerializable(typeof(AnchorConfigUpdate))]
-[JsonSerializable(typeof(AnchorConfigApplyResult))]
-[JsonSerializable(typeof(RawConfigDescriptor))]
-[JsonSerializable(typeof(UnitLogPage))]
-[JsonSerializable(typeof(UnitLogLine))]
 [JsonSerializable(typeof(ClusterRoster))]
 [JsonSerializable(typeof(AccountRecord))]
 [JsonSerializable(typeof(SessionsPage))]

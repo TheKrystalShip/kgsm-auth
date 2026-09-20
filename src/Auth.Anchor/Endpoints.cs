@@ -7,6 +7,7 @@ using TheKrystalShip.KGSM.Auth.Journal;
 using TheKrystalShip.KGSM.Events;
 using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Api.Contracts;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
@@ -815,7 +816,7 @@ internal static class Endpoints
 
     internal static Task Refuse(HttpContext ctx, int status, string code, string message) =>
         WriteJson(ctx, status, new ErrorEnvelope(new ErrorBody(code, message)),
-            AnchorJsonContext.Default.ErrorEnvelope);
+            ApiContractsJson.Default.ErrorEnvelope);
 
     internal static Task WriteJson<T>(HttpContext ctx, int status, T value, JsonTypeInfo<T> type)
     {

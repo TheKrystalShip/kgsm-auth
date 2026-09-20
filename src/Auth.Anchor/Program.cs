@@ -9,6 +9,7 @@ using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Extensions;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Dns.Member;
+using TheKrystalShip.KGSM.ComponentSurface;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -157,16 +158,19 @@ builder.Services.AddKgsmDnsMember(options.PublicHost, "kgsm-auth-anchor");
 // for facts an anchor does not have.
 builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>()));
 
-// The anchor's own configuration surface: the descriptor its build wrote, the overrides an
-// administrator has set, what this host's deploy files set beneath them, and the bounce that makes a
-// change take effect.
-builder.Services.AddSingleton<ConfigDescriptorStore>();
-builder.Services.AddSingleton<ConfigOverrideStore>();
-builder.Services.AddSingleton<ConfigFloorReader>();
-builder.Services.AddSingleton<SelfRestart>();
-builder.Services.AddSingleton<AnchorConfigService>();
-builder.Services.AddSingleton<UnitLogReader>();
-builder.Services.AddSingleton<UnitLogFollower>();
+// This anchor's own surface — the descriptor its build wrote, the overrides an administrator has set,
+// what this host's deploy files set beneath them, its journal, and the bounce that makes a change take
+// effect. All of it is TheKrystalShip.KGSM.ComponentSurface: a component owns these wherever it runs,
+// and only the way a browser reaches them differs. Here that is HTTP on this anchor's own origin.
+builder.Services.AddSingleton(new ComponentSurfaceOptions(
+    options.ConfigDescriptorPath, options.ConfigOverridePath));
+builder.Services.AddSingleton<ComponentDescriptorStore>();
+builder.Services.AddSingleton<ComponentOverrideStore>();
+builder.Services.AddSingleton<ComponentFloorReader>();
+builder.Services.AddSingleton<ComponentUnitControl>();
+builder.Services.AddSingleton<ComponentConfigService>();
+builder.Services.AddSingleton<ComponentJournal>();
+builder.Services.AddSingleton<ComponentJournalFollower>();
 builder.Services.AddHostedService<ClusterMembershipWorker>();
 
 builder.Services.AddSingleton<ISessionRegistry>(_ => new SqliteSessionRegistry(options.SessionStorePath));

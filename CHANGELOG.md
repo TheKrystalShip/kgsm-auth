@@ -7,6 +7,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — this anchor's own surface comes from the shared component library (1.23.0)
+
+Takes `TheKrystalShip.KGSM.ComponentSurface 1.0.0-dev.2` and `TheKrystalShip.KGSM.Api.Contracts
+1.0.0-dev.12`. The descriptor reader, the floor reader, the override file, the config projection and
+validation, the journal read and follow, and the self-restart are the package's; what stays here is
+the transport and the gate — the two endpoints, their admin check, and the SSE framing.
+
+A component owns its own configuration, overrides, journal and lifecycle wherever it runs, and only
+the way a browser reaches them differs. This anchor holds them because it is a peer of every node
+rather than something one of them hosts; a leaf holds the same things and is reached through the node
+that runs it. One implementation, in the repo that owns the descriptor's rules and generates the file
+it reads.
+
+The configuration surface answers in `ComponentConfigView`, so its one field named for a leaf is now
+`id` — the name its descriptor already uses — and the journal answers in `LogPage`/`LogLine`. An apply
+that is written while systemd refuses the restart reports `written_not_applied` rather than `applied`:
+the change is on disk and is not in force, which is the opposite claim about what is running.
+
 ### Changed — an admin can renew this anchor's certificate from the cluster's DNS page (1.22.0)
 
 Takes `TheKrystalShip.KGSM.Dns 0.2.0-dev.14`: when the DNS anchor asks this member to renew the

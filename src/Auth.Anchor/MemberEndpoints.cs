@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
+using TheKrystalShip.Api.Contracts;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
@@ -79,6 +80,6 @@ internal static class MemberEndpoints
         ctx.Response.ContentType = "application/json; charset=utf-8";
         return JsonSerializer.SerializeAsync(
             ctx.Response.Body, new ErrorEnvelope(new ErrorBody(code, message)),
-            AnchorJsonContext.Default.ErrorEnvelope, ctx.RequestAborted);
+            ApiContractsJson.Default.ErrorEnvelope, ctx.RequestAborted);
     }
 }
