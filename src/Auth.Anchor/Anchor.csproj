@@ -70,7 +70,7 @@
          serving what it describes. This anchor owns its own configuration and its own journal because
          it is a peer of every node rather than something one of them hosts — and every component owns
          those for the same reason, which is why the implementation is a package and not code here. -->
-    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface" Version="1.0.0-dev.2" />
+    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface" Version="1.0.0-dev.4" />
 
     <!-- The Control Panel's wire shapes, which the surface above answers in. Pinned directly because
          this daemon names them at its own endpoints. -->
