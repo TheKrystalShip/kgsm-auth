@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>1.25.0</Version>
+    <Version>1.26.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.ComponentConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -70,7 +70,8 @@
          serving what it describes. This anchor owns its own configuration and its own journal because
          it is a peer of every node rather than something one of them hosts — and every component owns
          those for the same reason, which is why the implementation is a package and not code here. -->
-    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface" Version="1.0.0-dev.4" />
+    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface" Version="1.0.0-dev.5" />
+    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface.Http" Version="1.0.0-dev.2" />
 
     <!-- The Control Panel's wire shapes, which the surface above answers in. Pinned directly because
          this daemon names them at its own endpoints. -->

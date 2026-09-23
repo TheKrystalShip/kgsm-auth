@@ -10,6 +10,7 @@ using TheKrystalShip.KGSM.Extensions;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Dns.Member;
 using TheKrystalShip.KGSM.ComponentSurface;
+using TheKrystalShip.KGSM.ComponentSurface.Http;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -162,16 +163,8 @@ builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<Cluster
 // what this host's deploy files set beneath them, its journal, and the bounce that makes a change take
 // effect. All of it is TheKrystalShip.KGSM.ComponentSurface: a component owns these wherever it runs,
 // and only the way a browser reaches them differs. Here that is HTTP on this anchor's own origin.
-builder.Services.AddSingleton(new ComponentSurfaceOptions(
+builder.Services.AddComponentSurface(new ComponentSurfaceOptions(
     options.ConfigDescriptorPath, options.ConfigOverridePath));
-builder.Services.AddSingleton<ComponentDescriptorStore>();
-builder.Services.AddSingleton<ComponentOverrideStore>();
-builder.Services.AddSingleton<ComponentFloorReader>();
-builder.Services.AddSingleton<ComponentUnitControl>();
-builder.Services.AddSingleton<ComponentConfigService>();
-builder.Services.AddSingleton<ComponentUnitReader>();
-builder.Services.AddSingleton<ComponentJournal>();
-builder.Services.AddSingleton<ComponentJournalFollower>();
 builder.Services.AddHostedService<ClusterMembershipWorker>();
 
 builder.Services.AddSingleton<ISessionRegistry>(_ => new SqliteSessionRegistry(options.SessionStorePath));
@@ -244,14 +237,14 @@ app.MapPost("/auth/sign-in", Endpoints.SignIn);
 app.MapPost("/auth/session/refresh", Endpoints.Refresh);
 app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
 app.MapGet("/auth/session", Endpoints.Session);
-// This anchor's own configuration surface. It answers for itself because nothing else can: a leaf is
-// configured through the node that runs it, and an anchor is a peer of every node rather than
-// something one hosts.
-app.MapGet("/auth/config", ConfigEndpoints.Read);
-app.MapPut("/auth/config", ConfigEndpoints.Apply);
-app.MapGet("/auth/system", ConfigEndpoints.System);
-app.MapGet("/auth/logs", LogEndpoints.Read);
-app.MapGet("/auth/logs/stream", LogEndpoints.Stream);
+// What this anchor answers about ITSELF — its configuration, its unit, its journal and the commands
+// it declares. It answers for itself because nothing else can: a leaf is configured through the node
+// that runs it, and an anchor is a peer of every node rather than something one hosts.
+//
+// The routes are the shared library's, identical to the ones every other component serves, so one
+// Control Panel page renders any of them and a node's relay needs no knowledge of which component it
+// is forwarding to. What is this anchor's own is the gate in front of them.
+app.MapGroup("/auth").AddEndpointFilter<OwnSurfaceFilter>().MapComponentSurface();
 
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount);

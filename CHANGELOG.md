@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — this anchor serves its own surface through the shared HTTP routes (1.26.0)
+
+`/auth/config`, `/auth/system`, `/auth/logs`, `/auth/logs/stream` and `/auth/commands` are
+`TheKrystalShip.KGSM.ComponentSurface.Http`'s routes, mapped under `/auth` behind `OwnSurfaceFilter`,
+which answers `503` naming the holder on a member that is not the authority and requires an admin
+session before the library's handler runs. The routes are the ones every component serves, so one
+Control Panel page renders any of them. `/auth/commands` answers `404 no_manifest`: the anchor
+declares no commands.
+
 ### Changed — the anchor switches itself on where its machine founded the cluster (1.25.0)
 
 Every install is a cluster, and kgsm-api — which signs nobody in — now depends on this package, so it
