@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the anchor switches itself on where its machine founded the cluster (1.25.0)
+
+Every install is a cluster, and kgsm-api — which signs nobody in — now depends on this package, so it
+lands on every node. The install hook enables the unit only when `/etc/kgsm/cluster-founded`, which
+kgsm-base writes when it generates a machine's secret, matches the secret in
+`/etc/kgsm/kgsm-cluster.env`. Everywhere else the anchor stays installed and off: a fresh anchor on a
+machine joining an existing cluster would claim the accounts before gossip told it who holds them. The
+messages name the one-time admin password and `Anchor__AllowedOrigins` on the founding machine, and say
+why the unit is off everywhere else.
+
 ### Added — a surface that signs nobody in accepts its cluster's sessions alone (sessions 2.2.0-dev.3)
 
 `ClusterSessionValidation.Accepting(IClusterSessionKeys)` builds validation rules for the anchor's

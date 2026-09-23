@@ -17,9 +17,10 @@ pkgdesc="KGSM auth anchor — the cluster's account store and its one sign-in"
 arch=('x86_64')
 url="https://github.com/TheKrystalShip/kgsm-auth"
 license=('GPL-3.0-or-later')
-# On the selection menu, so a machine chosen to hold the cluster's accounts installs it the same way
-# it installs everything else. It is preset-DISABLED: a cluster has one anchor, and which machine
-# holds it is a decision rather than a default.
+# Every node carries it: kgsm-api depends on it, because a node signs nobody in and every session it
+# accepts is an anchor's. It is preset-DISABLED, and the install hook switches it on only on the machine
+# that founded its cluster — a cluster has one anchor, and a fresh one anywhere else would claim the
+# accounts before gossip told it who holds them.
 groups=('kgsm-node')
 # kgsm-base carries the kgsm service account this unit runs as, the /var/lib/kgsm/auth directory the
 # account store lives in, the /var/lib/kgsm/cluster directory the verification key is published to,
@@ -28,7 +29,7 @@ depends=('kgsm-base' 'systemd')
 backup=('etc/kgsm-auth-anchor/kgsm-auth-anchor.env')
 install="kgsm-auth-anchor.install"
 optdepends=(
-    'kgsm-api: the Control Panel, which renders this anchor configuration page and signs people in against it'
+    'kgsm-api: the node whose Control Panel people sign in to through this anchor'
 )
 # No separate debug package: these are shipped to a private fleet, not a distro archive.
 options=('!debug')

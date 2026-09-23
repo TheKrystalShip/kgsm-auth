@@ -1,34 +1,55 @@
-# The preset policy in kgsm-base decides whether this daemon runs on a node; applying it is symlink
-# manipulation on disk, so it works during the transaction and in a chroot alike. Starting it is the
-# node's post-transaction hook's job, which is where a running system is available.
+# The preset policy in kgsm-base leaves this daemon off; applying it is symlink manipulation on disk,
+# so it works during the transaction and in a chroot alike. Starting it is the node's post-transaction
+# hook's job, which is where a running system is available.
 #
-# post_install only. An administrator who enabled this unit keeps it enabled across every later
-# version — re-presetting on upgrade would quietly switch it back off.
+# Every install is a cluster, and the machine that founded one runs its anchor. kgsm-base records
+# that in /etc/kgsm/cluster-founded — the SHA-256 of the secret it generated — and this hook switches
+# the anchor on only when that record matches the secret in /etc/kgsm/kgsm-cluster.env. A machine given
+# another cluster's secret has no record, or one that no longer matches, and its anchor stays off: a
+# fresh anchor there would claim the accounts before gossip told it somebody already holds them.
+#
+# post_install only. An administrator who enabled or disabled this unit keeps that choice across every
+# later version — re-applying either decision on upgrade would quietly undo it.
+
+CLUSTER_ENV=/etc/kgsm/kgsm-cluster.env
+FOUNDED=/etc/kgsm/cluster-founded
+
+founded_here() {
+    [[ -r "$FOUNDED" && -r "$CLUSTER_ENV" ]] || return 1
+    local secret
+    secret="$(sed -n 's/^[[:space:]]*Cluster__Secret[[:space:]]*=[[:space:]]*//p' "$CLUSTER_ENV" | tail -n1)"
+    [[ -n "$secret" ]] || return 1
+    [[ "$(printf '%s\n' "$secret" | sha256sum | cut -d' ' -f1)" == "$(tr -d '[:space:]' < "$FOUNDED")" ]]
+}
 
 post_install() {
     systemctl preset kgsm-auth-anchor.service > /dev/null 2>&1 || true
 
-    cat <<'MSG'
+    if founded_here; then
+        systemctl enable kgsm-auth-anchor.service > /dev/null 2>&1 || true
+        cat <<'MSG'
 
-  kgsm-auth-anchor is installed and switched OFF. A cluster holds its accounts in one place, so
-  which machine is the anchor is a decision rather than a default — installing the package claims
-  nothing.
+  kgsm-auth-anchor is ON: this machine founded its cluster, and its anchor holds the accounts and signs
+  people in. On its first start it generates the key every session in the cluster is signed with, at
+  /var/lib/kgsm-auth-anchor/session-signing.pem — never shipped by any package; back it up with the
+  account store — and leaves the first administrator's one-time password, readable by nobody else, in:
 
-  To make this machine the anchor:
+      /var/lib/kgsm-auth-anchor/initial-admin-password
 
-      systemctl enable --now kgsm-auth-anchor.service
-
-  On its first start it generates the key every session in the cluster is signed with, at
-  /var/lib/kgsm-auth-anchor/session-signing.pem, and publishes the public half to
-  /var/lib/kgsm/cluster/auth-public-key.json for the other members on this machine. That key is
-  never shipped by any package and replacing it invalidates every session that exists — back it up
-  with the account store, not separately from it.
-
-  Two things it needs from you: the browser origins allowed to sign in here
-  (Anchor__AllowedOrigins in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env), and — for a machine
-  joining a cluster — the shared secret in /etc/kgsm/kgsm-cluster.env.
+  One thing it needs from you: the browser origin the Control Panel is served from, in
+  Anchor__AllowedOrigins in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env, so the panel may sign people in
+  here. kgsm-meta/NODE-PROVISIONING.md §10·b has the rest.
 
 MSG
+    else
+        cat <<'MSG'
+
+  kgsm-auth-anchor is installed and OFF: this machine joined a cluster somebody else runs, and that
+  cluster's anchor holds the accounts. Installed and stopped, it is a promotion candidate — an
+  administrator can reassign the accounts to it — and never a second authority.
+
+MSG
+    fi
 }
 
 post_upgrade() {
