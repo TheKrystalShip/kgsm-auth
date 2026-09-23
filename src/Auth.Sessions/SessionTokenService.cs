@@ -151,10 +151,17 @@ public sealed class SessionTokenService : ISessionTokenService
             // HMAC secret, and the key everybody holds becomes the key everybody can sign with.
             ValidAlgorithms = [algorithm],
             ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromSeconds(30),
+            ClockSkew = ClockSkew,
             NameClaimType = "sub",
         };
     }
+
+    /// <summary>
+    /// How far a token's lifetime is stretched for clocks that disagree. One value for every session
+    /// a surface verifies, whoever minted it, so a token is never alive at one door and expired at
+    /// the next for a reason neither can see.
+    /// </summary>
+    internal static readonly TimeSpan ClockSkew = TimeSpan.FromSeconds(30);
 
     public MintedToken MintAccess(KgsmIdentity identity, KgsmTier tier, string sessionId) =>
         Mint(identity, tier, KgsmTokenKind.Access, _options.AccessLifetime, sessionId);

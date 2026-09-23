@@ -299,6 +299,88 @@ public sealed class ClusterSessionValidationTests
         Assert.False(ClusterSessionValidation.IsClusterSession(result.ClaimsIdentity!, HostId));
     }
 
+    // ── A surface that signs nobody in ───────────────────────────────────────
+
+    private static async Task<TokenValidationResult> ValidateClusterOnly(
+        string token, IClusterSessionKeys cluster) =>
+        await new JsonWebTokenHandler().ValidateTokenAsync(token, ClusterSessionValidation.Accepting(cluster));
+
+    [Fact]
+    public async Task A_surface_that_mints_nothing_accepts_the_anchor_s_session()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+
+        TokenValidationResult result = await ValidateClusterOnly(minted.Token, Known.Of(ClusterId, signer));
+
+        Assert.True(result.IsValid, result.Exception?.Message);
+    }
+
+    [Fact]
+    public async Task A_surface_that_mints_nothing_refuses_a_symmetric_session()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        MintedToken minted = Local().MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+
+        TokenValidationResult result = await ValidateClusterOnly(minted.Token, Known.Of(ClusterId, signer));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task A_surface_that_mints_nothing_refuses_everything_until_its_anchor_is_known()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+
+        TokenValidationResult result = await ValidateClusterOnly(minted.Token, Known.Nothing);
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task A_surface_that_mints_nothing_refuses_another_cluster_s_session()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        MintedToken minted = Anchor(signer, audience: "another-cluster").MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+
+        TokenValidationResult result = await ValidateClusterOnly(minted.Token, Known.Of(ClusterId, signer));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task A_surface_that_mints_nothing_refuses_a_key_nobody_published()
+    {
+        using var published = EcdsaSessionSigner.Generate();
+        using var stranger = EcdsaSessionSigner.Generate();
+        MintedToken minted = Anchor(stranger).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+
+        TokenValidationResult result = await ValidateClusterOnly(minted.Token, Known.Of(ClusterId, published));
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task A_surface_that_mints_nothing_refuses_the_published_key_offered_as_an_hmac_secret()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        Known known = Known.Of(ClusterId, signer);
+        var asSecret = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signer.PublicKeysJson));
+        string forged = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = "kgsm",
+            Audience = ClusterId,
+            Subject = new ClaimsIdentity([new Claim("sub", "local:usr_abc")]),
+            Expires = DateTime.UtcNow.AddMinutes(5),
+            SigningCredentials = new SigningCredentials(asSecret, SecurityAlgorithms.HmacSha256),
+        });
+
+        TokenValidationResult result = await ValidateClusterOnly(forged, known);
+
+        Assert.False(result.IsValid);
+    }
+
     // ── Composition ──────────────────────────────────────────────────────────
 
     [Fact]

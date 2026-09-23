@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a surface that signs nobody in accepts its cluster's sessions alone (sessions 2.2.0-dev.3)
+
+`ClusterSessionValidation.Accepting(IClusterSessionKeys)` builds validation rules for the anchor's
+sessions and nothing else: ES256 only, the published key matched exactly on its id, the cluster's
+audience and the anchor's issuer, the same clock skew every session is held to. kgsm-api signs nobody
+in and takes it, so a symmetric token is refused outright rather than checked against a key the
+surface has no business holding. The mixed form shares its key and value checks, so the two cannot
+drift.
+
 ### Added — what systemd reports about this anchor's own unit (1.24.0)
 
 `GET /auth/system` answers a `ComponentService`: the unit, its load and active state, whether it is

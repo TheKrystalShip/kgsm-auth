@@ -67,12 +67,15 @@ public interface IClusterSessionKeys
 }
 
 /// <summary>
-/// Accepting two kinds of session at one door: the ones this surface minted for itself, and the ones
-/// its cluster's auth anchor minted for everybody.
+/// What a surface accepts as a session: its cluster's, minted by the auth anchor, and — for a surface
+/// that also mints its own — those.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The two are kept apart by the algorithm, which is the only part of a presented token that is
+/// A surface that signs nobody in takes <see cref="Accepting(IClusterSessionKeys)"/> and holds the
+/// anchor's sessions alone. One that mints as well takes
+/// <see cref="Accepting(TokenValidationParameters, IClusterSessionKeys)"/>, and the two kinds are kept
+/// apart by the algorithm, which is the only part of a presented token that is
 /// decided by who signed it rather than by who is presenting it. A symmetric token is this surface's
 /// own and is audienced to this surface; an ECDSA one is the anchor's and is audienced to the
 /// cluster. Pairing them explicitly means neither combination the cluster never mints — an anchor
@@ -88,6 +91,39 @@ public interface IClusterSessionKeys
 /// </remarks>
 public static class ClusterSessionValidation
 {
+    /// <summary>
+    /// Validation rules that accept the sessions its cluster's auth anchor mints, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// For a surface that signs nobody in: every session it holds was minted by the anchor, verified
+    /// against the key that member publishes, audienced to the cluster and stamped with the anchor's
+    /// issuer. A member that has not heard from its anchor has nothing stated to match and refuses
+    /// every token, which is the right answer until gossip arrives.
+    /// </remarks>
+    /// <param name="cluster">The anchor's published keys, re-read as gossip moves them.</param>
+    public static TokenValidationParameters Accepting(IClusterSessionKeys cluster)
+    {
+        ArgumentNullException.ThrowIfNull(cluster);
+
+        return new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],
+            IssuerSigningKeyResolver = (_, _, kid, _) => AnchorKeys(cluster, kid),
+            ValidateAudience = true,
+            AudienceValidator = (audiences, _, _) => States(audiences, cluster.Audience),
+            ValidateIssuer = true,
+            IssuerValidator = (issuer, _, _) =>
+                States([issuer], cluster.Issuer)
+                    ? issuer
+                    : throw new SecurityTokenInvalidIssuerException(
+                        $"'{issuer}' is not the issuer this cluster's auth anchor states."),
+            ValidateLifetime = true,
+            ClockSkew = SessionTokenService.ClockSkew,
+            NameClaimType = "sub",
+        };
+    }
+
     /// <summary>
     /// Validation rules that accept this surface's own sessions and its cluster's, and nothing else.
     /// </summary>
@@ -175,16 +211,7 @@ public static class ClusterSessionValidation
         string? algorithm = (token as JsonWebToken)?.Alg;
 
         if (string.Equals(algorithm, SecurityAlgorithms.EcdsaSha256, StringComparison.Ordinal))
-        {
-            IReadOnlyList<SecurityKey> published = cluster.Keys;
-            if (published.Count == 0 || string.IsNullOrEmpty(kid))
-                return published;
-
-            // Exact on the key id, and empty when none matches. Falling back to every published key
-            // would make a rotation's overlap indistinguishable from a token signed with something
-            // this member has never been told about.
-            return [.. published.Where(k => string.Equals(k.KeyId, kid, StringComparison.Ordinal))];
-        }
+            return AnchorKeys(cluster, kid);
 
         if (string.Equals(algorithm, localAlgorithm, StringComparison.Ordinal) && localKey is not null)
             return [localKey];
@@ -192,14 +219,37 @@ public static class ClusterSessionValidation
         return [];
     }
 
+    /// <summary>The published keys a token naming <paramref name="kid"/> may be verified with.</summary>
+    /// <remarks>
+    /// Exact on the key id, and empty when none matches. Falling back to every published key would
+    /// make a rotation's overlap indistinguishable from a token signed with something this member has
+    /// never been told about.
+    /// </remarks>
+    private static IEnumerable<SecurityKey> AnchorKeys(IClusterSessionKeys cluster, string? kid)
+    {
+        IReadOnlyList<SecurityKey> published = cluster.Keys;
+        if (published.Count == 0 || string.IsNullOrEmpty(kid))
+            return published;
+
+        return [.. published.Where(k => string.Equals(k.KeyId, kid, StringComparison.Ordinal))];
+    }
+
+    /// <summary>
+    /// Whether a token states <paramref name="required"/>. A value nothing has stated matches
+    /// nothing, which is what makes a member that has not heard from its anchor refuse rather than
+    /// assume.
+    /// </summary>
+    private static bool States(IEnumerable<string?>? stated, string? required) =>
+        !string.IsNullOrEmpty(required)
+        && stated is not null
+        && stated.Any(v => string.Equals(v, required, StringComparison.Ordinal));
+
     /// <summary>
     /// Whether a token states the value its signature obliges it to state.
     /// </summary>
     /// <remarks>
     /// One rule for the audience and the issuer both: an ECDSA signature is the anchor's and has to
     /// carry the anchor's value, a symmetric one is this surface's and has to carry this surface's.
-    /// A value nothing has stated matches nothing, which is what makes a member that has not heard
-    /// from its anchor refuse rather than assume.
     /// </remarks>
     private static bool Matches(
         SecurityToken token,
@@ -214,8 +264,6 @@ public static class ClusterSessionValidation
             ? clusterValue
             : string.Equals(algorithm, localAlgorithm, StringComparison.Ordinal) ? localValue : null;
 
-        return !string.IsNullOrEmpty(required)
-               && stated is not null
-               && stated.Any(v => string.Equals(v, required, StringComparison.Ordinal));
+        return States(stated, required);
     }
 }
