@@ -151,6 +151,34 @@ internal static class RegisterEndpoint
 {
     internal static async Task Register(HttpContext ctx)
     {
+        RegisterRequest? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.RegisterRequest);
+        if (body is null)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
+                "The request body is not readable.");
+            return;
+        }
+
+        if (await CreateAsync(ctx, body) is not { } account)
+            return;
+
+        // A real session at `none`, deliberately. A bare refusal tells somebody who has just made an
+        // account nothing about what happens next; a session lets a surface say they are waiting on
+        // an administrator, and lets that administrator see them.
+        await Endpoints.MintSessionFor(ctx, account.AsIdentity(), account.EffectiveTier, account,
+            DateTimeOffset.UtcNow, Endpoints.AsJson(ctx, account, account.EffectiveTier, StatusCodes.Status201Created));
+    }
+
+    /// <summary>
+    /// Make the account <paramref name="body"/> asks for, or refuse with the reason already written.
+    /// </summary>
+    /// <remarks>
+    /// Shared by every door that takes a registration, which differ only in what they answer with once
+    /// the account exists: a session for the provider door, the wait for the sign-in page.
+    /// </remarks>
+    /// <returns>The account, unapproved and holding nothing, or null.</returns>
+    internal static async Task<KgsmUser?> CreateAsync(HttpContext ctx, RegisterRequest body)
+    {
         var options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.RegisterEndpoint");
@@ -160,7 +188,7 @@ internal static class RegisterEndpoint
             logger.LogWarning("registration refused: this cluster does not take accounts people create themselves");
             await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "registration_closed",
                 "This cluster does not take accounts people create for themselves. Ask an administrator for one.");
-            return;
+            return null;
         }
 
         // The accounts are the cluster's, so only the member holding them may add one. A member
@@ -173,15 +201,7 @@ internal static class RegisterEndpoint
                 ctx.Response.Headers["X-Kgsm-Auth-Holder"] = holder;
             await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_the_anchor",
                 "This member does not hold the cluster's accounts.");
-            return;
-        }
-
-        RegisterRequest? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.RegisterRequest);
-        if (body is null)
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
-                "The request body is not readable.");
-            return;
+            return null;
         }
 
         if (!Usernames.IsValid(body.Username))
@@ -189,14 +209,14 @@ internal static class RegisterEndpoint
             await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "bad_request",
                 $"A username is {Usernames.MinLength}–{Usernames.MaxLength} characters of letters, digits, "
                 + "'.', '_' or '-', beginning with a letter or a digit.");
-            return;
+            return null;
         }
 
         if (!Passwords.IsAcceptable(body.Password))
         {
             await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "bad_request",
                 $"A password is at least {Passwords.MinLength} characters.");
-            return;
+            return null;
         }
 
         var store = ctx.RequestServices.GetRequiredService<IUserStore>();
@@ -218,7 +238,7 @@ internal static class RegisterEndpoint
             logger.LogError(ex, "registration failed: the account store could not be read");
             await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
                 "The account store could not be read.");
-            return;
+            return null;
         }
 
         if (pending >= options.Pending.Cap)
@@ -228,7 +248,7 @@ internal static class RegisterEndpoint
                 username, options.Pending.Cap);
             await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_accepting_accounts",
                 "This cluster is not accepting new accounts right now. Ask an administrator.");
-            return;
+            return null;
         }
 
         var account = new KgsmUser(
@@ -252,14 +272,14 @@ internal static class RegisterEndpoint
             logger.LogInformation("registration refused: '{Username}' is already taken", username);
             await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "username_taken",
                 $"'{username}' is already taken on this cluster.");
-            return;
+            return null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "registration failed: the account could not be written");
             await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
                 "The account store could not be written.");
-            return;
+            return null;
         }
 
         await ctx.RequestServices.GetRequiredService<LocalSignInService>()
@@ -292,11 +312,7 @@ internal static class RegisterEndpoint
             origin: AnchorJournal.OriginUi,
             ct: ctx.RequestAborted);
 
-        // A real session at `none`, deliberately. A bare refusal tells somebody who has just made an
-        // account nothing about what happens next; a session lets a surface say they are waiting on
-        // an administrator, and lets that administrator see them.
-        await Endpoints.MintSessionFor(ctx, account.AsIdentity(), account.EffectiveTier, account, now,
-            Endpoints.AsJson(ctx, account, account.EffectiveTier, StatusCodes.Status201Created));
+        return account;
     }
 }
 
@@ -423,6 +439,32 @@ internal static class ProviderEndpoints
         {
             await Fail(ctx, options, StatusCodes.Status400BadRequest, "invalid_state",
                 "That sign-in could not be verified. Start again.");
+            return;
+        }
+
+        // A round trip begun on the account page to prove the person again. It proves an account that
+        // already holds this identity, or nothing — it never signs anybody in and never makes an account.
+        if (ctx.RequestServices.GetRequiredService<ReauthRoundTrips>().Take(state) is { } reauth)
+        {
+            string? reauthCode = ctx.Request.Query["code"];
+            KgsmIdentity? proved = null;
+            if (!string.IsNullOrWhiteSpace(reauthCode))
+            {
+                try
+                {
+                    proved = await directory.VerifyAsync(reauthCode, handshake.CodeVerifier, ctx.RequestAborted);
+                }
+                catch (KgsmAuthProviderException ex)
+                {
+                    logger.LogWarning(ex, "{Provider} re-authentication exchange failed", provider);
+                    ctx.Response.Redirect("/account#reauth_error=auth_provider_error");
+                    return;
+                }
+            }
+
+            ctx.Response.Redirect(proved is null
+                ? "/account#reauth_error=login_required"
+                : await AccountPageEndpoints.CompleteReauthAsync(ctx, reauth, proved));
             return;
         }
 

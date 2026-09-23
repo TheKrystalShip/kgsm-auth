@@ -176,6 +176,8 @@ builder.Services.AddSingleton<ISessionRegistry>(sp => sp.GetRequiredService<Sqli
 builder.Services.AddSingleton<ClientRegistry>();
 builder.Services.AddSingleton<ProviderSessions>();
 builder.Services.AddSingleton<IdTokens>();
+builder.Services.AddSingleton<ProviderBundle>();
+builder.Services.AddSingleton<ReauthRoundTrips>();
 builder.Services.AddSingleton<IMemoryCache>(_ => new MemoryCache(new MemoryCacheOptions()));
 builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
     sp.GetRequiredService<ISessionRegistry>(),
@@ -244,12 +246,28 @@ app.MapGet("/authorize", OidcEndpoints.Authorize);
 app.MapPost("/authorize/credentials", OidcEndpoints.Credentials);
 app.MapGet("/authorize/wait", OidcEndpoints.Wait);
 app.MapGet("/authorize/floor.css", ProviderPages.StylesheetAsync);
+app.MapGet("/authorize/context", OidcEndpoints.Context);
+app.MapPost("/authorize/register", OidcEndpoints.Register);
 app.MapGet("/authorize/{provider}", OidcEndpoints.ProviderStart);
 app.MapPost("/token", OidcEndpoints.Token);
 app.MapGet("/userinfo", OidcEndpoints.UserInfo);
 app.MapPost("/userinfo", OidcEndpoints.UserInfo);
 app.MapGet("/sign-out", OidcEndpoints.SignOut);
 app.MapPost("/sign-out", OidcEndpoints.ConfirmSignOut);
+
+// The provider's own pages as kgsm-web builds them, and the account page's calls. Every one of those is
+// authenticated by the provider's cookie and answered on this origin alone.
+app.MapGet("/ui/{**path}", ProviderBundle.ServeAssetAsync);
+app.MapGet("/account", AccountPageEndpoints.Page);
+app.MapGet("/account/sign-in", AccountPageEndpoints.SignIn);
+app.MapGet("/account/me", AccountPageEndpoints.Me);
+app.MapPost("/account/reauth", AccountPageEndpoints.Reauth);
+app.MapGet("/account/reauth/{provider}", AccountPageEndpoints.ReauthWithProvider);
+app.MapPost("/account/password", AccountPageEndpoints.SetPassword);
+app.MapPost("/account/identities/{provider}/start", AccountPageEndpoints.StartLink);
+app.MapDelete("/account/identities/{credentialId}", AccountPageEndpoints.Unlink);
+app.MapPost("/account/sessions/revoke", AccountPageEndpoints.Revoke);
+app.MapPost("/account/sign-out", AccountPageEndpoints.SignOut);
 
 // The clients it answers. Announced ones arrive over gossip; these are the ones an administrator
 // registers by hand, for whatever no member serves.

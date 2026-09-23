@@ -168,6 +168,14 @@ internal sealed class AnchorSettings
         Risk = ConfigRisk.Wiring)]
     public string PublishedKeyPath { get; set; } = "/var/lib/kgsm/cluster/auth-public-key.json";
 
+    /// <summary>
+    /// Where the provider's pages are installed: the <c>kgsm-web-auth</c> bundle, served at <c>/ui/</c>.
+    /// </summary>
+    /// <panel>The folder holding the sign-in, approval and account pages. Absent, people still sign in
+    /// through a plain form, and registration and the account page are unavailable.</panel>
+    [ConfigField("uiPath", "Sign-in pages", Group = "storage", Type = ConfigType.Path, Risk = ConfigRisk.Wiring)]
+    public string UiPath { get; set; } = "/usr/share/kgsm-web-auth";
+
     /// <summary>The descriptor this anchor serves its own configuration surface from.</summary>
     /// <panel>The file describing what this anchor can be configured with, written by its own build
     /// and installed by its deploy. It is read to render this page; absent, there is no page.</panel>

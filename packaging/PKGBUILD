@@ -30,6 +30,7 @@ backup=('etc/kgsm-auth-anchor/kgsm-auth-anchor.env')
 install="kgsm-auth-anchor.install"
 optdepends=(
     'kgsm-api: the node whose Control Panel people sign in to through this anchor'
+    'kgsm-web-auth: the sign-in, registration and account pages; without it a plain sign-in form'
 )
 # No separate debug package: these are shipped to a private fleet, not a distro archive.
 options=('!debug')

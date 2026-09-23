@@ -87,6 +87,11 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable(
             "Anchor__ConfigOverridePath", Path.Combine(Root, "config-override.env"));
 
+        // The provider's pages, pointed at a folder that holds nothing unless a test installs them. Left
+        // at its default, a run on a host with kgsm-web-auth installed tests those pages instead of the
+        // floor, and one without it tests the floor — the same suite measuring the host.
+        Environment.SetEnvironmentVariable("Anchor__UiPath", Path.Combine(Root, "ui"));
+
         // The journal's state root, relocated into the fixture. Left at its default, a test run
         // appends to the REAL /var/lib/kgsm-auth-anchor/events — where a Control Panel on this
         // machine scans for journals, so a suite that signs people in would put invented sign-ins on

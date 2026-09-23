@@ -31,6 +31,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="Pending">What is allowed to accumulate while nobody has approved it.</param>
 /// <param name="AllowSelfRegistration">Whether somebody with no account may make one.</param>
 /// <param name="ReauthWindow">How long a proved credential lets somebody change what proves them.</param>
+/// <param name="UiPath">Where the provider's pages are installed.</param>
 internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
@@ -51,7 +52,8 @@ internal sealed record AnchorOptions(
     string? FrontendUrl,
     PendingPolicy Pending,
     bool AllowSelfRegistration,
-    TimeSpan ReauthWindow)
+    TimeSpan ReauthWindow,
+    string UiPath)
 {
     /// <summary>
     /// Where the bootstrap administrator's one-time password is left, on an anchor whose account store
@@ -126,7 +128,8 @@ internal sealed record AnchorOptions(
             Pending: new PendingPolicy(
                 Cap: Math.Max(0, s.PendingCap ?? 25),
                 Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))),
-            ReauthWindow: TimeSpan.FromMinutes(AtLeast(s.ReauthWindowMinutes ?? 5, 1)));
+            ReauthWindow: TimeSpan.FromMinutes(AtLeast(s.ReauthWindowMinutes ?? 5, 1)),
+            UiPath: Text(s.UiPath, "/usr/share/kgsm-web-auth"));
     }
 
     /// <summary>

@@ -42,7 +42,9 @@
     // already issued, so a running cluster keeps the value it started with.
     "ClusterId": "kgsm-cluster",
 
-    // The token issuer. Validated, so changing it on a running anchor signs everyone out.
+    // The token issuer, and — when it is this anchor's browser-facing URL — the address the cluster's
+    // OpenID Connect sign-in is served under. The provider's doors serve nothing until it is a URL.
+    // Validated, so changing it on a running anchor signs everyone out.
     "Issuer": "kgsm",
 
     // The account store. The same file every other KGSM surface on a host reads, and the anchor is
@@ -73,6 +75,11 @@
     // returns every knob to what this host's deploy set — which is how this anchor is recovered if a
     // change stops it starting.
     "ConfigOverridePath": "/var/lib/kgsm-auth-anchor/config-override.env",
+
+    // The provider's pages — sign-in, registration, the wait for approval and the account page — as
+    // the kgsm-web-auth package installs them, served at /ui/. Absent, people still sign in through
+    // a plain form this daemon renders itself.
+    "UiPath": "/usr/share/kgsm-web-auth",
 
     // How long an access bearer lives before it has to be refreshed. Short, because it bounds how
     // long a stolen one is worth anything.

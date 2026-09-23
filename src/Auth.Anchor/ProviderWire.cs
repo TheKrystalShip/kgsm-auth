@@ -118,3 +118,54 @@ internal sealed record ClientRegistration(
     string? Name,
     IReadOnlyList<string>? RedirectUris,
     IReadOnlyList<string>? PostLogoutRedirectUris);
+
+/// <summary>What the provider's pages are told about the request in flight.</summary>
+/// <param name="Client">Whose sign-in this is.</param>
+/// <param name="Providers">The external providers wired here, in the order the page draws them.</param>
+/// <param name="Registration">Whether somebody with no account may make one here.</param>
+/// <param name="Account">Who this browser is already signed in as, or null.</param>
+internal sealed record AuthorizeContext(
+    AuthorizeContextClient Client,
+    IReadOnlyList<string> Providers,
+    bool Registration,
+    AuthorizeContextAccount? Account);
+
+/// <summary>The client a request in flight belongs to.</summary>
+internal sealed record AuthorizeContextClient(string Id, string Name);
+
+/// <summary>The account a browser's provider session proves.</summary>
+internal sealed record AuthorizeContextAccount(string Username, string DisplayName, string Status);
+
+/// <summary>Everything the account page draws, for the account this browser is signed in to.</summary>
+/// <param name="UserId">The account.</param>
+/// <param name="Username">What it signs in as.</param>
+/// <param name="DisplayName">What it is shown as.</param>
+/// <param name="Tier">What it may do, as the store resolves it now.</param>
+/// <param name="Status">Active, pending or disabled.</param>
+/// <param name="Identities">The provider accounts attached to it.</param>
+/// <param name="HasPassword">Whether the account holds a password, which decides how it re-proves itself.</param>
+/// <param name="Providers">The providers an identity can be attached from here.</param>
+/// <param name="KnownProviders">Every provider this build speaks, configured or not.</param>
+/// <param name="ProvedAt">When a credential last proved this browser's sign-in.</param>
+/// <param name="FreshUntil">Until when a change to how the account signs in is allowed without asking
+/// again, or null when it has to ask.</param>
+/// <param name="ReauthWindowSeconds">How long a proof stays recent.</param>
+/// <param name="Sessions">Where the account is signed in, this browser's sign-in marked current.</param>
+internal sealed record AccountView(
+    string UserId,
+    string Username,
+    string DisplayName,
+    string Tier,
+    string Status,
+    bool HasPassword,
+    IReadOnlyList<AccountIdentity> Identities,
+    IReadOnlyList<string> Providers,
+    IReadOnlyList<string> KnownProviders,
+    DateTimeOffset ProvedAt,
+    DateTimeOffset? FreshUntil,
+    int ReauthWindowSeconds,
+    IReadOnlyList<SessionRecord> Sessions);
+
+/// <summary>An identity attached to the account.</summary>
+internal sealed record AccountIdentity(
+    string Id, string Provider, string Handle, string? Label, DateTimeOffset Created, DateTimeOffset? LastUsed);

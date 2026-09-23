@@ -10,9 +10,10 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <para>
 /// <b>The floor.</b> Signing in never needs script. The document carries a working form and the provider
 /// links, so a bundle that fails to load, or scripting that is off, still leaves a way in — the provider
-/// is the one origin whose failure locks a cluster out of everything. The pages built by
-/// <c>kgsm-web</c> and shipped as <c>kgsm-web-auth</c> replace these on mount; with that package absent
-/// these are what a person sees, and the sign-in page names it.
+/// is the one origin whose failure locks a cluster out of everything. Where <c>kgsm-web-auth</c> is
+/// installed its documents are served instead (<see cref="ProviderBundle"/>), each carrying a floor of
+/// its own; these answer a refusal, a form post that failed with no script to show why, and every page
+/// while that package is absent — the sign-in page then names it.
 /// </para>
 /// <para>
 /// Every document is sent under a content security policy with no inline script and no inline style,
@@ -127,18 +128,7 @@ internal static class ProviderPages
     private static Task WriteAsync(
         HttpContext ctx, int status, string title, string body, string? clientOrigin, int? refreshSeconds = null)
     {
-        string formAction = clientOrigin is { Length: > 0 } ? $"'self' {clientOrigin}" : "'self'";
-
-        ctx.Response.StatusCode = status;
-        ctx.Response.ContentType = "text/html; charset=utf-8";
-        IHeaderDictionary headers = ctx.Response.Headers;
-        headers.ContentSecurityPolicy =
-            "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; "
-            + $"connect-src 'self'; form-action {formAction}; frame-ancestors 'none'; base-uri 'none'";
-        headers.CacheControl = "no-store";
-        headers["Referrer-Policy"] = "no-referrer";
-        headers.XContentTypeOptions = "nosniff";
-        headers.XFrameOptions = "DENY";
+        ApplyDocumentHeaders(ctx, status, clientOrigin);
 
         var document = new StringBuilder();
         document.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
@@ -156,10 +146,32 @@ internal static class ProviderPages
         return ctx.Response.WriteAsync(document.ToString(), ctx.RequestAborted);
     }
 
-    private static string DisplayName(string provider) =>
+    /// <summary>
+    /// The headers every document the provider serves carries, whoever built it.
+    /// </summary>
+    /// <param name="ctx">The request being answered.</param>
+    /// <param name="status">The status to answer with.</param>
+    /// <param name="clientOrigin">The one client a form on this page may redirect to, or null.</param>
+    internal static void ApplyDocumentHeaders(HttpContext ctx, int status, string? clientOrigin)
+    {
+        string formAction = clientOrigin is { Length: > 0 } ? $"'self' {clientOrigin}" : "'self'";
+
+        ctx.Response.StatusCode = status;
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        IHeaderDictionary headers = ctx.Response.Headers;
+        headers.ContentSecurityPolicy =
+            "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; "
+            + $"connect-src 'self'; form-action {formAction}; frame-ancestors 'none'; base-uri 'none'";
+        headers.CacheControl = "no-store";
+        headers["Referrer-Policy"] = "no-referrer";
+        headers.XContentTypeOptions = "nosniff";
+        headers.XFrameOptions = "DENY";
+    }
+
+    internal static string DisplayName(string provider) =>
         provider.Length == 0 ? provider : char.ToUpperInvariant(provider[0]) + provider[1..];
 
-    private static string Encode(string value) => WebUtility.HtmlEncode(value);
+    internal static string Encode(string value) => WebUtility.HtmlEncode(value);
 
     // One appearance, following the reader's colour scheme. A theme carried in the bounce would be a
     // parameter a stranger sets.

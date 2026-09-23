@@ -7,6 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the provider's pages, registration at the provider, and the account page (1.28.0)
+
+The anchor serves `kgsm-web-auth`'s documents from `Anchor__UiPath` (default
+`/usr/share/kgsm-web-auth`) for the sign-in page, the wait and the account page, their assets under
+`/ui/`, writing the provider links at the documents' marker. Absent, it renders the floor itself as
+before.
+
+For the pages: `GET /authorize/context` (the client, the providers, whether registration is open, who
+the browser is signed in as), `POST /authorize/register` (a registration against the request in flight,
+same-origin only, landing on the wait), and `GET /authorize/wait` answering JSON to a page that polls.
+An account registered at the provider waits there and is returned to the client that asked once
+approved.
+
+The account page at `/account`, authenticated by the provider's cookie: the account, its identities and
+its sessions; setting a password, attaching and detaching an identity, each only with a recent proof —
+the password again, or a round trip to a provider the account already holds; ending a session, all of
+them, or this browser's sign-in. A browser with no sign-in is sent through the sign-in page first,
+which returns it to `/account` without minting a code. A link begun there returns there.
+
 ### Added — the anchor is the cluster's OpenID Connect provider (1.27.0, sessions 2.2.0-dev.4)
 
 With `Anchor__Issuer` set to the anchor's browser-facing URL, it serves discovery, the key set,

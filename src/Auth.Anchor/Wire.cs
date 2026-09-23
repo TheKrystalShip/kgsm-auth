@@ -405,4 +405,6 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(ClientsPage))]
 [JsonSerializable(typeof(ClientRecord))]
 [JsonSerializable(typeof(ClientRegistration))]
+[JsonSerializable(typeof(AuthorizeContext))]
+[JsonSerializable(typeof(AccountView))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

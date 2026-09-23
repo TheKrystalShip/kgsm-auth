@@ -254,7 +254,9 @@ browser-facing URL (`https://auth.anchors.example.com`); with anything else ever
 | `GET /.well-known/jwks.json` | the key set every session and `id_token` is signed with |
 | `GET /authorize` | validate and hold the request, then answer a recognised browser or show the sign-in page |
 | `POST /authorize/credentials` | a password against the request in flight, same-origin only; a code, never a session |
-| `GET /authorize/wait` | an account awaiting approval, polled by a refresh |
+| `GET /authorize/wait` | an account awaiting approval, polled by a refresh or, with `Accept: application/json`, by the page |
+| `GET /authorize/context` | what the pages draw for the request in flight: the client, the providers, whether registration is open |
+| `POST /authorize/register` | make an account against the request in flight, same-origin only; the wait follows |
 | `GET /authorize/{provider}` | an external provider's round trip for the request in flight |
 | `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token` |
 | `GET /userinfo` | the account behind a bearer |
@@ -282,6 +284,31 @@ the anchor's cookie answers another origin.
 **The floor.** The sign-in page is a plain document with a working form and the provider links, under a
 content security policy with no inline script or style and `form-action` naming the one client the
 request returns to. It signs somebody in with scripting off.
+
+### The pages and the account page
+
+The pages people see are `kgsm-web`'s, packaged as **`kgsm-web-auth`** and read from `Anchor__UiPath`
+(`/usr/share/kgsm-web-auth`) on every request, their assets served at `/ui/`. Each is a document with
+its own floor — the sign-in form, a wait that refreshes only with scripting off — which the application
+replaces on mount; the anchor fills in the provider links and nothing else. Absent, the anchor renders
+the floor itself and names the package, and a plain form post that fails is always answered on that
+built-in page with the reason.
+
+| | |
+|---|---|
+| `GET /account` | the account page, or its sign-in when this browser holds none |
+| `GET /account/sign-in` | sign in at the anchor to reach the account page; no code is minted |
+| `GET /account/me` | the account, its identities, its sessions and until when the last proof is recent |
+| `POST /account/reauth` | the password again; `GET /account/reauth/{provider}` for an account with none |
+| `POST /account/password` | set its own password |
+| `POST /account/identities/{provider}/start`, `DELETE /account/identities/{id}` | attach or detach an identity |
+| `POST /account/sessions/revoke`, `POST /account/sign-out` | end a session, all of them, or this browser's sign-in |
+
+Every call is authenticated by `kgsm_anchor` and every write is same-origin only. **Changing how
+somebody signs in needs a recent proof** — the provider session's last credential inside
+`Anchor__ReauthWindowMinutes` — and the page asks for the password (or a round trip to a provider the
+account already holds) when it is older. A provider round trip for that purpose accepts only an identity
+already attached to the same account; it never signs anybody in and never makes an account.
 
 **A browser signs in here directly, so the origin list is load-bearing.** The Control Panel is served
 from a different origin; without an entry in `Anchor__AllowedOrigins` the browser discards the

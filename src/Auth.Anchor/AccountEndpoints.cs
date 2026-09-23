@@ -430,6 +430,25 @@ internal static class AccountEndpoints
             return;
         }
 
+        await UnlinkAsync(ctx, user, credentialId, (caller.Identity ?? user.AsIdentity()).ActorString);
+    }
+
+    /// <summary>
+    /// Detach one of <paramref name="user"/>'s credentials and answer, the caller's gates already passed.
+    /// </summary>
+    /// <remarks>
+    /// Shared by every door that detaches one, which differ only in how they established that the person
+    /// asking is the account's holder and has proved it lately.
+    /// </remarks>
+    internal static async Task UnlinkAsync(HttpContext ctx, KgsmUser user, string credentialId, string actor)
+    {
+        if (credentialId.Length == 0)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_credential",
+                "A credential id is required.");
+            return;
+        }
+
         var store = ctx.RequestServices.GetRequiredService<IUserStore>();
 
         // Read before it is detached: afterwards there is nothing left to say which identity this was,
@@ -462,7 +481,7 @@ internal static class AccountEndpoints
             await ctx.RequestServices.GetRequiredService<AnchorJournal>().IdentityAsync(
                 AuthEvents.IdentityUnlinked, user.UserId, user.Username,
                 IdentityEndpoints.ProviderOf(gone.Handle), gone.Handle,
-                actor: (caller.Identity ?? user.AsIdentity()).ActorString,
+                actor: actor,
                 origin: AnchorJournal.OriginUi,
                 ct: ctx.RequestAborted);
         }
@@ -501,7 +520,7 @@ internal static class AccountEndpoints
     /// A credential change moves what replicates — a member holds the handles an account can be proved
     /// by, so one that is not told goes on resolving a session against a way in that no longer exists.
     /// </remarks>
-    private static async Task AnnounceAsync(HttpContext ctx, KgsmUser user, DateTimeOffset now)
+    internal static async Task AnnounceAsync(HttpContext ctx, KgsmUser user, DateTimeOffset now)
     {
         await ctx.RequestServices.GetRequiredService<IAccountVersions>()
             .NextAsync(user.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);

@@ -146,7 +146,7 @@ internal static class IdentityEndpoints
         string ticket = ctx.RequestServices.GetRequiredService<LinkTicketStore>()
             .Issue(user.UserId, caller.SessionId ?? string.Empty, handshake);
 
-        ctx.Response.Cookies.Append(TicketCookie, ticket, CookieOptions(ctx));
+        SetTicketCookie(ctx, ticket);
 
         // `consent` rather than the silent `none` a sign-in uses: somebody attaching an account is
         // choosing WHICH account, and a silent bounce attaches whichever one that browser happens to
@@ -190,6 +190,12 @@ internal static class IdentityEndpoints
 
         LinkTicket? ticket = ctx.RequestServices.GetRequiredService<LinkTicketStore>()
             .Redeem(cookie, ctx.Request.Query["state"]);
+
+        // A link begun on the anchor's own account page names the browser's provider session, and goes
+        // back to that page; one begun from a surface goes back to the surface.
+        if (ticket is not null && await ctx.RequestServices.GetRequiredService<SqliteSessionRegistry>()
+                .IsProviderSessionAsync(ticket.SessionId, ctx.RequestAborted))
+            options = options with { FrontendUrl = "/account" };
 
         if (ticket is null)
         {
@@ -328,6 +334,10 @@ internal static class IdentityEndpoints
     /// redirect back, which breaks every link. Secure tracks the scheme so it works on an http
     /// loopback yet is Secure on a real host.
     /// </remarks>
+    /// <summary>Hand the browser a link ticket, for the callback to redeem.</summary>
+    internal static void SetTicketCookie(HttpContext ctx, string ticket) =>
+        ctx.Response.Cookies.Append(TicketCookie, ticket, CookieOptions(ctx));
+
     private static CookieOptions CookieOptions(HttpContext ctx) => new()
     {
         HttpOnly = true,

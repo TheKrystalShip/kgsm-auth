@@ -387,6 +387,17 @@ Authority: `../hosted-sign-in-plan.md`.
   wins.
 - **`id_token`'s subject is the account, its audience the client.** It is never accepted as a bearer,
   and a bearer is never accepted as a sign-out hint.
+- **The pages are `kgsm-web-auth`'s documents, served as built.** The anchor writes the provider links
+  at the marker and nothing else, reads the files per request, and serves `/ui/` only from under
+  `UiPath` — a resolved path outside it is a 404, because this daemon can open its signing key. A
+  failed plain form post is answered on the built-in page with the reason: the static document has
+  nowhere to put one.
+- **The account page is the only place a credential changes, and a change needs a recent proof** —
+  the provider session's `credential_at` inside the re-authentication window. Its sign-in is a request
+  in flight for the `kgsm-account` pseudo-client, which is never registered and never issued a code.
+- **A provider round trip begun to re-prove the person accepts only an identity already attached to
+  that account**, resolved and never provisioned. It is recognised by the `state` it began with and
+  returns to `/account`; it never mints anything.
 
 ## Conventions
 

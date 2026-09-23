@@ -162,6 +162,16 @@
       "risk": "wiring"
     },
     {
+      "key": "uiPath",
+      "env": "Anchor__UiPath",
+      "label": "Sign-in pages",
+      "description": "The folder holding the sign-in, approval and account pages. Absent, people still sign in through a plain form, and registration and the account page are unavailable.",
+      "group": "storage",
+      "type": "path",
+      "default": "/usr/share/kgsm-web-auth",
+      "risk": "wiring"
+    },
+    {
       "key": "configDescriptorPath",
       "env": "Anchor__ConfigDescriptorPath",
       "label": "Config descriptor",

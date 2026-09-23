@@ -263,23 +263,110 @@ internal static class OidcEndpoints
     /// </remarks>
     internal static async Task Wait(HttpContext ctx)
     {
-        if (!await RequireProviderPageAsync(ctx))
+        bool json = AcceptsJson(ctx);
+        if (!await RequireProviderPageAsync(ctx, json))
             return;
 
         if (await InFlightAsync(ctx) is not { } request)
         {
-            await ExpiredAsync(ctx, json: false);
+            await ExpiredAsync(ctx, json);
             return;
         }
 
         if (await ctx.RequestServices.GetRequiredService<ProviderSessions>().CurrentAsync(ctx) is not { } session)
         {
-            await SignInPageAsync(ctx, request, message: null);
+            if (json)
+                await Endpoints.Refuse(ctx, StatusCodes.Status401Unauthorized, "unauthenticated", "Sign in to continue.");
+            else
+                await SignInPageAsync(ctx, request, message: null);
             return;
         }
 
-        await ProceedAsync(ctx, request, session, Answer.WaitPage, silent: false);
+        await ProceedAsync(ctx, request, session, json ? Answer.WaitJson : Answer.WaitPage, silent: false);
     }
+
+    /// <summary>
+    /// <c>GET /authorize/context</c>: what the provider's own pages need to draw the request in flight.
+    /// </summary>
+    /// <remarks>
+    /// The documents are static, so everything particular to this request — whose sign-in it is, which
+    /// providers and whether registration is open, and who this browser is already signed in as — is
+    /// read here, same-origin, by the application that replaces the floor. Nothing about where the code
+    /// goes is in it.
+    /// </remarks>
+    internal static async Task Context(HttpContext ctx)
+    {
+        if (!await RequireProviderPageAsync(ctx, json: true))
+            return;
+
+        if (await InFlightAsync(ctx) is not { } request)
+        {
+            await ExpiredAsync(ctx, json: true);
+            return;
+        }
+
+        AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
+
+        AuthorizeContextAccount? account = null;
+        if (await ctx.RequestServices.GetRequiredService<ProviderSessions>().CurrentAsync(ctx) is { } session
+            && await ctx.RequestServices.GetRequiredService<IUserStore>()
+                .FindByCredentialAsync(session.Handle, ctx.RequestAborted) is { } user)
+        {
+            account = new AuthorizeContextAccount(user.Username, user.DisplayName, UserStatuses.ToWire(user.Status));
+        }
+
+        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new AuthorizeContext(
+            new AuthorizeContextClient(request.ClientId, ClientName(ctx, request)),
+            ctx.RequestServices.GetRequiredService<ProviderCatalog>().Configured,
+            options.AllowSelfRegistration,
+            account),
+            AnchorJsonContext.Default.AuthorizeContext);
+    }
+
+    /// <summary>
+    /// <c>POST /authorize/register</c>: make an account against the request in flight.
+    /// </summary>
+    /// <remarks>
+    /// The same rules as every registration — closed unless the cluster opens it, capped, the account
+    /// unapproved and holding nothing — and the same-origin gate every credential post here passes. The
+    /// new account's password proves this browser's provider session, so the wait that follows is theirs,
+    /// and it returns them to the client that asked once an administrator approves.
+    /// </remarks>
+    internal static async Task Register(HttpContext ctx)
+    {
+        if (!await RequireProviderPageAsync(ctx, json: true))
+            return;
+
+        if (!IsSameOrigin(ctx))
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "cross_site",
+                "A registration can only be sent from this page.");
+            return;
+        }
+
+        if (await InFlightAsync(ctx) is not { } request)
+        {
+            await ExpiredAsync(ctx, json: true);
+            return;
+        }
+
+        if (await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.RegisterRequest) is not { } body)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
+                "The request body is not readable.");
+            return;
+        }
+
+        if (await RegisterEndpoint.CreateAsync(ctx, body) is not { } account)
+            return;
+
+        ProviderSessionRow session = await ctx.RequestServices.GetRequiredService<ProviderSessions>()
+            .EstablishAsync(ctx, account.AsIdentity(), account);
+        await ProceedAsync(ctx, request, session, Answer.Json, silent: false);
+    }
+
+    private static bool AcceptsJson(HttpContext ctx) =>
+        ctx.Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// <c>GET /authorize/{provider}</c>: sign in with an external provider, for the request in flight.
@@ -327,6 +414,9 @@ internal static class OidcEndpoints
 
         /// <summary>The wait page is polling: render it again while the account still waits.</summary>
         WaitPage,
+
+        /// <summary>The wait page's application is polling: say whether it is still waiting, as JSON.</summary>
+        WaitJson,
     }
 
     /// <summary>
@@ -347,7 +437,7 @@ internal static class OidcEndpoints
     {
         var sessions = ctx.RequestServices.GetRequiredService<ProviderSessions>();
         var authority = ctx.RequestServices.GetRequiredService<UserStoreAuthority>();
-        bool json = answer == Answer.Json;
+        bool json = answer is Answer.Json or Answer.WaitJson;
 
         AuthorityAnswer standing;
         try
@@ -399,12 +489,23 @@ internal static class OidcEndpoints
                     return;
 
                 case Answer.WaitPage:
+                case Answer.WaitJson:
                     DateTimeOffset expires = DateTimeOffset.UtcNow.Add(ProviderCookies.RequestLifetime);
                     await ctx.RequestServices.GetRequiredService<SqliteSessionRegistry>()
                         .ExtendRequestAsync(request.SecretHash, expires, ctx.RequestAborted);
                     ctx.Response.Cookies.Append(ProviderCookies.Request, ctx.Request.Cookies[ProviderCookies.Request]!,
                         ProviderCookies.Options(ctx, ProviderCookies.RequestLifetime));
-                    await ProviderPages.WaitAsync(ctx, user.Username, ClientOrigin(request));
+
+                    if (answer == Answer.WaitJson)
+                    {
+                        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
+                            new CredentialAnswer(null, "/authorize/wait"), AnchorJsonContext.Default.CredentialAnswer);
+                        return;
+                    }
+
+                    if (!await ctx.RequestServices.GetRequiredService<ProviderBundle>()
+                            .TryServeAsync(ctx, ProviderBundle.Page.Wait, ClientOrigin(request), []))
+                        await ProviderPages.WaitAsync(ctx, user.Username, ClientOrigin(request));
                     return;
 
                 default:
@@ -827,7 +928,7 @@ internal static class OidcEndpoints
             .FindRequestAsync(ProviderCookies.Hash(secret), ctx.RequestAborted);
     }
 
-    private static async Task<AuthorizeRequest> BeginRequestAsync(
+    internal static async Task<AuthorizeRequest> BeginRequestAsync(
         HttpContext ctx, string clientId, string redirectUri, string? state, string challenge, string? nonce,
         string? prompt)
     {
@@ -857,9 +958,19 @@ internal static class OidcEndpoints
     }
 
     /// <summary>Mint a code for the request, end it, and say where the browser goes with it.</summary>
+    /// <remarks>
+    /// The account page's own sign-in is the one request that gets no code: what it needed was the
+    /// provider session, which is proved by now, and a code nobody exchanges is a bearer left lying about.
+    /// </remarks>
     private static async Task<string> IssueCodeAsync(
         HttpContext ctx, AuthorizeRequest request, KgsmUser user, ProviderSessionRow session)
     {
+        if (request.ClientId == AccountPageEndpoints.AccountClientId)
+        {
+            await EndRequestAsync(ctx, request);
+            return request.RedirectUri;
+        }
+
         string code = ProviderCookies.NewSecret();
         await ctx.RequestServices.GetRequiredService<SqliteSessionRegistry>().IssueCodeAsync(
             ProviderCookies.Hash(code),
@@ -937,15 +1048,31 @@ internal static class OidcEndpoints
             : SignInPageAsync(ctx, request, message, status);
 
     /// <summary>The sign-in page for the request in flight.</summary>
-    internal static Task SignInPageAsync(HttpContext ctx, AuthorizeRequest request, string? message,
+    /// <remarks>
+    /// The bundle's page on a first visit, where it is installed. A refusal of a plain form post is
+    /// answered with the built-in page and the reason on it: a browser that posted the form rather than
+    /// fetching is one where the application did not run, and the static document has nowhere to say why.
+    /// </remarks>
+    internal static async Task SignInPageAsync(HttpContext ctx, AuthorizeRequest request, string? message,
         int status = StatusCodes.Status200OK)
     {
-        RegisteredClient? client = ctx.RequestServices.GetRequiredService<ClientRegistry>().Find(request.ClientId);
-        return ProviderPages.SignInAsync(ctx, client?.Name ?? request.ClientId, ClientOrigin(request),
-            ctx.RequestServices.GetRequiredService<ProviderCatalog>().Configured, message, status);
+        IReadOnlyList<string> providers = ctx.RequestServices.GetRequiredService<ProviderCatalog>().Configured;
+        if (message is null
+            && await ctx.RequestServices.GetRequiredService<ProviderBundle>()
+                .TryServeAsync(ctx, ProviderBundle.Page.SignIn, ClientOrigin(request), providers))
+            return;
+
+        await ProviderPages.SignInAsync(ctx, ClientName(ctx, request), ClientOrigin(request),
+            providers, message, status);
     }
 
     private static string ClientOrigin(AuthorizeRequest request) => ClientRegistry.OriginOf(request.RedirectUri);
+
+    /// <summary>Whose sign-in a request is, as a person reads it.</summary>
+    private static string ClientName(HttpContext ctx, AuthorizeRequest request) =>
+        request.ClientId == AccountPageEndpoints.AccountClientId
+            ? AccountPageEndpoints.AccountClientName
+            : ctx.RequestServices.GetRequiredService<ClientRegistry>().Find(request.ClientId)?.Name ?? request.ClientId;
 
     private static void RedirectError(HttpContext ctx, string redirectUri, string? state, string error, string description)
     {
