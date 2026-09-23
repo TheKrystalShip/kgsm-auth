@@ -277,7 +277,8 @@ signing out.
 **Clients come from two places.** A member serving a surface states the `auth.client` fact — paths
 only, joined to the browser address its roster row carries — and appears with no operator step; it
 leaves when the member does. Anything else is registered by an admin. Redirects are matched exactly and
-must be HTTPS, or HTTP to a loopback address. A registered client's origin may read discovery, the key
+must be HTTPS, or HTTP where the cluster itself accepts plaintext — this machine, a private network or a
+local name — so a cluster of one on a LAN has somewhere to send a code. A registered client's origin may read discovery, the key
 set, `/token`, `/userinfo` and the admin API across origins, without credentials; nothing that reads
 the anchor's cookie answers another origin.
 

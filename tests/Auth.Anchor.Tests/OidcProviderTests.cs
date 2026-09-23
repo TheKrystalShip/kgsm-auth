@@ -858,6 +858,18 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         Assert.Equal(ClientRegistry.RegisterOutcome.Invalid, outcome);
     }
 
+    [Theory]
+    [InlineData("http://127.0.0.1:8080/signed-in")]
+    [InlineData("http://192.168.1.10:8080/signed-in")]
+    [InlineData("http://10.44.0.4:8080/signed-in")]
+    [InlineData("http://gamebox.lan:8080/signed-in")]
+    public void A_panel_on_this_machine_or_a_private_network_can_be_registered_over_plain_http(string uri)
+    {
+        // A cluster of one on a LAN serves its panel over plain HTTP; the operator owns that wire, and a
+        // code seen on it is worthless without the verifier the browser holds.
+        Assert.Null(ClientRegistry.Problem(uri));
+    }
+
     [Fact]
     public async Task A_member_announces_a_surface_on_its_own_address_and_nowhere_else()
     {

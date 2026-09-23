@@ -173,9 +173,17 @@ internal sealed partial class ClientRegistry
     /// Why <paramref name="uri"/> cannot be registered, or null when it can.
     /// </summary>
     /// <remarks>
-    /// HTTPS, or plain HTTP to this machine's own loopback for a surface in development — a code sent in
-    /// the clear anywhere else is a code anybody on the path can exchange. No fragment, which a code
-    /// redirect cannot carry, and no user information, which is how a URL is dressed as another host.
+    /// <para>
+    /// HTTPS, or plain HTTP where the cluster itself accepts plaintext — this machine, a private network,
+    /// a local name (<c>MemberHandshakeService.IsTransportAcceptable</c>). A cluster of one on a LAN serves
+    /// its panel over plain HTTP, and refusing it here would leave the machine with nowhere a code can be
+    /// sent. On such a network the operator owns the wire, and a code seen on it is still worthless
+    /// without the verifier the browser holds. Anywhere else a code in the clear crosses somebody's path.
+    /// </para>
+    /// <para>
+    /// No fragment, which a code redirect cannot carry, and no user information, which is how a URL is
+    /// dressed as another host.
+    /// </para>
     /// </remarks>
     internal static string? Problem(string uri)
     {
@@ -185,11 +193,11 @@ internal sealed partial class ClientRegistry
             return "a redirect cannot carry a fragment";
         if (!string.IsNullOrEmpty(parsed.UserInfo))
             return "a redirect cannot carry user information";
-        if (parsed.Scheme == Uri.UriSchemeHttps)
+        if (parsed.Scheme is not ("https" or "http"))
+            return "only https, or http on this machine or a private network";
+        if (MemberHandshakeService.IsTransportAcceptable(uri))
             return null;
-        if (parsed.Scheme == Uri.UriSchemeHttp && parsed.IsLoopback)
-            return null;
-        return "only https, or http to a loopback address";
+        return "only https, or http on this machine or a private network";
     }
 
     private async Task ReloadAsync(CancellationToken ct) =>

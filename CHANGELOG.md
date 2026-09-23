@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — a panel on a private network can be a client (1.29.1)
+
+A client's redirect may be plain HTTP wherever the cluster itself accepts plaintext — this machine, a
+private network, a local name — as well as HTTPS. A cluster of one on a LAN serves its panel at
+`http://<lan address>:8080`, which the loopback-only rule refused, leaving that machine's panel nowhere a
+code could be sent.
+
 ### Changed — only the founding machine's anchor claims the accounts (1.29.0)
 
 An anchor claims the accounts into an empty assignment only on the machine whose founding record,
