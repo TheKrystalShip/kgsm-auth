@@ -232,6 +232,15 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   per-account version and the replica refuses anything not newer, so "snapshot, then follow" is a
   sequence rather than a handover, and re-reading the whole set on a timer would be a poll standing in
   for a push that works.
+- **A leaf verifies what its machine's member verified, through the host file.** A leaf joins no
+  cluster, so it cannot resolve the holder; the node writes `HostProviderFile` from its own read
+  through the holder, and `HostSessionKeys` reads it back. One writer per machine, the node. The file
+  is removed when the member has read the cluster and the holder states nothing — a file naming a
+  cluster the machine has left would have its leaves accept that cluster's sessions — and left alone
+  before the member's first read, so a restart costs no leaf its sessions.
+- **The provider is named only when it is a URL.** `ProtectedResourceMetadata` answers with the
+  issuer a member verifies against, or with `no_issuer`; a surface given a value it cannot navigate
+  to would try to.
 - **Three seams, and the package owns none of them:** `IReplicatedAccounts` is the member's own store,
   `IClusterSessionAuthority` its own sessions, `ISessionValidator` its own cache. Opening a file and
   serving a route stay the member's business.
@@ -279,11 +288,11 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   member currently knows, so two isolated anchors both succeed; the tie resolves when their gossip
   meets. Every claim is followed by a re-read, and a member that finds itself not the holder stands
   down. Measured: a second anchor claims, publishes, then stands down within one gossip round.
-- **Only the holder writes `/var/lib/kgsm/cluster/auth-public-key.json`, and it reconciles rather
-  than writes once.** The gossiped fact is scoped by its reader, which resolves the holder first; a
-  filesystem path is scoped by nothing. A member withdraws only a file whose contents are its own
-  key — one holding a different key belongs to whoever holds the capability, and removing it would
-  break every member reading it.
+- **Only the anchor on the machine that founded the cluster claims the accounts into an empty
+  assignment** — `ClusterFounding.IsFoundedHere`, the founding record naming the secret it holds.
+  Anywhere else an empty assignment means gossip has not arrived, and a claim made then competes with
+  the real holder under a tie-break that can hand this anchor the cluster's accounts. A founding
+  machine that takes another cluster's secret stops being the founder by that comparison alone.
 - **The anchor writes its own event journal, and it is the only witness there is.** Signing in,
   creating an account and moving somebody's authority happen here for the whole cluster, so a line the
   anchor does not write is a fact that exists nowhere. The producer id has to be the name in the

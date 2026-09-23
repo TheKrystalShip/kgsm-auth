@@ -9,7 +9,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Cluster</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0-dev.5</Version>
+    <Version>1.0.0-dev.6</Version>
     <Description>
       What a cluster member does about identity that is not the anchor's job: verify a session it
       cannot mint, resolve the person from a replica of the cluster's accounts, refuse the auth doors
@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.18" />
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.22" />
     <!-- BackgroundService, for the two workers that follow cluster state rather than answering a
          request. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />

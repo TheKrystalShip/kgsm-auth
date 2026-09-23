@@ -143,6 +143,11 @@ var clusterOptions = new ClusterOptions
     Kind = MemberKind.Anchor,
     Secret = ClusterConfiguration.Secret(builder.Configuration),
     SecretPrevious = ClusterConfiguration.SecretPrevious(builder.Configuration),
+    // Whether this machine founded the cluster decides whether this anchor may claim its accounts. A
+    // deployment reads the one record kgsm-base writes; the key exists so a test reads its own.
+    FoundedPath = builder.Configuration["Cluster:FoundedPath"] is { Length: > 0 } founded
+        ? founded
+        : ClusterFounding.DefaultPath,
     StorePath = Path.Combine(
         Path.GetDirectoryName(Path.GetFullPath(options.SessionStorePath)) ?? ".", "cluster.db"),
     PublicBaseUrl = options.PublicBaseUrl,

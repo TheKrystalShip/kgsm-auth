@@ -8,8 +8,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// Keeps this anchor's place in the cluster current: it publishes the key members verify sessions
-/// with, claims the auth capability when nobody holds it, re-reads who does, and — while it holds it —
-/// keeps the clients the members announce.
+/// with, claims the auth capability when nobody holds it on the machine that founded the cluster,
+/// re-reads who does, and — while it holds it — keeps the clients the members announce.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -37,18 +37,13 @@ internal sealed class ClusterMembershipWorker(
     ClientRegistry clients,
     ILogger<ClusterMembershipWorker> logger) : BackgroundService
 {
-    // The key file is reconciled every pass, so what is said about it has to be said once. These
-    // reset on the way down, which is what makes a re-publish after a promotion audible again.
-    private bool _saidPublished;
-    private bool _saidNoDirectory;
+    /// <summary>
+    /// Whether this machine founded the cluster this anchor is in. Read once: the secret and the
+    /// founding record are both fixed for the life of the process.
+    /// </summary>
+    private readonly bool _foundedHere = ClusterFounding.IsFoundedHere(cluster);
 
-    private void LogOnce(ref bool said, string message, string path)
-    {
-        if (said)
-            return;
-        said = true;
-        logger.LogInformation(message, path);
-    }
+    private bool _saidNotFounder;
 
     /// <summary>
     /// How often the assignment is re-read. Matched to the gossip cadence, because that is what the
@@ -66,17 +61,13 @@ internal sealed class ClusterMembershipWorker(
             // an operator looking at an unexpected refusal needs to be able to find.
             logger.LogInformation(
                 "not part of a cluster — this anchor holds this machine's accounts and answers for them alone");
-
-            // The only anchor there is, so the key it publishes is the one to verify against.
-            PublishKeyFile();
             return;
         }
 
         // Published before the claim, and published whatever this anchor turns out to be. A reader
         // resolves the holder first and takes the fact off that member only, so a candidate's key is
         // never consulted — and having stated it already is what lets a promotion need no restart
-        // anywhere. The file below is the opposite case and is gated, because a path says nothing
-        // about who wrote it.
+        // anywhere.
         publications.Publish(ClusterAuthFacts.PublicKey, signer.PublicKeysJson);
 
         // What a member needs to accept a session it cannot mint: the keys that verify the signature,
@@ -116,30 +107,35 @@ internal sealed class ClusterMembershipWorker(
             ClusterAssignment? assignment =
                 await state.GetAsync(ClusterCapability.Auth, ct).ConfigureAwait(false);
 
-            // Bootstrap: the first anchor in a cluster with no assignment takes it. Only ever into an
-            // empty value, and the re-read below is what settles a race between two of them.
+            // Bootstrap: the anchor on the machine that founded the cluster takes the accounts when nobody
+            // holds them. Only ever into an empty value, and the re-read below is what settles a race
+            // between two of them.
+            //
+            // Only there. An anchor anywhere else sees an empty assignment for exactly as long as gossip
+            // has not reached it yet — a joining machine, or a founding one that has taken another
+            // cluster's secret — and a claim made in that window competes with the real holder, where
+            // the tie-break can hand it the cluster's accounts. Such an anchor holds them only when an
+            // administrator assigns them to it.
             if (assignment is null || !assignment.IsHeld)
             {
-                if (await state.TryClaimAsync(ClusterCapability.Auth, cluster.MemberId, ct).ConfigureAwait(false))
-                    logger.LogInformation("no member held the cluster's accounts — claimed them as {Member}", cluster.MemberId);
+                if (_foundedHere)
+                {
+                    if (await state.TryClaimAsync(ClusterCapability.Auth, cluster.MemberId, ct).ConfigureAwait(false))
+                        logger.LogInformation("no member held the cluster's accounts — claimed them as {Member}", cluster.MemberId);
+                }
+                else if (!_saidNotFounder)
+                {
+                    logger.LogInformation(
+                        "this machine did not found the cluster it is in, so this anchor never claims its "
+                        + "accounts; it holds them only when an administrator assigns them to it");
+                    _saidNotFounder = true;
+                }
             }
 
             string? holder = await state.HolderAsync(ClusterCapability.Auth, ct).ConfigureAwait(false);
             bool isHolder = string.Equals(holder, cluster.MemberId, StringComparison.Ordinal);
 
             AnchorStanding standing = isHolder ? AnchorStanding.Holder : AnchorStanding.StandingBy;
-
-            // The shared file follows the standing, in both directions: a member that has stood down
-            // leaves behind a key every member on this machine would go on verifying against.
-            //
-            // Reconciled on every pass rather than only when the standing changes, so the file is
-            // restored if anything removes it — including a second anchor on this machine that
-            // briefly believed it was the holder and withdrew its own key on the way down. Both calls
-            // read the file and return without writing when it already says the right thing.
-            if (isHolder)
-                PublishKeyFile();
-            else
-                WithdrawKeyFile();
 
             // The surfaces the cluster's members announce become clients of this provider, at the
             // addresses the roster hands out for them, and leave when their member does. Only the holder
@@ -179,13 +175,9 @@ internal sealed class ClusterMembershipWorker(
     }
 
     /// <summary>
-    /// Put this anchor's verification keys where members sharing the machine read them.
+    /// Bring the clients the members announce into the registry, at the addresses the roster hands out
+    /// for them.
     /// </summary>
-    /// <remarks>
-    /// The directory is scaffolded for what several members on one machine share. Absent, there is no
-    /// member here to read the file and nothing to do about it — the key is still served over HTTP
-    /// and still gossiped, which is how a member on another machine finds it.
-    /// </remarks>
     private async Task SyncClientsAsync(CancellationToken ct)
     {
         try
@@ -203,52 +195,6 @@ internal sealed class ClusterMembershipWorker(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "could not bring the members' clients up to date");
-        }
-    }
-
-    private void PublishKeyFile()
-    {
-        if (options.PublishedKeyPath is not { } path)
-            return;
-
-        try
-        {
-            if (!SigningKeyStore.Publish(path, signer.PublicKeysJson))
-            {
-                LogOnce(ref _saidNoDirectory,
-                    "no shared cluster directory at {Path} — the verification key is served over HTTP only", path);
-                return;
-            }
-
-            LogOnce(ref _saidPublished, "published the session verification key to {Path}", path);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "could not publish the session verification key to {Path}", path);
-        }
-    }
-
-    private void WithdrawKeyFile()
-    {
-        if (options.PublishedKeyPath is not { } path)
-            return;
-
-        try
-        {
-            if (SigningKeyStore.Withdraw(path, signer.PublicKeysJson))
-            {
-                logger.LogWarning(
-                    "withdrew this member's verification key from {Path} — it no longer holds the cluster's accounts",
-                    path);
-            }
-
-            // Said again if this member is ever promoted back.
-            _saidPublished = false;
-            _saidNoDirectory = false;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "could not withdraw the session verification key from {Path}", path);
         }
     }
 }

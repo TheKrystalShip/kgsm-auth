@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Identity;
 using TheKrystalShip.KGSM.Extensions;
 
@@ -56,6 +57,9 @@ public sealed class AnchorFixture : IDisposable
     /// <summary>Where a browser is sent back to after a provider sign-in.</summary>
     public const string PanelUrl = "https://panel.test";
 
+    /// <summary>The secret the test cluster's members share.</summary>
+    public const string ClusterSecret = "a shared secret for the test cluster";
+
     public AnchorFixture()
     {
         Root = Path.Combine(Path.GetTempPath(), "kgsm-auth-anchor-tests", Guid.NewGuid().ToString("N"));
@@ -64,10 +68,6 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__UserStorePath", Path.Combine(Root, "users.db"));
         Environment.SetEnvironmentVariable("Anchor__SessionStorePath", Path.Combine(Root, "sessions.db"));
         Environment.SetEnvironmentVariable("Anchor__SigningKeyPath", Path.Combine(Root, "signing.pem"));
-        // No shared cluster directory in a test, so the anchor publishes no file. Pointed at one
-        // inside the fixture rather than left at its default, which would write into the real host's
-        // /var/lib/kgsm/cluster.
-        Environment.SetEnvironmentVariable("Anchor__PublishedKeyPath", Path.Combine(Root, "cluster", "key.json"));
         Environment.SetEnvironmentVariable("Anchor__ClusterId", ClusterId);
         Environment.SetEnvironmentVariable("Anchor__AllowedOrigins", "https://panel.test");
         Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
@@ -109,7 +109,14 @@ public sealed class AnchorFixture : IDisposable
         // would present, and it claims the auth capability on start exactly as a deployed one does.
         // Without it the daemon is standalone — which is also a state worth testing, but not one in
         // which any member-to-member door can be opened at all.
-        Environment.SetEnvironmentVariable("Cluster__Secret", "a shared secret for the test cluster");
+        Environment.SetEnvironmentVariable("Cluster__Secret", ClusterSecret);
+
+        // The machine founded this cluster, as a fresh install does, which is the only place an anchor
+        // claims the accounts on its own. The record is relocated for the same reason as every path
+        // above: left at its default, the suite reads the real host's.
+        string founded = Path.Combine(Root, "cluster-founded");
+        File.WriteAllText(founded, ClusterFounding.Fingerprint(ClusterSecret) + "\n");
+        Environment.SetEnvironmentVariable("Cluster__FoundedPath", founded);
 
         Store = new SqliteUserStore(new UserStoreOptions { Path = Path.Combine(Root, "users.db") });
 

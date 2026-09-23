@@ -36,9 +36,13 @@ post_install() {
 
       /var/lib/kgsm-auth-anchor/initial-admin-password
 
-  One thing it needs from you: the browser origin the Control Panel is served from, in
-  Anchor__AllowedOrigins in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env, so the panel may sign people in
-  here. kgsm-meta/NODE-PROVISIONING.md §10·b has the rest.
+  What it needs from you is the address people reach it at, in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env:
+
+      Anchor__Issuer          the URL a browser signs in at, e.g. http://<this machine>:8098
+      Anchor__AllowedOrigins  the Control Panel's origin, e.g. http://<this machine>:8080
+
+  Until the issuer is a URL the anchor signs nobody in through its OpenID Connect doors, and the node
+  names no sign-in provider. kgsm-meta/NODE-PROVISIONING.md §10·b has the rest.
 
 MSG
     else

@@ -54,6 +54,17 @@ public sealed class ClusterSessionKeys(
     /// <inheritdoc />
     public IReadOnlyList<SecurityKey> Keys => _state.Keys;
 
+    /// <summary>The key set as the holder published it, or null when it published none.</summary>
+    public string? PublishedKeySet => _state.Published;
+
+    /// <summary>
+    /// Whether this member has read the cluster at least once. Until it has, every answer above is "not
+    /// yet known" rather than "the holder states nothing".
+    /// </summary>
+    public bool HasRead => _hasRead;
+
+    private volatile bool _hasRead;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!cluster.Enabled)
@@ -109,11 +120,13 @@ public sealed class ClusterSessionKeys(
             && string.Equals(audience, current.Audience, StringComparison.Ordinal)
             && string.Equals(issuer, current.Issuer, StringComparison.Ordinal))
         {
+            _hasRead = true;
             return;
         }
 
         IReadOnlyList<SecurityKey> keys = Read(published);
         _state = new State(audience, issuer, keys, published);
+        _hasRead = true;
 
         if (keys.Count == 0 || string.IsNullOrEmpty(audience) || string.IsNullOrEmpty(issuer))
         {

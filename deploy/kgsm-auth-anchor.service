@@ -31,10 +31,6 @@ Environment=Anchor__UserStorePath=/var/lib/kgsm/auth/users.db
 Environment=Anchor__SessionStorePath=/var/lib/kgsm-auth-anchor/sessions.db
 Environment=Anchor__SigningKeyPath=/var/lib/kgsm-auth-anchor/session-signing.pem
 
-# The shared cluster directory, scaffolded by kgsm-base, is where members on this machine read the
-# verification key from. Absent, the key is served over HTTP alone.
-Environment=Anchor__PublishedKeyPath=/var/lib/kgsm/cluster/auth-public-key.json
-
 # The browser origins allowed to sign in here. Blank allows none, so the Control Panel's origin
 # belongs in the env file below.
 # Environment=Anchor__AllowedOrigins=https://panel.example

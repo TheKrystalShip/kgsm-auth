@@ -16,7 +16,7 @@ once. A standalone host runs no daemon and reads the same file through the same 
 | **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
 | **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot |
-| **`TheKrystalShip.KGSM.Auth.Cluster`** | what a cluster *member* does about identity: verify a session it cannot mint, refuse the doors whichever member holds the accounts owns, apply `account.*` and `session.revoke` from the bus, and take its first full copy from the holder. | kgsm-api |
+| **`TheKrystalShip.KGSM.Auth.Cluster`** | what a cluster *member* does about identity: verify a session it cannot mint, refuse the doors whichever member holds the accounts owns, apply `account.*` and `session.revoke` from the bus, and take its first full copy from the holder. Also what it tells others: the host file its machine's leaves verify against (`HostProviderFile`, read back by `HostSessionKeys`), and the document naming its sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
 
 The deployable is **`kgsm-auth-anchor`** (`src/Auth.Anchor`), built from those libraries and shipped
 as a pacman package and a systemd unit. It publishes nothing to NuGet.
@@ -229,8 +229,8 @@ so two holders of one key compute one id.
 after — the gap between the two is the window the whole mode exists to close. A file that exists and
 cannot be read stops the daemon: replacing it invalidates every session in the cluster and leaves
 every member checking against a key nothing signs with, so "this anchor has no key yet" and "this
-anchor's key is unreadable" must not take the same path. The public half is copied to
-`/var/lib/kgsm/cluster/auth-public-key.json`, the directory members on one machine share.
+anchor's key is unreadable" must not take the same path. The public half is served at
+`/auth/cluster/public-key` and `/.well-known/jwks.json`, and gossiped to every member.
 
 **Authority is read on every request, never off the token.** The tier claim is what was true at mint
 time; a demotion has to land at the caller's next request, so the store's answer overwrites it. The
@@ -321,10 +321,13 @@ The anchor joins a cluster **directly** — not through a node, not through an A
 kind `anchor`. It needs the shared secret in `/etc/kgsm/kgsm-cluster.env` and nothing else; a machine
 with no secret is not part of a cluster, which is a state rather than a misconfiguration.
 
-**Which member holds the accounts is cluster state, not configuration.** The first anchor in a cluster
-that has no holder claims it; only an admin's reassignment moves it afterwards. Nothing promotes
-itself — an anchor that did so during a partition would produce two members issuing conflicting
-statements about who may do what.
+**Which member holds the accounts is cluster state, not configuration.** When nobody holds them, the
+anchor on the machine that founded the cluster claims them — the machine whose founding record,
+`/etc/kgsm/cluster-founded`, names the secret it holds. An anchor anywhere else never claims: an empty
+assignment there means gossip has not reached it yet, and a claim made in that window competes with the
+real holder. Only an admin's reassignment moves the accounts afterwards. Nothing promotes itself — an
+anchor that did so during a partition would produce two members issuing conflicting statements about
+who may do what.
 
 That gives an anchor three standings, and the first is what leaves a standalone install alone:
 
@@ -339,12 +342,10 @@ would be signed with a key no member verifies against. Signing out stays open ev
 authority away rather than granting it, and refusing would strand whoever is signed in to a member
 that has since become a candidate.
 
-**The key reaches other members two ways, and they are scoped differently.** It is gossiped as a fact
-the anchor publishes about itself, which a reader resolves *through the holder* — so a key stated by a
-member that does not hold the capability is never consulted. It is also written to
-`/var/lib/kgsm/cluster/auth-public-key.json` for the members sharing the machine, and **only the
-holder writes there**, because a filesystem path carries no statement about who wrote it. A member
-withdraws only a file whose contents are its own key, and the holder reconciles it on every pass.
+**The key reaches other members as a gossiped fact** the anchor publishes about itself, which a reader
+resolves *through the holder* — so a key stated by a member that does not hold the capability is never
+consulted. A leaf, which does not join the cluster, reads the host file the node on its machine writes
+from that same read (`Auth.Cluster`'s `HostProviderFile`).
 
 ### Running one
 

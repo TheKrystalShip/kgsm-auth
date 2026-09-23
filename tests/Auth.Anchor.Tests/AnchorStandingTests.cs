@@ -87,66 +87,90 @@ public sealed class AnchorStandingTests
 }
 
 /// <summary>
-/// Who may write the file members on one machine verify sessions against.
+/// Who takes the accounts when nobody holds them: the anchor on the machine that founded the cluster,
+/// and nobody else.
 /// </summary>
 /// <remarks>
-/// The gossiped fact and this file are not the same mechanism and do not need the same rule. A reader
-/// resolves the fact through the holder, so a candidate stating a key is simply never consulted; a
-/// path resolves through nothing, so the writer has to scope it or a candidate hands every member on
-/// the machine a key that verifies nothing anybody signed with.
+/// Anywhere else an empty assignment means gossip has not arrived yet, and a claim made in that window
+/// competes with the real holder under a tie-break that can hand this anchor the cluster's accounts.
 /// </remarks>
-public sealed class PublishedKeyFileTests : IDisposable
+public sealed class AnchorClaimTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(
-        Path.GetTempPath(), "kgsm-anchor-key-tests", Guid.NewGuid().ToString("N"));
+    private const string Secret = "a secret this machine holds";
 
-    private string Path_ => System.IO.Path.Combine(_dir, "auth-public-key.json");
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "kgsm-anchor-claim", Guid.NewGuid().ToString("N"));
 
-    public PublishedKeyFileTests() => Directory.CreateDirectory(_dir);
-
-    [Fact]
-    public void A_key_is_written_once_and_left_alone_when_it_has_not_changed()
-    {
-        Assert.True(SigningKeyStore.Publish(Path_, "{\"keys\":[\"mine\"]}"));
-        DateTime first = File.GetLastWriteTimeUtc(Path_);
-
-        Assert.True(SigningKeyStore.Publish(Path_, "{\"keys\":[\"mine\"]}"));
-
-        // A restart that changes nothing must not wake a member watching the file.
-        Assert.Equal(first, File.GetLastWriteTimeUtc(Path_));
-    }
-
-    [Fact]
-    public void A_member_withdraws_its_own_key_when_it_stands_down()
-    {
-        SigningKeyStore.Publish(Path_, "{\"keys\":[\"mine\"]}");
-
-        Assert.True(SigningKeyStore.Withdraw(Path_, "{\"keys\":[\"mine\"]}"));
-        Assert.False(File.Exists(Path_));
-    }
-
-    [Fact]
-    public void It_never_removes_a_key_that_is_not_its_own()
-    {
-        // Written by whoever holds the capability. Taking it away would break every member reading it.
-        SigningKeyStore.Publish(Path_, "{\"keys\":[\"the holder's\"]}");
-
-        Assert.False(SigningKeyStore.Withdraw(Path_, "{\"keys\":[\"mine\"]}"));
-        Assert.True(File.Exists(Path_));
-    }
-
-    [Fact]
-    public void Publishing_where_no_shared_directory_exists_is_not_a_failure()
-    {
-        // A machine with no other member has nothing to read the file. The key is still served over
-        // HTTP and still gossiped, which is how a member elsewhere finds it.
-        Assert.False(SigningKeyStore.Publish(
-            System.IO.Path.Combine(_dir, "absent", "key.json"), "{}"));
-    }
+    public AnchorClaimTests() => Directory.CreateDirectory(_dir);
 
     public void Dispose()
     {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+    }
+
+    private string FoundedPath => Path.Combine(_dir, "cluster-founded");
+
+    /// <summary>Runs one anchor for a few passes and reports who holds the accounts afterwards.</summary>
+    private async Task<(string? Holder, AnchorRole Role)> RunAsync()
+    {
+        var cluster = new ClusterOptions
+        {
+            MemberId = "joining-auth", Kind = MemberKind.Anchor, Secret = Secret,
+            StorePath = Path.Combine(_dir, "cluster.db"), FoundedPath = FoundedPath, GossipMs = 250,
+        };
+        var store = new TheKrystalShip.KGSM.Cluster.Storage.ClusterStore(
+            cluster, Microsoft.Extensions.Logging.Abstractions.NullLogger<TheKrystalShip.KGSM.Cluster.Storage.ClusterStore>.Instance);
+        var state = new ClusterStateStore(store, cluster);
+        var role = new AnchorRole(cluster);
+        using var signer = EcdsaSessionSigner.Generate();
+
+        var worker = new ClusterMembershipWorker(
+            cluster,
+            AnchorOptions.FromSettings(new AnchorSettings { ClusterId = "test-cluster", Issuer = "https://auth.test" }),
+            state,
+            new SelfPublications(new SelfIncarnation()),
+            signer,
+            role,
+            new MembersStore(store),
+            new ClientRegistry(new SqliteSessionRegistry(Path.Combine(_dir, "sessions.db"))),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ClusterMembershipWorker>.Instance);
+
+        await worker.StartAsync(default);
+        await Task.Delay(800);
+        await worker.StopAsync(default);
+
+        return (await state.HolderAsync(ClusterCapability.Auth, default), role);
+    }
+
+    [Fact]
+    public async Task The_anchor_on_the_machine_that_founded_the_cluster_claims_the_accounts()
+    {
+        File.WriteAllText(FoundedPath, ClusterFounding.Fingerprint(Secret) + "\n");
+
+        (string? holder, AnchorRole role) = await RunAsync();
+
+        Assert.Equal("joining-auth", holder);
+        Assert.True(role.IsAuthority);
+    }
+
+    [Fact]
+    public async Task An_anchor_on_a_machine_that_joined_never_claims_them()
+    {
+        (string? holder, AnchorRole role) = await RunAsync();
+
+        Assert.Null(holder);
+        Assert.False(role.IsAuthority);
+    }
+
+    [Fact]
+    public async Task A_founding_machine_that_took_another_clusters_secret_never_claims_them()
+    {
+        // The record stays behind when the secret changes, naming the cluster this machine left.
+        File.WriteAllText(FoundedPath, ClusterFounding.Fingerprint("the cluster this machine founded") + "\n");
+
+        (string? holder, _) = await RunAsync();
+
+        Assert.Null(holder);
     }
 }
 

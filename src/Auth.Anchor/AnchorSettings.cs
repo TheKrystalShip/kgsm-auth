@@ -161,13 +161,6 @@ internal sealed class AnchorSettings
         Risk = ConfigRisk.Destructive)]
     public string SigningKeyPath { get; set; } = "/var/lib/kgsm-auth-anchor/session-signing.pem";
 
-    /// <summary>Where the public half is written for members on this machine.</summary>
-    /// <panel>Where the public half of the signing key is published, for other members on this machine
-    /// to verify sessions against. Blank publishes no file; the key is still served over HTTP.</panel>
-    [ConfigField("publishedKeyPath", "Published public key", Group = "storage", Type = ConfigType.Path,
-        Risk = ConfigRisk.Wiring)]
-    public string PublishedKeyPath { get; set; } = "/var/lib/kgsm/cluster/auth-public-key.json";
-
     /// <summary>
     /// Where the provider's pages are installed: the <c>kgsm-web-auth</c> bundle, served at <c>/ui/</c>.
     /// </summary>

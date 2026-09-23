@@ -7,6 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — only the founding machine's anchor claims the accounts (1.29.0)
+
+An anchor claims the accounts into an empty assignment only on the machine whose founding record,
+`/etc/kgsm/cluster-founded`, names the secret it holds. An anchor on a joining machine, or on a founding
+machine that has taken another cluster's secret, holds them only when an administrator assigns them.
+With `kgsm-cluster` discarding a member's cluster state when its secret changes, a founding machine
+joins another cluster by taking its secret: its anchor keeps running, stands by and never competes
+with the real holder.
+
+The anchor writes no key file. `Anchor__PublishedKeyPath` is not a setting; the key is served at
+`/auth/cluster/public-key` and `/.well-known/jwks.json` and gossiped, and the file a machine's leaves
+read is the node's (below).
+
+### Added — the host file and the provider document (cluster 1.0.0-dev.6)
+
+`HostProviderFileWriter` keeps `/var/lib/kgsm/cluster/auth-provider.json` saying what its member
+verifies cluster sessions with — issuer, audience and keys, read through the holder — and removes it
+once the member has read the cluster and the holder states nothing. `HostSessionKeys` is the
+`IClusterSessionKeys` a leaf reads it back through, rechecking the file at most every five seconds and
+accepting nothing while it is absent or incomplete. `ProtectedResourceMetadata` is the document a member
+answers at `/.well-known/oauth-protected-resource`, naming its issuer when that is a URL.
+`ClusterSessionKeys` exposes the published key set and whether it has read the cluster yet.
+
 ### Added — the provider's pages, registration at the provider, and the account page (1.28.0)
 
 The anchor serves `kgsm-web-auth`'s documents from `Anchor__UiPath` (default

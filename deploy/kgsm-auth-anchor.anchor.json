@@ -152,16 +152,6 @@
       "risk": "destructive"
     },
     {
-      "key": "publishedKeyPath",
-      "env": "Anchor__PublishedKeyPath",
-      "label": "Published public key",
-      "description": "Where the public half of the signing key is published, for other members on this machine to verify sessions against. Blank publishes no file; the key is still served over HTTP.",
-      "group": "storage",
-      "type": "path",
-      "default": "/var/lib/kgsm/cluster/auth-public-key.json",
-      "risk": "wiring"
-    },
-    {
       "key": "uiPath",
       "env": "Anchor__UiPath",
       "label": "Sign-in pages",
