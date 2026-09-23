@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a setting changed across a restart reaches the cluster (1.29.2)
+
+Takes `TheKrystalShip.KGSM.Cluster 1.0.0-dev.23`. An anchor restarted with a different issuer re-published
+as many facts as before and landed level with the incarnation the other members held, so they kept the old
+issuer and refused every session carrying the new one. The restarted anchor now raises past that and is
+heard.
+
 ### Changed — a panel on a private network can be a client (1.29.1)
 
 A client's redirect may be plain HTTP wherever the cluster itself accepts plaintext — this machine, a
