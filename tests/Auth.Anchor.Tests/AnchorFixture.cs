@@ -47,6 +47,12 @@ public sealed class AnchorFixture : IDisposable
     /// <summary>Where this anchor says it is reached, as a deployment behind a proxy has to.</summary>
     public const string SignInUrl = "https://auth.test";
 
+    /// <summary>
+    /// The issuer: the URL this anchor signs people in at, which every token names and the OpenID Connect
+    /// doors are served under.
+    /// </summary>
+    public const string Issuer = SignInUrl;
+
     /// <summary>Where a browser is sent back to after a provider sign-in.</summary>
     public const string PanelUrl = "https://panel.test";
 
@@ -66,6 +72,7 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__AllowedOrigins", "https://panel.test");
         Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
         Environment.SetEnvironmentVariable("Anchor__PublicBaseUrl", SignInUrl);
+        Environment.SetEnvironmentVariable("Anchor__Issuer", Issuer);
         Environment.SetEnvironmentVariable("Anchor__FrontendUrl", PanelUrl);
         Environment.SetEnvironmentVariable("Anchor__AllowSelfRegistration", "true");
 

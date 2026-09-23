@@ -90,18 +90,71 @@ internal static class Endpoints
             return;
         }
 
-        var signIn = ctx.RequestServices.GetRequiredService<LocalSignInService>();
         DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (await CheckPasswordAsync(ctx, body.Username, body.Password, now) is not { } result)
+        {
+            await Unavailable(ctx);
+            return;
+        }
+
+        switch (result.Outcome)
+        {
+            case LocalSignInOutcome.LockedOut:
+                // The wait is stated, because a person who has mistyped their own password twice
+                // needs to know it is a wait rather than a permanent refusal.
+                if (result.RetryAfter is { } until)
+                    ctx.Response.Headers.RetryAfter = RetryAfterSeconds(until, now).ToString();
+
+                await Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
+                    "Too many failed attempts. Try again shortly.");
+                return;
+
+            case LocalSignInOutcome.Disabled:
+                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
+                    "This account has been switched off.");
+                return;
+
+            case LocalSignInOutcome.Success when result.Principal is { } principal && result.User is { } user:
+                await MintSessionFor(ctx, principal.Identity, principal.Tier, user, now,
+                    AsJson(ctx, user, principal.Tier, StatusCodes.Status200OK));
+                return;
+
+            default:
+                await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_credentials",
+                    "That username and password do not match an account.");
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Check a KGSM password, with everything a check has to record already recorded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every door that takes a password goes through here, so a lockout is journaled, a refusal is logged
+    /// and the bootstrap password file is consumed the same way whichever door somebody typed into. The
+    /// door decides only how to answer.
+    /// </para>
+    /// <para>
+    /// The attempted name is logged and nothing else. It is what an operator needs to tell one person
+    /// mistyping from somebody working through a list, and the answer to the caller stays one outcome at
+    /// one cost either way — this log is not reachable by whoever is guessing.
+    /// </para>
+    /// </remarks>
+    /// <returns>The outcome, or null when the account store could not be read.</returns>
+    internal static async Task<LocalSignInResult?> CheckPasswordAsync(
+        HttpContext ctx, string? username, string? password, DateTimeOffset now)
+    {
+        var signIn = ctx.RequestServices.GetRequiredService<LocalSignInService>();
 
         LocalSignInResult result;
         try
         {
-            result = await signIn.SignInAsync(body.Username, body.Password, now, ctx.RequestAborted);
+            result = await signIn.SignInAsync(username, password, now, ctx.RequestAborted);
         }
         catch (KgsmAuthProviderException)
         {
-            await Unavailable(ctx);
-            return;
+            return null;
         }
 
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
@@ -110,16 +163,8 @@ internal static class Endpoints
         switch (result.Outcome)
         {
             case LocalSignInOutcome.LockedOut:
-                // The wait is stated, because a person who has mistyped their own password twice
-                // needs to know it is a wait rather than a permanent refusal.
-                if (result.RetryAfter is { } until)
-                {
-                    int seconds = (int)Math.Max(1, Math.Ceiling((until - now).TotalSeconds));
-                    ctx.Response.Headers.RetryAfter = seconds.ToString();
-                }
                 logger.LogWarning(
-                    "sign-in refused for '{Username}': locked out until {Until}",
-                    body.Username, result.RetryAfter);
+                    "sign-in refused for '{Username}': locked out until {Until}", username, result.RetryAfter);
 
                 // Recorded on the attempt that CAUSED the lock and on none of the ones it then
                 // refuses. Whoever is guessing retries at once, so a line per refusal would bury the
@@ -139,16 +184,11 @@ internal static class Endpoints
                         actor: who.ActorString,
                         ct: ctx.RequestAborted);
                 }
-
-                await Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
-                    "Too many failed attempts. Try again shortly.");
-                return;
+                break;
 
             case LocalSignInOutcome.Disabled:
-                logger.LogWarning("sign-in refused for '{Username}': the account is switched off", body.Username);
-                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
-                    "This account has been switched off.");
-                return;
+                logger.LogWarning("sign-in refused for '{Username}': the account is switched off", username);
+                break;
 
             case LocalSignInOutcome.Success when result.Principal is { } principal && result.User is { } user:
                 logger.LogInformation(
@@ -160,23 +200,20 @@ internal static class Endpoints
                 // Scoped to that account, so somebody else's first sign-in does not tidy away a
                 // credential still nobody has used.
                 ConsumeBootstrapFile(ctx, user.Username, logger);
-                await MintSessionFor(ctx, principal.Identity, principal.Tier, user, now,
-                    AsJson(ctx, user, principal.Tier, StatusCodes.Status200OK));
-                return;
+                break;
 
             default:
-                // The attempted name and nothing else. It is what an operator needs to tell one
-                // person mistyping from somebody working through a list, and the answer to the
-                // CALLER stays one outcome at one cost either way — this journal is not reachable
-                // by whoever is guessing.
                 logger.LogWarning(
-                    "sign-in refused for '{Username}': no account matched that name and password",
-                    body.Username);
-                await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_credentials",
-                    "That username and password do not match an account.");
-                return;
+                    "sign-in refused for '{Username}': no account matched that name and password", username);
+                break;
         }
+
+        return result;
     }
+
+    /// <summary>The seconds a locked-out caller is told to wait, never less than one.</summary>
+    internal static int RetryAfterSeconds(DateTimeOffset until, DateTimeOffset now) =>
+        (int)Math.Max(1, Math.Ceiling((until - now).TotalSeconds));
 
 
     /// <summary>
@@ -198,9 +235,13 @@ internal static class Endpoints
     /// Answers the caller with the session. A door that returns JSON and one that redirects a browser
     /// carrying the tokens in the URL fragment differ here and nowhere else.
     /// </param>
+    /// <param name="providerSession">
+    /// The provider session this was minted under, for a session that came through the OpenID Connect
+    /// doors — so ending that browser's sign-in ends this too. Null for one a door minted directly.
+    /// </param>
     internal static async Task MintSessionFor(
         HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now,
-        Func<MintedToken, MintedToken, Task> respond)
+        Func<MintedToken, MintedToken, Task> respond, string? providerSession = null)
     {
         var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
@@ -210,18 +251,21 @@ internal static class Endpoints
         MintedToken access = tokens.MintAccess(identity, tier, sessionId);
         MintedToken refresh = tokens.MintRefresh(identity, tier, sessionId);
 
-        await registry.CreateAsync(
-            new SessionRegistration(
-                SessionId: sessionId,
-                // Keyed by the provider-qualified handle, never the username: a rename must not
-                // detach somebody from their own sessions.
-                UserId: identity.Handle,
-                HostId: options.ClusterId,
-                Created: now,
-                Expires: refresh.ExpiresAt,
-                UserAgent: UserAgentOf(ctx),
-                CurrentJti: refresh.Jti),
-            ctx.RequestAborted);
+        var registration = new SessionRegistration(
+            SessionId: sessionId,
+            // Keyed by the provider-qualified handle, never the username: a rename must not
+            // detach somebody from their own sessions.
+            UserId: identity.Handle,
+            HostId: options.ClusterId,
+            Created: now,
+            Expires: refresh.ExpiresAt,
+            UserAgent: UserAgentOf(ctx),
+            CurrentJti: refresh.Jti);
+
+        if (providerSession is not null)
+            await ((SqliteSessionRegistry)registry).CreateAsync(registration, providerSession, ctx.RequestAborted);
+        else
+            await registry.CreateAsync(registration, ctx.RequestAborted);
 
         // Arriving IS proving a credential, so somebody who has just signed in changes how they sign
         // in without being asked for anything, and somebody returning to a week-old tab is asked
@@ -285,14 +329,64 @@ internal static class Endpoints
             return;
         }
 
+        Rotation rotation = await RotateAsync(ctx, presented);
+        switch (rotation.Outcome)
+        {
+            case RotationOutcome.Unavailable:
+                await Unavailable(ctx);
+                return;
+
+            case RotationOutcome.Withdrawn:
+                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
+                    "This account has been switched off.");
+                return;
+
+            case RotationOutcome.Invalid:
+                await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_refresh_token",
+                    "That session cannot be continued. Sign in again.");
+                return;
+        }
+
+        await WriteJson(ctx, StatusCodes.Status200OK, new RefreshResult(
+            Token: rotation.Access!.Token,
+            Refresh: rotation.Refresh!.Token,
+            Tier: KgsmTiers.ToWire(rotation.Tier),
+            ExpiresAt: rotation.Access.ExpiresAt),
+            AnchorJsonContext.Default.RefreshResult);
+    }
+
+    /// <summary>What presenting a refresh token came to.</summary>
+    internal enum RotationOutcome
+    {
+        /// <summary>A new access bearer and a new refresh token.</summary>
+        Rotated,
+
+        /// <summary>Not a refresh token this anchor holds a live session for, or one already rotated away.</summary>
+        Invalid,
+
+        /// <summary>The account behind it is switched off or gone, and the session has been ended.</summary>
+        Withdrawn,
+
+        /// <summary>The account store could not be read.</summary>
+        Unavailable,
+    }
+
+    /// <summary>A rotation's outcome, with the new tokens when there are some.</summary>
+    internal sealed record Rotation(RotationOutcome Outcome, MintedToken? Access, MintedToken? Refresh, KgsmTier Tier);
+
+    /// <summary>
+    /// Rotate the session a refresh token belongs to, with standing re-read.
+    /// </summary>
+    /// <remarks>
+    /// Shared by every door that renews a session, which differ only in the shape they answer in. The
+    /// caller has already established that this member is the authority.
+    /// </remarks>
+    internal static async Task<Rotation> RotateAsync(HttpContext ctx, string presented)
+    {
         var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         RefreshClaims? claims = await tokens.ReadRefreshAsync(presented);
         if (claims is null)
-        {
-            await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_refresh_token",
-                "That session cannot be continued. Sign in again.");
-            return;
-        }
+            return new Rotation(RotationOutcome.Invalid, null, null, KgsmTier.None);
 
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
         var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
@@ -307,8 +401,7 @@ internal static class Endpoints
         }
         catch (KgsmAuthProviderException)
         {
-            await Unavailable(ctx);
-            return;
+            return new Rotation(RotationOutcome.Unavailable, null, null, KgsmTier.None);
         }
 
         if (answer.Outcome != AuthorityOutcome.Ok)
@@ -338,9 +431,7 @@ internal static class Endpoints
                 origin: null,
                 ct: ctx.RequestAborted);
 
-            await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
-                "This account has been switched off.");
-            return;
+            return new Rotation(RotationOutcome.Withdrawn, null, null, KgsmTier.None);
         }
 
         MintedToken refresh = tokens.MintRefresh(claims.Identity, answer.Tier, claims.SessionId);
@@ -354,19 +445,11 @@ internal static class Endpoints
         if (!rotated)
         {
             validator.Evict(claims.SessionId);
-            await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_refresh_token",
-                "That session cannot be continued. Sign in again.");
-            return;
+            return new Rotation(RotationOutcome.Invalid, null, null, KgsmTier.None);
         }
 
         MintedToken access = tokens.MintAccess(claims.Identity, answer.Tier, claims.SessionId);
-
-        await WriteJson(ctx, StatusCodes.Status200OK, new RefreshResult(
-            Token: access.Token,
-            Refresh: refresh.Token,
-            Tier: KgsmTiers.ToWire(answer.Tier),
-            ExpiresAt: access.ExpiresAt),
-            AnchorJsonContext.Default.RefreshResult);
+        return new Rotation(RotationOutcome.Rotated, access, refresh, answer.Tier);
     }
 
     /// <summary>
@@ -853,7 +936,7 @@ internal static class Endpoints
     /// The device, for a person reading their own session list. Truncated, because it is arbitrary
     /// text from a caller that ends up on a page somebody reads.
     /// </summary>
-    private static string? UserAgentOf(HttpContext ctx)
+    internal static string? UserAgentOf(HttpContext ctx)
     {
         string agent = ctx.Request.Headers.UserAgent.ToString();
         if (string.IsNullOrWhiteSpace(agent))
@@ -865,6 +948,6 @@ internal static class Endpoints
     /// A fresh session id: 128 bits from the cryptographic RNG, matching the <c>usr_</c>/<c>crd_</c>
     /// convention the account store already uses.
     /// </summary>
-    private static string NewSessionId() =>
+    internal static string NewSessionId() =>
         "sid_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 }

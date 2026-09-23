@@ -261,8 +261,10 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   The routing overloads that bind an arbitrary delegate reflect over its parameters, which no
   Native-AOT service can do, and the failure appears at publish time rather than at build time. The
   same goes for a shape missing from `AnchorJsonContext`: it throws at runtime, not at build.
-- **The CORS allowance is per configured origin and never a wildcard.** A person signs in here from
-  a browser, so this is a surface that mints credentials; a wildcard invites any page to drive
+- **The CORS allowance is per known origin and never a wildcard.** A configured origin is answered on
+  every path with credentials; a registered client's origin only on discovery, the key set, `/token`,
+  `/userinfo` and `/auth/cluster/*`, and never with credentials. A person signs in here from a
+  browser, so this is a surface that mints credentials; a wildcard invites any page to drive
   somebody's sign-in from their own browser.
 - **The package is preset-disabled.** A cluster has one anchor and which machine holds it is an
   administrator's decision. A second machine with the package installed and the unit stopped is a
@@ -351,6 +353,40 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   defaults, a run resolves the descriptor the deployed daemon carries, names the live unit and
   follows its journal — and passes only on a host where the thing under test is already installed,
   which is measuring the host.
+
+## `Auth.Anchor` as an OpenID Connect provider — locked decisions
+
+Authority: `../hosted-sign-in-plan.md`.
+
+- **The issuer is configuration and the OIDC doors require it to be a URL.** Never inferred from a
+  request: a Host header is the caller's to set. An anchor whose issuer is not an absolute URL answers
+  `no_issuer` at every OIDC door rather than guessing one.
+- **Until the client and its redirect are known to be registered, a refusal is rendered on the anchor's
+  own origin.** Redirecting to an unregistered address with an error is the open redirect
+  `/authorize` exists to refuse. Redirects are matched exactly — no prefix, no pattern.
+- **The request in flight lives here, behind `kgsm_authz`.** The page, its form and its provider links
+  carry no request field. One request per browser: beginning another deletes the last.
+- **A credential post is refused before the credential is read** unless it carries the request cookie
+  and a same-origin `Sec-Fetch-Site`, or an `Origin` equal to the issuer's where no fetch metadata is
+  sent. That is the login-CSRF gate, and moving the check after the password check turns it into a
+  lockout anybody can trigger.
+- **A code is taken out of the store before anything about the exchange is checked**, by one
+  delete-returning statement. A code presented wrongly is spent; two exchanges racing get one row.
+- **Every session minted through the provider records its provider session, in one column set at
+  mint.** It is what makes sign-out, a second account on one browser, and ending the provider session
+  from the sessions list each end exactly the right set. A mint site that skips it strands a surface
+  signed in after its browser signed out.
+- **The account is re-read on every pass**, cookie or no cookie: disabled or deleted ends the provider
+  session and is refused, pending gets the wait and no code, only active gets a code.
+- **An external provider's round trip completes the request in flight only when its returning `state`
+  is the one the request recorded.** The callback is the one address registered with the provider's
+  application and it also serves the provider door's own sign-in; matching on the cookie alone would let
+  an abandoned request capture that sign-in.
+- **A member's client is paths joined to its roster address, never URLs it names.** A member announcing
+  full URLs could make any origin a place codes are sent. An administrator's client of the same id
+  wins.
+- **`id_token`'s subject is the account, its audience the client.** It is never accepted as a bearer,
+  and a bearer is never accepted as a sign-out hint.
 
 ## Conventions
 

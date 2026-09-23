@@ -10,10 +10,12 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// it is read, so the sign-in fails with nothing in this daemon's log to explain it.
 /// </para>
 /// <para>
-/// <b>Only a configured origin is echoed, and the wildcard is never sent.</b> A session rides in the
-/// response body rather than a cookie, but a wildcard on a surface that mints credentials invites
-/// every page on the internet to drive somebody's sign-in from their own browser. An origin that is
-/// not configured gets no allowance header and the browser applies its own rule, which is to refuse.
+/// <b>Only a known origin is echoed, and the wildcard is never sent.</b> Two kinds are known: a
+/// configured origin, answered on every path and with credentials, and a registered client's origin,
+/// answered only on what a client of the provider reads across origins and never with credentials.
+/// A wildcard on a surface that mints credentials invites every page on the internet to drive
+/// somebody's sign-in from their own browser. Any other origin gets no allowance header and the browser
+/// applies its own rule, which is to refuse.
 /// </para>
 /// <para>
 /// Written rather than taken from the CORS middleware because the policy is one comparison against a
@@ -21,13 +23,31 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// set of conventions for a decision this size.
 /// </para>
 /// </remarks>
-internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options)
+internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options, ClientRegistry clients)
 {
     public async Task InvokeAsync(HttpContext ctx)
     {
         string? origin = ctx.Request.Headers.Origin.ToString();
 
-        if (!string.IsNullOrEmpty(origin) && Allowed(origin))
+        if (!string.IsNullOrEmpty(origin) && !Allowed(origin) && ClientReadable(ctx.Request.Path)
+            && clients.IsClientOrigin(origin))
+        {
+            // A registered client's origin, on what a client of this provider reads across origins: the
+            // published documents, the token exchange, the account behind a bearer, and the
+            // administration a panel drives with the bearer it holds. Never with credentials, and never on
+            // anything that reads the provider's cookie — those are same-origin by construction.
+            IHeaderDictionary headers = ctx.Response.Headers;
+            headers.AccessControlAllowOrigin = origin;
+            headers.Append("Vary", "Origin");
+            string requested = ctx.Request.Headers.AccessControlRequestHeaders.ToString();
+            headers.AccessControlAllowHeaders = string.IsNullOrWhiteSpace(requested)
+                ? "Authorization, Content-Type"
+                : requested;
+            headers.Append("Vary", "Access-Control-Request-Headers");
+            headers.AccessControlAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+            headers.AccessControlMaxAge = "600";
+        }
+        else if (!string.IsNullOrEmpty(origin) && Allowed(origin))
         {
             IHeaderDictionary headers = ctx.Response.Headers;
             headers.AccessControlAllowOrigin = origin;
@@ -77,6 +97,13 @@ internal sealed class CorsMiddleware(RequestDelegate next, AnchorOptions options
 
         await next(ctx);
     }
+
+    /// <summary>The paths a registered client's origin may read across origins.</summary>
+    private static bool ClientReadable(PathString path) =>
+        path.StartsWithSegments("/.well-known")
+        || path.Equals("/token")
+        || path.Equals("/userinfo")
+        || path.StartsWithSegments("/auth/cluster");
 
     private bool Allowed(string origin)
     {

@@ -57,7 +57,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
         TokenValidationResult result = await new JsonWebTokenHandler().ValidateTokenAsync(token,
             new TokenValidationParameters
             {
-                ValidIssuer = "kgsm",
+                ValidIssuer = AnchorFixture.Issuer,
                 ValidAudience = AnchorFixture.ClusterId,
                 IssuerSigningKeys = EcdsaSessionSigner.VerificationKeysFrom(keys),
                 ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],

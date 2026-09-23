@@ -167,7 +167,15 @@ builder.Services.AddComponentSurface(new ComponentSurfaceOptions(
     options.ConfigDescriptorPath, options.ConfigOverridePath));
 builder.Services.AddHostedService<ClusterMembershipWorker>();
 
-builder.Services.AddSingleton<ISessionRegistry>(_ => new SqliteSessionRegistry(options.SessionStorePath));
+builder.Services.AddSingleton(_ => new SqliteSessionRegistry(options.SessionStorePath));
+builder.Services.AddSingleton<ISessionRegistry>(sp => sp.GetRequiredService<SqliteSessionRegistry>());
+
+// The OpenID Connect provider: the clients it answers, the browsers signed in at it, and the id_token
+// beside every session it mints. Its rows live beside the sessions, because a browser's sign-in here is a
+// session and every session minted through it records which one it came from.
+builder.Services.AddSingleton<ClientRegistry>();
+builder.Services.AddSingleton<ProviderSessions>();
+builder.Services.AddSingleton<IdTokens>();
 builder.Services.AddSingleton<IMemoryCache>(_ => new MemoryCache(new MemoryCacheOptions()));
 builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
     sp.GetRequiredService<ISessionRegistry>(),
@@ -227,6 +235,27 @@ app.MapGet("/auth/identity", DiscoveryEndpoints.Identity);
 // cluster tells nobody what cluster it is in, so a panel signs in here and drives the roster it is
 // handed rather than holding a list of its own.
 app.MapGet("/auth/cluster/members", DiscoveryEndpoints.Roster);
+
+// The OpenID Connect provider every browser surface in the cluster signs in through. Served only when
+// the issuer is this anchor's browser-facing URL; otherwise each door says so rather than guessing one.
+app.MapGet("/.well-known/openid-configuration", OidcEndpoints.Discovery);
+app.MapGet("/.well-known/jwks.json", OidcEndpoints.Jwks);
+app.MapGet("/authorize", OidcEndpoints.Authorize);
+app.MapPost("/authorize/credentials", OidcEndpoints.Credentials);
+app.MapGet("/authorize/wait", OidcEndpoints.Wait);
+app.MapGet("/authorize/floor.css", ProviderPages.StylesheetAsync);
+app.MapGet("/authorize/{provider}", OidcEndpoints.ProviderStart);
+app.MapPost("/token", OidcEndpoints.Token);
+app.MapGet("/userinfo", OidcEndpoints.UserInfo);
+app.MapPost("/userinfo", OidcEndpoints.UserInfo);
+app.MapGet("/sign-out", OidcEndpoints.SignOut);
+app.MapPost("/sign-out", OidcEndpoints.ConfirmSignOut);
+
+// The clients it answers. Announced ones arrive over gossip; these are the ones an administrator
+// registers by hand, for whatever no member serves.
+app.MapGet("/auth/cluster/clients", OidcEndpoints.ListClients);
+app.MapPost("/auth/cluster/clients", OidcEndpoints.RegisterClient);
+app.MapDelete("/auth/cluster/clients/{clientId}", OidcEndpoints.RemoveClient);
 
 app.MapGet("/auth/providers", ProviderEndpoints.Providers);
 app.MapGet("/auth/{provider}/start", ProviderEndpoints.Start);

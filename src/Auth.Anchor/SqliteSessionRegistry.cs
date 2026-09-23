@@ -26,7 +26,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// mean what they say.
 /// </para>
 /// </remarks>
-internal sealed class SqliteSessionRegistry : ISessionRegistry
+internal sealed partial class SqliteSessionRegistry : ISessionRegistry
 {
     private readonly string _connectionString;
     private readonly Lock _writeGate = new();
@@ -82,6 +82,8 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
             // Already there. SQLite has no ADD COLUMN IF NOT EXISTS, and reading the schema back to
             // decide would be the same round trip with more code.
         }
+
+        InitializeProvider(connection);
     }
 
     /// <summary>One live session, as a person reviewing their own devices sees it.</summary>
@@ -96,13 +98,19 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
     /// to a member and is verified offline — so it is a rotation, named as the nearest true thing
     /// rather than as a request count nothing counts.
     /// </param>
+    /// <param name="Provider">
+    /// Whether this is a browser's sign-in at the anchor itself rather than a session a surface holds.
+    /// Listed beside the others because it is one more way in, and ending it ends every session minted
+    /// under it.
+    /// </param>
     internal sealed record LiveSession(
         string SessionId,
         string UserId,
         DateTimeOffset Created,
         DateTimeOffset Expires,
         string? UserAgent,
-        DateTimeOffset? LastSeen);
+        DateTimeOffset? LastSeen,
+        bool Provider = false);
 
     public Task CreateAsync(SessionRegistration session, CancellationToken ct = default)
     {
@@ -221,7 +229,7 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
         string slots = Bind(cmd, handles);
         cmd.CommandText =
             $"""
-            SELECT session_id, user_id, created, expires, user_agent, last_seen
+            SELECT session_id, user_id, created, expires, user_agent, last_seen, kind
               FROM sessions
              WHERE user_id IN ({slots}) AND revoked = 0 AND expires > $now
              ORDER BY created DESC;
@@ -240,7 +248,8 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
                 reader.IsDBNull(4) ? null : reader.GetString(4),
                 reader.IsDBNull(5)
                     ? null
-                    : DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture)));
+                    : DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+                Provider: !reader.IsDBNull(6) && reader.GetString(6) == ProviderKind));
         }
 
         return Task.FromResult<IReadOnlyList<LiveSession>>(sessions);
@@ -321,8 +330,21 @@ internal sealed class SqliteSessionRegistry : ISessionRegistry
             using SqliteCommand cmd = connection.CreateCommand();
             cmd.CommandText = "DELETE FROM sessions WHERE expires <= $now;";
             cmd.Parameters.AddWithValue("$now", now.ToString("O"));
+            int sessions = cmd.ExecuteNonQuery();
 
-            return Task.FromResult(cmd.ExecuteNonQuery());
+            // The requests in flight and the codes go with the sessions: short-lived rows whose only
+            // use after their expiry would be a replay. Not counted, because the number returned is
+            // what the sweep reports as sessions.
+            using SqliteCommand rest = connection.CreateCommand();
+            rest.CommandText =
+                """
+                DELETE FROM authorize_requests WHERE expires <= $now;
+                DELETE FROM authorization_codes WHERE expires <= $now;
+                """;
+            rest.Parameters.AddWithValue("$now", now.ToString("O"));
+            rest.ExecuteNonQuery();
+
+            return Task.FromResult(sessions);
         }
     }
 

@@ -105,7 +105,7 @@
       "key": "issuer",
       "env": "Anchor__Issuer",
       "label": "Token issuer",
-      "description": "The issuer name stamped on every session. It is checked when a session is presented, so changing it signs everybody out.",
+      "description": "The address this anchor signs people in at, stamped on every session as its issuer, such as https://auth.anchors.example.com. Sign-in for every surface of the cluster is served only when this is a URL. It is checked when a session is presented, so changing it signs everybody out.",
       "group": "network",
       "type": "string",
       "default": "kgsm",

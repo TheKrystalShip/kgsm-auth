@@ -241,6 +241,48 @@ left to run out its bearer.
 is a local point query, which is what lets a member keep serving and keep refreshing while the
 anchor is unreachable.
 
+### The OpenID Connect provider
+
+The anchor is also the cluster's OpenID Connect provider — authorization code with PKCE (S256), public
+clients, no consent screen — served at its issuer. `Anchor__Issuer` has to be the anchor's
+browser-facing URL (`https://auth.anchors.example.com`); with anything else every door below answers
+`no_issuer` and mints nothing. The design is `../hosted-sign-in-plan.md`.
+
+| | |
+|---|---|
+| `GET /.well-known/openid-configuration` | discovery |
+| `GET /.well-known/jwks.json` | the key set every session and `id_token` is signed with |
+| `GET /authorize` | validate and hold the request, then answer a recognised browser or show the sign-in page |
+| `POST /authorize/credentials` | a password against the request in flight, same-origin only; a code, never a session |
+| `GET /authorize/wait` | an account awaiting approval, polled by a refresh |
+| `GET /authorize/{provider}` | an external provider's round trip for the request in flight |
+| `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token` |
+| `GET /userinfo` | the account behind a bearer |
+| `GET /sign-out`, `POST /sign-out` | end a browser's sign-in and everything minted under it; asks without a hint |
+| `GET/POST /auth/cluster/clients`, `DELETE /auth/cluster/clients/{id}` | the client registry, admin only |
+
+**Two cookies on the anchor's own origin, both `HttpOnly; SameSite=Lax; Path=/`.** `kgsm_authz` names
+the request in flight, held here for ten minutes so the page and its form carry no request field.
+`kgsm_anchor` names the browser's provider session, a row in the session registry beside the sessions
+minted under it; a second surface comes back signed in on the strength of it. Each holds a random
+secret and the row is found by its hash.
+
+**Every session minted through the provider records its provider session**, so signing out ends all of
+them, a second account on the same browser ends the first's, and the same account proving itself again
+keeps them. The sessions page lists the provider session with `kind: provider`; ending it there is
+signing out.
+
+**Clients come from two places.** A member serving a surface states the `auth.client` fact — paths
+only, joined to the browser address its roster row carries — and appears with no operator step; it
+leaves when the member does. Anything else is registered by an admin. Redirects are matched exactly and
+must be HTTPS, or HTTP to a loopback address. A registered client's origin may read discovery, the key
+set, `/token`, `/userinfo` and the admin API across origins, without credentials; nothing that reads
+the anchor's cookie answers another origin.
+
+**The floor.** The sign-in page is a plain document with a working form and the provider links, under a
+content security policy with no inline script or style and `form-action` naming the one client the
+request returns to. It signs somebody in with scripting off.
+
 **A browser signs in here directly, so the origin list is load-bearing.** The Control Panel is served
 from a different origin; without an entry in `Anchor__AllowedOrigins` the browser discards the
 anchor's answer before the sign-in code reads it. There is deliberately no wildcard — this surface

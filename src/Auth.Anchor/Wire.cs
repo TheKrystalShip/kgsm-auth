@@ -178,6 +178,10 @@ internal sealed record CreateAccountRequest(
 /// counts.
 /// </param>
 /// <param name="Current">True on exactly the session the calling bearer belongs to.</param>
+/// <param name="Kind">
+/// <c>provider</c> on a browser's sign-in at the anchor itself, absent on a session a surface holds.
+/// Ending one of those ends every session minted under it.
+/// </param>
 internal sealed record SessionRecord(
     string Sid,
     string UserId,
@@ -185,7 +189,8 @@ internal sealed record SessionRecord(
     DateTimeOffset Expires,
     string? UserAgent,
     DateTimeOffset? LastSeen,
-    bool Current);
+    bool Current,
+    string? Kind = null);
 
 /// <summary>Every live session for one account.</summary>
 /// <param name="Data">The sessions, most recent first.</param>
@@ -391,4 +396,13 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(SessionsPage))]
 [JsonSerializable(typeof(RevokeRequest))]
 [JsonSerializable(typeof(RevokeResult))]
+[JsonSerializable(typeof(StoredIdentity))]
+[JsonSerializable(typeof(OidcDiscovery))]
+[JsonSerializable(typeof(TokenResponse))]
+[JsonSerializable(typeof(OAuthError))]
+[JsonSerializable(typeof(UserInfoResponse))]
+[JsonSerializable(typeof(CredentialAnswer))]
+[JsonSerializable(typeof(ClientsPage))]
+[JsonSerializable(typeof(ClientRecord))]
+[JsonSerializable(typeof(ClientRegistration))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

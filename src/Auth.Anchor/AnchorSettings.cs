@@ -130,9 +130,13 @@ internal sealed class AnchorSettings
     [ConfigField("clusterId", "Cluster id", Group = "network", Risk = ConfigRisk.Destructive)]
     public string ClusterId { get; set; } = "kgsm-cluster";
 
-    /// <summary>The <c>iss</c> claim, and what validation requires.</summary>
-    /// <panel>The issuer name stamped on every session. It is checked when a session is presented, so
-    /// changing it signs everybody out.</panel>
+    /// <summary>
+    /// The <c>iss</c> claim, and what validation requires. The OpenID Connect doors are served only when
+    /// it is the provider's browser-facing URL, which they are served under.
+    /// </summary>
+    /// <panel>The address this anchor signs people in at, stamped on every session as its issuer, such as
+    /// https://auth.anchors.example.com. Sign-in for every surface of the cluster is served only when this
+    /// is a URL. It is checked when a session is presented, so changing it signs everybody out.</panel>
     [ConfigField("issuer", "Token issuer", Group = "network", Risk = ConfigRisk.Destructive)]
     public string Issuer { get; set; } = "kgsm";
 

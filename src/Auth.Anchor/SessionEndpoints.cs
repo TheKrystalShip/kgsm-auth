@@ -59,7 +59,8 @@ internal static class SessionEndpoints
                 s.SessionId, s.UserId, s.Created, s.Expires, s.UserAgent, s.LastSeen,
                 // True on exactly the row the calling bearer belongs to, so a surface can say "this
                 // device" rather than making somebody work out which is theirs.
-                Current: string.Equals(s.SessionId, caller.SessionId, StringComparison.Ordinal)))]),
+                Current: string.Equals(s.SessionId, caller.SessionId, StringComparison.Ordinal),
+                Kind: s.Provider ? SqliteSessionRegistry.ProviderKind : null))]),
             AnchorJsonContext.Default.SessionsPage);
     }
 
@@ -231,6 +232,14 @@ internal static class SessionEndpoints
 
     private static async Task EndAsync(HttpContext ctx, string sid)
     {
+        // A browser's sign-in at the anchor is ended as signing out is: with every session minted under
+        // it, or the next bounce from any of those surfaces would find them still live.
+        if (await RegistryOf(ctx).IsProviderSessionAsync(sid, ctx.RequestAborted))
+        {
+            await ctx.RequestServices.GetRequiredService<ProviderSessions>().EndAsync(ctx, sid);
+            return;
+        }
+
         await ctx.RequestServices.GetRequiredService<ISessionRegistry>()
             .RevokeAsync(sid, ctx.RequestAborted);
 

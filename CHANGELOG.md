@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the anchor is the cluster's OpenID Connect provider (1.27.0, sessions 2.2.0-dev.4)
+
+With `Anchor__Issuer` set to the anchor's browser-facing URL, it serves discovery, the key set,
+`/authorize`, `/token`, `/userinfo` and `/sign-out` for authorization code with PKCE (S256) and public
+clients. The request in flight is held behind `kgsm_authz`, so the sign-in page carries no request
+field; a credential post is refused unless it comes from that page, before the password is read; a code
+is single use, sixty seconds, bound to its client and exact redirect, and taken out of the store by the
+exchange that presents it. A browser's sign-in here is a provider session behind `kgsm_anchor`, and
+every session minted through it records it, so a second client returns signed in with nothing typed,
+signing out with an `id_token_hint` ends every session under it, and a second account on the same
+browser ends the first's. The account is re-read on every pass: disabled is refused, pending waits on a
+polled page and is returned to the client once approved.
+
+The sign-in page is the floor — a plain form and the provider links under a strict content security
+policy — and signs somebody in with scripting off. A Discord round trip from it returns through the
+provider door's registered callback and completes the request only when its `state` matches.
+
+Clients are an admin registry (`/auth/cluster/clients`) and whatever members announce as the
+`auth.client` fact, which `Auth.Sessions` now defines as `ClusterClientAnnouncement`: paths joined to the
+member's roster address. Their origins may read the provider's published documents, `/token`,
+`/userinfo` and the admin API across origins, without credentials.
+
+The existing doors keep serving beside these. The OIDC doors answer `no_issuer` until the issuer is a
+URL, and setting it to one signs everybody out once. `/auth/sessions` marks a provider session with
+`kind: provider`, and ending it ends every session minted under it.
+
 ### Changed — this anchor serves its own surface through the shared HTTP routes (1.26.0)
 
 `/auth/config`, `/auth/system`, `/auth/logs`, `/auth/logs/stream` and `/auth/commands` are

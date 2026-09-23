@@ -16,7 +16,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="PublicBaseUrl">Where browsers and other members reach it, when configured.</param>
 /// <param name="PublicHost">Where it is reached from the internet, as the DNS anchor points its name.</param>
 /// <param name="ClusterId">The token audience: the cluster a session is valid on.</param>
-/// <param name="Issuer">The <c>iss</c> claim.</param>
+/// <param name="Issuer">The <c>iss</c> claim; the provider's browser-facing URL when it serves OpenID Connect.</param>
 /// <param name="UserStorePath">The account store.</param>
 /// <param name="SessionStorePath">Where live sessions are recorded.</param>
 /// <param name="SigningKeyPath">The private signing key.</param>
@@ -67,6 +67,25 @@ internal sealed record AnchorOptions(
             Path.GetDirectoryName(Path.GetFullPath(SessionStorePath)) is { Length: > 0 } dir ? dir : ".",
             "initial-admin-password");
 
+    /// <summary>
+    /// The issuer as the browser-facing URL the OpenID Connect doors are served under, or null when the
+    /// configured issuer is not one.
+    /// </summary>
+    /// <remarks>
+    /// Configuration, never inferred from a request: a Host header is the caller's to set, and an issuer
+    /// taken from one would let any caller choose what every token it is handed says about who minted
+    /// it. An anchor with no URL here serves no OpenID Connect door, and says so rather than guessing.
+    /// </remarks>
+    public Uri? IssuerUrl =>
+        Uri.TryCreate(Issuer, UriKind.Absolute, out Uri? uri)
+        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+        && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)
+            ? uri
+            : null;
+
+    /// <summary>The issuer's origin — what a browser sends as <c>Origin</c> from the provider's own pages.</summary>
+    public string? IssuerOrigin => IssuerUrl?.GetLeftPart(UriPartial.Authority);
+
     /// <summary>Whether a browser is sent anywhere after a provider sign-in.</summary>
     public bool RedirectsToPanel => !string.IsNullOrWhiteSpace(FrontendUrl);
 
@@ -80,7 +99,9 @@ internal sealed record AnchorOptions(
             PublicBaseUrl: s.PublicBaseUrl?.Trim() ?? "",
             PublicHost: s.PublicHost?.Trim() ?? "",
             ClusterId: Text(s.ClusterId, "kgsm-cluster"),
-            Issuer: Text(s.Issuer, "kgsm"),
+            // A URL loses the trailing slash a person naturally types, so the discovery document, every
+            // token's iss and the gossiped fact all state the one string a client compares them by.
+            Issuer: Text(s.Issuer, "kgsm").TrimEnd('/'),
             UserStorePath: Text(s.UserStorePath, UserStoreOptions.DefaultPath),
             SessionStorePath: Text(s.SessionStorePath, "/var/lib/kgsm-auth-anchor/sessions.db"),
             SigningKeyPath: Text(s.SigningKeyPath, "/var/lib/kgsm-auth-anchor/session-signing.pem"),

@@ -361,7 +361,7 @@ internal static class ProviderEndpoints
         }
 
         OAuthHandshake handshake = OAuthHandshake.Create();
-        ctx.Response.Cookies.Append(StateCookie, handshake.ToCookieValue(), CookieOptions(ctx));
+        BeginHandshake(ctx, handshake);
 
         // Honoured from the query, because a caller asking for a screen and silently not getting one
         // is a door that lies about what it did. The default matches the one every other KGSM sign-in
@@ -375,7 +375,20 @@ internal static class ProviderEndpoints
         return Task.CompletedTask;
     }
 
-    /// <summary>Take the provider's answer, and mint a session for the whole cluster.</summary>
+    /// <summary>Bind a round trip to this browser: <c>state</c> and the PKCE verifier, in the one-time cookie.</summary>
+    internal static void BeginHandshake(HttpContext ctx, OAuthHandshake handshake) =>
+        ctx.Response.Cookies.Append(StateCookie, handshake.ToCookieValue(), CookieOptions(ctx));
+
+    /// <summary>
+    /// Take the provider's answer: complete the authorization request it was started for, or mint a
+    /// session for the whole cluster.
+    /// </summary>
+    /// <remarks>
+    /// One callback for both, because it is the one address registered with the provider's application.
+    /// Which it is comes from the request in flight: a round trip started from the sign-in page recorded
+    /// its <c>state</c> there, and only a returning <c>state</c> that matches it completes that request.
+    /// Anything else is this door's own sign-in.
+    /// </remarks>
     internal static async Task Callback(HttpContext ctx)
     {
         string provider = (string?)ctx.Request.RouteValues["provider"] ?? "";
@@ -413,10 +426,14 @@ internal static class ProviderEndpoints
             return;
         }
 
+        AuthorizeRequest? inFlight = await OidcEndpoints.InFlightAsync(ctx);
+        if (inFlight is not null && !string.Equals(inFlight.UpstreamState, state, StringComparison.Ordinal))
+            inFlight = null;
+
         string? code = ctx.Request.Query["code"];
         if (string.IsNullOrWhiteSpace(code))
         {
-            await Fail(ctx, options, StatusCodes.Status400BadRequest, "bad_request",
+            await Fail(ctx, options, inFlight, StatusCodes.Status400BadRequest, "bad_request",
                 "The provider returned no authorization code.");
             return;
         }
@@ -431,14 +448,14 @@ internal static class ProviderEndpoints
             // Could not reach or parse the provider. An honest upstream failure, never a grant, and
             // never reported as the person's credentials being wrong.
             logger.LogWarning(ex, "{Provider} sign-in exchange failed", provider);
-            await Fail(ctx, options, StatusCodes.Status502BadGateway, "auth_provider_error",
+            await Fail(ctx, options, inFlight, StatusCodes.Status502BadGateway, "auth_provider_error",
                 "Could not finish signing in with that provider.");
             return;
         }
 
         if (verified is null)
         {
-            await Fail(ctx, options, StatusCodes.Status401Unauthorized, "login_required",
+            await Fail(ctx, options, inFlight, StatusCodes.Status401Unauthorized, "login_required",
                 "That sign-in expired or was already used. Start again.");
             return;
         }
@@ -458,7 +475,7 @@ internal static class ProviderEndpoints
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "could not resolve {Handle} against the account store", verified.Handle);
-            await Fail(ctx, options, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
+            await Fail(ctx, options, inFlight, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
                 "The account store could not be read.");
             return;
         }
@@ -470,7 +487,7 @@ internal static class ProviderEndpoints
             logger.LogWarning(
                 "{Handle} signed in and this cluster already holds {Cap} accounts awaiting approval",
                 verified.Handle, options.Pending.Cap);
-            await Fail(ctx, options, StatusCodes.Status503ServiceUnavailable, "not_accepting_accounts",
+            await Fail(ctx, options, inFlight, StatusCodes.Status503ServiceUnavailable, "not_accepting_accounts",
                 "This cluster is not accepting new accounts right now. Ask an administrator.");
             return;
         }
@@ -478,7 +495,7 @@ internal static class ProviderEndpoints
         KgsmUser account = link.User!;
         if (account.Status == UserStatus.Disabled)
         {
-            await Fail(ctx, options, StatusCodes.Status403Forbidden, "account_disabled",
+            await Fail(ctx, options, inFlight, StatusCodes.Status403Forbidden, "account_disabled",
                 "This account has been switched off.");
             return;
         }
@@ -517,6 +534,16 @@ internal static class ProviderEndpoints
         logger.LogInformation(
             "{Handle} signed in with {Provider} at {Tier}", verified.Handle, provider, KgsmTiers.ToWire(tier));
 
+        // A sign-in started from the provider's own page proves this browser's provider session, and the
+        // request it was started for is answered from there — a code for the client, never a session.
+        if (inFlight is not null)
+        {
+            ProviderSessionRow session = await ctx.RequestServices.GetRequiredService<ProviderSessions>()
+                .EstablishAsync(ctx, verified, account);
+            await OidcEndpoints.ProceedAsync(ctx, inFlight, session, OidcEndpoints.Answer.Navigation, silent: false);
+            return;
+        }
+
         // The same mint every other door uses, so a session that arrives through a provider is the
         // same session recorded the same way. This door differs only in how it answers.
         await Endpoints.MintSessionFor(ctx, verified, tier, account, now, (access, refresh) =>
@@ -545,7 +572,15 @@ internal static class ProviderEndpoints
     /// an answer they can do anything with. Everything else gets the frozen error envelope.
     /// </remarks>
     private static Task Fail(
-        HttpContext ctx, AnchorOptions options, int status, string code, string message)
+        HttpContext ctx, AnchorOptions options, int status, string code, string message) =>
+        Fail(ctx, options, inFlight: null, status, code, message);
+
+    /// <summary>
+    /// Report a failed sign-in: on the sign-in page when it was started there, as the provider door
+    /// answers otherwise.
+    /// </summary>
+    private static Task Fail(
+        HttpContext ctx, AnchorOptions options, AuthorizeRequest? inFlight, int status, string code, string message)
     {
         // Said out loud, because the alternative is a person staring at a panel that says something
         // went wrong while this daemon knows exactly what and tells nobody. A browser is the only
@@ -553,6 +588,9 @@ internal static class ProviderEndpoints
         ctx.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.ProviderEndpoints")
             .LogWarning("provider sign-in refused: {Code} — {Message}", code, message);
+
+        if (inFlight is not null)
+            return OidcEndpoints.SignInPageAsync(ctx, inFlight, message, status);
 
         if (!options.RedirectsToPanel)
             return Endpoints.Refuse(ctx, status, code, message);

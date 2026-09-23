@@ -8,7 +8,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// Keeps this anchor's place in the cluster current: it publishes the key members verify sessions
-/// with, claims the auth capability when nobody holds it, and re-reads who does.
+/// with, claims the auth capability when nobody holds it, re-reads who does, and — while it holds it —
+/// keeps the clients the members announce.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,6 +33,8 @@ internal sealed class ClusterMembershipWorker(
     SelfPublications publications,
     EcdsaSessionSigner signer,
     AnchorRole role,
+    MembersStore members,
+    ClientRegistry clients,
     ILogger<ClusterMembershipWorker> logger) : BackgroundService
 {
     // The key file is reconciled every pass, so what is said about it has to be said once. These
@@ -138,6 +141,13 @@ internal sealed class ClusterMembershipWorker(
             else
                 WithdrawKeyFile();
 
+            // The surfaces the cluster's members announce become clients of this provider, at the
+            // addresses the roster hands out for them, and leave when their member does. Only the holder
+            // keeps the set: a member standing by issues no codes, and a set it kept would be stale the
+            // moment it was promoted.
+            if (isHolder)
+                await SyncClientsAsync(ct).ConfigureAwait(false);
+
             if (!role.Update(standing, holder))
                 return;
 
@@ -176,6 +186,26 @@ internal sealed class ClusterMembershipWorker(
     /// member here to read the file and nothing to do about it — the key is still served over HTTP
     /// and still gossiped, which is how a member on another machine finds it.
     /// </remarks>
+    private async Task SyncClientsAsync(CancellationToken ct)
+    {
+        try
+        {
+            IReadOnlyList<MemberRow> roster = await members.ListEnabledAsync(ct).ConfigureAwait(false);
+            if (await clients.SyncMembersAsync(roster, DateTimeOffset.UtcNow, ct).ConfigureAwait(false))
+            {
+                logger.LogInformation("the clients members announce are now {Clients}",
+                    string.Join(", ", clients.All.Where(c => c.Source == ClientSources.Member)
+                        .Select(c => $"{c.ClientId} → {string.Join(" ", c.RedirectUris)}")) is { Length: > 0 } list
+                        ? list
+                        : "none");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "could not bring the members' clients up to date");
+        }
+    }
+
     private void PublishKeyFile()
     {
         if (options.PublishedKeyPath is not { } path)

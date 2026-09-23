@@ -187,7 +187,7 @@ public sealed class PublishedFactTests(AnchorFixture anchor)
     {
         // Every surface stamps its own, and a member holding only its own would refuse every session
         // the anchor mints while reporting nothing more specific than an invalid token.
-        Assert.Equal("kgsm", Facts[ClusterAuthFacts.Issuer]);
+        Assert.Equal(AnchorFixture.Issuer, Facts[ClusterAuthFacts.Issuer]);
     }
 
     [Fact]
