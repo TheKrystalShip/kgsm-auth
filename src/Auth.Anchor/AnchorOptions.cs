@@ -25,6 +25,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="AccessLifetime">How long an access bearer lives.</param>
 /// <param name="RefreshLifetime">The absolute session cap.</param>
 /// <param name="AllowedOrigins">Browser origins allowed to call this anchor.</param>
+/// <param name="PanelOrigins">Origins a Control Panel is served from with no member behind it.</param>
 /// <param name="SessionCleanup">How often expired session rows are swept.</param>
 /// <param name="FrontendUrl">Where a browser lands after a provider sign-in, or null to answer as JSON.</param>
 /// <param name="Pending">What is allowed to accumulate while nobody has approved it.</param>
@@ -46,6 +47,7 @@ internal sealed record AnchorOptions(
     TimeSpan AccessLifetime,
     TimeSpan RefreshLifetime,
     IReadOnlyList<string> AllowedOrigins,
+    IReadOnlyList<string> PanelOrigins,
     TimeSpan SessionCleanup,
     string? FrontendUrl,
     PendingPolicy Pending,
@@ -112,6 +114,7 @@ internal sealed record AnchorOptions(
             RefreshLifetime: TimeSpan.FromDays(
                 AtLeast(s.RefreshLifetimeDays ?? 30, AnchorSettings.Floors.RefreshLifetimeDays)),
             AllowedOrigins: Origins(s.AllowedOrigins),
+            PanelOrigins: Origins(s.PanelOrigins),
             SessionCleanup: TimeSpan.FromMinutes(
                 AtLeast(s.SessionCleanupMinutes ?? 60, AnchorSettings.Floors.SessionCleanupMinutes)),
             // Blank is a decision rather than an omission: a deployment with no browser in front of it

@@ -902,6 +902,11 @@ internal static class OidcEndpoints
                 await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "client_announced",
                     "A member announces that client, and it leaves when the member stops announcing it.");
                 return;
+
+            case ClientRegistry.RemoveOutcome.Declared:
+                await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "client_declared",
+                    "This anchor's configuration declares that panel, and it leaves when the configuration stops declaring it.");
+                return;
         }
 
         ctx.RequestServices.GetRequiredService<ILoggerFactory>()

@@ -274,13 +274,16 @@ them, a second account on the same browser ends the first's, and the same accoun
 keeps them. The sessions page lists the provider session with `kind: provider`; ending it there is
 signing out.
 
-**Clients come from two places.** A member serving a surface states the `auth.client` fact — paths
+**Clients come from three places.** A member serving a surface states the `auth.client` fact — paths
 only, joined to the browser address its roster row carries — and appears with no operator step; it
-leaves when the member does. Anything else is registered by an admin. Redirects are matched exactly and
-must be HTTPS, or HTTP where the cluster itself accepts plaintext — this machine, a private network or a
-local name — so a cluster of one on a LAN has somewhere to send a code. A registered client's origin may read discovery, the key
-set, `/token`, `/userinfo` and the admin API across origins, without credentials; nothing that reads
-the anchor's cookie answers another origin.
+leaves when the member does. A Control Panel on a static host, which no member can announce, is declared
+in `Anchor__PanelOrigins`: one client per origin, id the origin's host, at the paths every panel lands on
+(`ClusterClientAnnouncement.ControlPanel`), never stored and never removable through the registry.
+Anything else is registered by an admin. Redirects are matched exactly and must be HTTPS, or HTTP where
+the cluster itself accepts plaintext — this machine, a private network or a local name — so a cluster of
+one on a LAN has somewhere to send a code. A registered client's origin may read discovery, the key set,
+`/token`, `/userinfo` and the admin API across origins, without credentials; nothing that reads the
+anchor's cookie answers another origin.
 
 **The floor.** The sign-in page is a plain document with a working form and the provider links, under a
 content security policy with no inline script or style and `form-action` naming the one client the

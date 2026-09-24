@@ -24,19 +24,77 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// Held in memory and reloaded after every write, because it is read on every request that carries an
 /// <c>Origin</c> and on every authorization, and the only writer is this process.
 /// </para>
+/// <para>
+/// <b>Three sources.</b> A member announces the panel it serves; an administrator registers anything
+/// else; and a panel on a static host, which no member can announce, is declared in this anchor's
+/// configuration. A declared panel is never stored — it is what the deploy said this process should
+/// serve, so it comes back with every start and goes when the setting does, and it wins over a stored
+/// client of the same id.
+/// </para>
 /// </remarks>
 internal sealed partial class ClientRegistry
 {
     private readonly SqliteSessionRegistry _store;
+    private readonly IReadOnlyList<RegisteredClient> _declared;
     private volatile Snapshot _snapshot;
 
     private sealed record Snapshot(
         IReadOnlyDictionary<string, RegisteredClient> ById, IReadOnlySet<string> Origins);
 
-    public ClientRegistry(SqliteSessionRegistry store)
+    public ClientRegistry(SqliteSessionRegistry store, IReadOnlyList<string>? panelOrigins = null)
     {
         _store = store;
+        (_declared, RefusedPanelOrigins) = Declare(panelOrigins ?? [], DateTimeOffset.UtcNow);
         _snapshot = Load(store.ListClientsAsync().GetAwaiter().GetResult());
+    }
+
+    /// <summary>Configured panel origins that cannot be a client, each with why.</summary>
+    public IReadOnlyList<(string Origin, string Problem)> RefusedPanelOrigins { get; }
+
+    /// <summary>The panels this anchor's configuration declares.</summary>
+    public IReadOnlyList<RegisteredClient> Declared => _declared;
+
+    /// <summary>
+    /// A client per configured panel origin, at the paths every Control Panel lands on. Its id is the
+    /// origin's host, with the port when there is one, which is stable across restarts and readable in a
+    /// listing.
+    /// </summary>
+    private static (IReadOnlyList<RegisteredClient> Declared, IReadOnlyList<(string, string)> Refused) Declare(
+        IReadOnlyList<string> origins, DateTimeOffset now)
+    {
+        var declared = new List<RegisteredClient>();
+        var refused = new List<(string, string)>();
+        ClusterClientAnnouncement panel = ClusterClientAnnouncement.ControlPanel;
+
+        foreach (string origin in origins)
+        {
+            if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri) || uri.AbsolutePath != "/"
+                || !string.IsNullOrEmpty(uri.Query))
+            {
+                refused.Add((origin, "not an origin: a scheme and a host, with no path"));
+                continue;
+            }
+
+            if (Problem(origin) is { } problem)
+            {
+                refused.Add((origin, problem));
+                continue;
+            }
+
+            string id = uri.IsDefaultPort ? uri.Host.ToLowerInvariant() : $"{uri.Host.ToLowerInvariant()}-{uri.Port}";
+            if (!ClientIdShape().IsMatch(id))
+            {
+                refused.Add((origin, "its host cannot name a client"));
+                continue;
+            }
+
+            string address = uri.GetLeftPart(UriPartial.Authority);
+            declared.Add(new RegisteredClient(
+                id, panel.Name, [.. Join(address, panel.RedirectPaths)], [.. Join(address, panel.PostLogoutRedirectPaths)],
+                ClientSources.Config, MemberId: null, now));
+        }
+
+        return (declared, refused);
     }
 
     /// <summary>Every registered client.</summary>
@@ -96,6 +154,11 @@ internal sealed partial class ClientRegistry
             [.. (request.PostLogoutRedirectUris ?? []).Distinct(StringComparer.Ordinal)],
             ClientSources.Admin, MemberId: null, now);
 
+        // A declared panel is not stored, so the store would accept its id and the declaration would
+        // then hide the row it wrote.
+        if (Find(id) is { Source: ClientSources.Config })
+            return (RegisterOutcome.Taken, null, $"'{id}' is already a client.");
+
         if (!await _store.AddClientAsync(client, ct).ConfigureAwait(false))
             return (RegisterOutcome.Taken, null, $"'{id}' is already a client.");
 
@@ -104,13 +167,18 @@ internal sealed partial class ClientRegistry
     }
 
     /// <summary>What removing a client did.</summary>
-    internal enum RemoveOutcome { Removed, NotFound, Announced }
+    internal enum RemoveOutcome { Removed, NotFound, Announced, Declared }
 
-    /// <summary>Remove an administrator's client. A member's leaves when the member stops announcing it.</summary>
+    /// <summary>
+    /// Remove an administrator's client. A member's leaves when the member stops announcing it, and a
+    /// declared panel when the configuration stops declaring it.
+    /// </summary>
     public async Task<RemoveOutcome> RemoveAsync(string clientId, CancellationToken ct)
     {
         if (Find(clientId) is not { } client)
             return RemoveOutcome.NotFound;
+        if (client.Source == ClientSources.Config)
+            return RemoveOutcome.Declared;
         if (client.Source != ClientSources.Admin)
             return RemoveOutcome.Announced;
 
@@ -203,10 +271,14 @@ internal sealed partial class ClientRegistry
     private async Task ReloadAsync(CancellationToken ct) =>
         _snapshot = Load(await _store.ListClientsAsync(ct).ConfigureAwait(false));
 
-    private static Snapshot Load(IReadOnlyList<RegisteredClient> clients)
+    private Snapshot Load(IReadOnlyList<RegisteredClient> stored)
     {
+        var byId = stored.ToDictionary(c => c.ClientId, StringComparer.Ordinal);
+        foreach (RegisteredClient client in _declared)
+            byId[client.ClientId] = client;
+
         var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (RegisteredClient client in clients)
+        foreach (RegisteredClient client in byId.Values)
         {
             foreach (string uri in client.RedirectUris.Concat(client.PostLogoutRedirectUris))
             {
@@ -215,7 +287,7 @@ internal sealed partial class ClientRegistry
             }
         }
 
-        return new Snapshot(clients.ToDictionary(c => c.ClientId, StringComparer.Ordinal), origins);
+        return new Snapshot(byId, origins);
     }
 
     [GeneratedRegex("^[a-z0-9][a-z0-9._-]{2,63}$")]

@@ -205,6 +205,14 @@ internal sealed class AnchorSettings
         Risk = ConfigRisk.Wiring)]
     public string AllowedOrigins { get; set; } = "";
 
+    /// <summary>Origins a Control Panel is served from with no member behind it, comma-separated.</summary>
+    /// <panel>Where a Control Panel is served from a plain web server rather than by a node — a static
+    /// host, one origin each, comma-separated. Each becomes a client of this sign-in: people are sent
+    /// back to it after signing in. A panel a node serves needs no entry here; the node announces it.</panel>
+    [ConfigField("panelOrigins", "Panels on static hosts", Group = "network", Type = ConfigType.Csv,
+        Risk = ConfigRisk.Wiring)]
+    public string PanelOrigins { get; set; } = "";
+
     /// <summary>Sweep cadence for expired session rows. Raised to <see cref="Floors.SessionCleanupMinutes"/> if lower.</summary>
     /// <panel>How often session rows that are already past their cap are deleted. Housekeeping — it
     /// ends no session that is still alive.</panel>

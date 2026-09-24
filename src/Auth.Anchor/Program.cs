@@ -178,7 +178,8 @@ builder.Services.AddSingleton<ISessionRegistry>(sp => sp.GetRequiredService<Sqli
 // The OpenID Connect provider: the clients it answers, the browsers signed in at it, and the id_token
 // beside every session it mints. Its rows live beside the sessions, because a browser's sign-in here is a
 // session and every session minted through it records which one it came from.
-builder.Services.AddSingleton<ClientRegistry>();
+builder.Services.AddSingleton(sp => new ClientRegistry(
+    sp.GetRequiredService<SqliteSessionRegistry>(), options.PanelOrigins));
 builder.Services.AddSingleton<ProviderSessions>();
 builder.Services.AddSingleton<IdTokens>();
 builder.Services.AddSingleton<ProviderBundle>();
@@ -345,6 +346,14 @@ app.Logger.LogInformation(
     + "signing key {Key} ({Origin})",
     options.ListenAddress, options.MemberId, options.ClusterId, options.UserStorePath,
     options.SigningKeyPath, keyOrigin == SigningKeyStore.Origin.Generated ? "generated" : "loaded");
+
+// Said at every start, because a panel origin mistyped in the settings is otherwise a sign-in that sends
+// nobody back with nothing anywhere saying why.
+ClientRegistry registry = app.Services.GetRequiredService<ClientRegistry>();
+foreach (RegisteredClient panel in registry.Declared)
+    app.Logger.LogInformation("the panel at {Redirect} is a client, as {ClientId}", panel.RedirectUris[0], panel.ClientId);
+foreach ((string origin, string problem) in registry.RefusedPanelOrigins)
+    app.Logger.LogWarning("the panel origin '{Origin}' is not a client: {Problem}", origin, problem);
 
 app.Run();
 

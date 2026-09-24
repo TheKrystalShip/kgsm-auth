@@ -32,6 +32,13 @@ public sealed record ClusterClientAnnouncement(
     /// </summary>
     public const string FactKey = "auth.client";
 
+    /// <summary>
+    /// The Control Panel, wherever it is served: a node announcing the one it serves, and the provider
+    /// registering one it is told a static host serves. One statement of where the panel lands, so the
+    /// two can never send a browser to different paths.
+    /// </summary>
+    public static ClusterClientAnnouncement ControlPanel { get; } = new("Control Panel", ["/signed-in"], ["/"]);
+
     /// <summary>The fact's value.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, ClusterClientJsonContext.Default.ClusterClientAnnouncement);
 

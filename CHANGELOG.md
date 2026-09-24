@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — panels on static hosts are declared in configuration (1.30.0, sessions 2.2.0-dev.5)
+
+`Anchor__PanelOrigins` names the origins a Control Panel is served from with no member behind it. Each
+is a client of the provider — source `config`, id the origin's host — at the panel's own paths, which
+`ClusterClientAnnouncement.ControlPanel` states once for a node announcing its panel and for the anchor
+alike. A declared panel is never stored: it comes back with every start, cannot be removed through the
+registry (`409 client_declared`) and cannot be registered over. An origin that cannot be a client is
+named in the log at start.
+
 ### Fixed — a setting changed across a restart reaches the cluster (1.29.2)
 
 Takes `TheKrystalShip.KGSM.Cluster 1.0.0-dev.23`. An anchor restarted with a different issuer re-published

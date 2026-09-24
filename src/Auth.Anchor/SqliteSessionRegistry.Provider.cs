@@ -80,6 +80,9 @@ internal static class ClientSources
 
     /// <summary>Registered by an administrator on this anchor.</summary>
     public const string Admin = "admin";
+
+    /// <summary>A panel on a static host, declared in this anchor's configuration and never stored.</summary>
+    public const string Config = "config";
 }
 
 /// <summary>A client this provider will issue codes to.</summary>

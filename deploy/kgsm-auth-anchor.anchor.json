@@ -122,6 +122,16 @@
       "risk": "wiring"
     },
     {
+      "key": "panelOrigins",
+      "env": "Anchor__PanelOrigins",
+      "label": "Panels on static hosts",
+      "description": "Where a Control Panel is served from a plain web server rather than by a node — a static host, one origin each, comma-separated. Each becomes a client of this sign-in: people are sent back to it after signing in. A panel a node serves needs no entry here; the node announces it.",
+      "group": "network",
+      "type": "csv",
+      "default": "",
+      "risk": "wiring"
+    },
+    {
       "key": "userStorePath",
       "env": "Anchor__UserStorePath",
       "label": "Account store",

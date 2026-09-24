@@ -858,6 +858,48 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         Assert.Equal(ClientRegistry.RegisterOutcome.Invalid, outcome);
     }
 
+    [Fact]
+    public void A_panel_on_a_static_host_is_a_client_because_the_configuration_says_so()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "kgsm-anchor-panels", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var registry = new ClientRegistry(
+            new SqliteSessionRegistry(Path.Combine(root, "sessions.db")),
+            ["https://kgsm.example.com", "http://192.168.1.10:8080", "http://bucket.example.com", "https://x.test/path"]);
+
+        RegisteredClient panel = registry.Find("kgsm.example.com")!;
+        Assert.Equal(ClientSources.Config, panel.Source);
+        Assert.Equal(["https://kgsm.example.com/signed-in"], panel.RedirectUris);
+        Assert.Equal(["https://kgsm.example.com/"], panel.PostLogoutRedirectUris);
+        Assert.True(registry.IsClientOrigin("https://kgsm.example.com"));
+
+        // The port names the client when there is one; a LAN panel over plain http is one too.
+        Assert.Equal(["http://192.168.1.10:8080/signed-in"], registry.Find("192.168.1.10-8080")!.RedirectUris);
+
+        // Plain http to a public name, and anything that is not an origin, are refused and said so.
+        Assert.Equal(["http://bucket.example.com", "https://x.test/path"],
+            registry.RefusedPanelOrigins.Select(r => r.Origin));
+        Assert.Null(registry.Find("bucket.example.com"));
+    }
+
+    [Fact]
+    public async Task A_declared_panel_can_be_neither_removed_nor_registered_over()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "kgsm-anchor-panels", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var registry = new ClientRegistry(
+            new SqliteSessionRegistry(Path.Combine(root, "sessions.db")), ["https://kgsm.example.com"]);
+
+        Assert.Equal(ClientRegistry.RemoveOutcome.Declared,
+            await registry.RemoveAsync("kgsm.example.com", CancellationToken.None));
+
+        var (outcome, _, _) = await registry.RegisterAsync(
+            new ClientRegistration("kgsm.example.com", "Impostor", ["https://evil.example/cb"], []),
+            DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal(ClientRegistry.RegisterOutcome.Taken, outcome);
+        Assert.Equal(["https://kgsm.example.com/signed-in"], registry.Find("kgsm.example.com")!.RedirectUris);
+    }
+
     [Theory]
     [InlineData("http://127.0.0.1:8080/signed-in")]
     [InlineData("http://192.168.1.10:8080/signed-in")]

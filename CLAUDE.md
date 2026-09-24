@@ -394,6 +394,10 @@ Authority: `../hosted-sign-in-plan.md`.
 - **A member's client is paths joined to its roster address, never URLs it names.** A member announcing
   full URLs could make any origin a place codes are sent. An administrator's client of the same id
   wins.
+- **A panel on a static host is declared, not stored.** `Anchor__PanelOrigins` is what the deploy said
+  this process serves, so it is rebuilt on every start and wins over a stored client of the same id; the
+  registry refuses to remove one or to register over it. Its paths are
+  `ClusterClientAnnouncement.ControlPanel`, the same statement a node announces its panel with.
 - **`id_token`'s subject is the account, its audience the client.** It is never accepted as a bearer,
   and a bearer is never accepted as a sign-out hint.
 - **The pages are `kgsm-web-auth`'s documents, served as built.** The anchor writes the provider links
