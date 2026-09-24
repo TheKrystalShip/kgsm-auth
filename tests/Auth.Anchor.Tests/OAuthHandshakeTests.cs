@@ -1,9 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-using TheKrystalShip.KGSM.Auth.Discord;
-
-namespace TheKrystalShip.KGSM.Auth.Discord.Tests;
+namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
 /// <summary>
 /// The handshake is what stands between a login and two different attacks, so each property is

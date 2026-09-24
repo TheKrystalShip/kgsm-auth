@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace TheKrystalShip.KGSM.Auth;
+namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// The two secrets one in-flight OAuth login carries between the authorize redirect and the
@@ -20,18 +20,18 @@ namespace TheKrystalShip.KGSM.Auth;
 /// </para>
 /// <para>
 /// <b>Bound to one provider's login by the cookie the caller writes,</b> not by anything stored here.
-/// A surface offering several providers scopes or names the cookie per login, so a callback from one
-/// provider cannot satisfy a handshake started against another.
+/// Several providers each scope or name the cookie per login, so a callback from one provider cannot
+/// satisfy a handshake started against another.
 /// </para>
 /// <para>
 /// <b>The state must be bound to the browser, and the cookie is what binds it.</b> Checking a
 /// returned state against a server-side set of issued states proves only that <em>some</em> login
-/// started on this host — which is true of the attacker's own login too, so it admits exactly the
+/// started here — which is true of the attacker's own login too, so it admits exactly the
 /// request it was meant to refuse. Single-use consumption stops replay, not CSRF.
 /// </para>
 /// <para>
-/// PKCE is defence in depth here rather than the load-bearing check: a KGSM surface exchanges the
-/// code server-side holding a client secret, so it is a confidential client and the secret already
+/// PKCE is defence in depth here rather than the load-bearing check: the anchor exchanges the code
+/// server-side holding a client secret, so it is a confidential client and the secret already
 /// blocks a stolen code. It covers the residual cases, costs one hash, and OAuth 2.1 asks for it.
 /// Carrying the verifier in the same cookie is what lets it be added with no server-side store.
 /// </para>

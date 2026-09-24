@@ -4,22 +4,25 @@ The shared authorization model for the KGSM ecosystem: **one definition of who m
 every surface onto a host, so the same person gets the same authority through the Control Panel, the
 assistant and the Discord bot alike.
 
-Four libraries and one daemon. The libraries are what every surface compiles against; the daemon —
-**`kgsm-auth-anchor`** — is what holds a whole cluster's accounts and signs people in to all of it at
-once. A standalone host runs no daemon and reads the same file through the same libraries.
+Four libraries, a test package and one daemon. The daemon — **`kgsm-auth-anchor`** — is the cluster's
+sign-in provider: it holds the accounts, signs people in, and mints every session, and every install
+runs one. The libraries are what every other component compiles against to verify those sessions and
+decide what the person holding one may do. None of them can mint a session.
 
 ## Packages
 
 | package | contents | taken by |
 |---|---|---|
-| **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity and authority seams, claim and relay-header names, the host's relay secret, the actor convention. **No dependencies, AOT-safe.** | kgsm-api, kgsm-llm, kgsm-bot |
-| **`TheKrystalShip.KGSM.Auth.Discord`** | the one chokepoint to `discord.com`: the OAuth login flow and identity verification. `HttpClient` only — no web framework. | kgsm-api, kgsm-llm |
-| **`TheKrystalShip.KGSM.Auth.Sessions`** | access + refresh JWTs, `sid` stable across rotation, `jti` reuse detection, the cached per-request validator, and the GC worker. Storage is a seam. | kgsm-api, kgsm-llm |
-| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot |
-| **`TheKrystalShip.KGSM.Auth.Cluster`** | what a cluster *member* does about identity: verify a session it cannot mint, refuse the doors whichever member holds the accounts owns, apply `account.*` and `session.revoke` from the bus, and take its first full copy from the holder. Also what it tells others: the host file its machine's leaves verify against (`HostProviderFile`, read back by `HostSessionKeys`), and the document naming its sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity, the authority seam and its failure, the session claim names, the tier cache, the actor convention. **No dependencies, AOT-safe.** | every surface |
+| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.KGSM.Auth.Journal`** | the account events, named and written in one place for every writer. | the anchor, kgsm-api |
+| **`TheKrystalShip.KGSM.Auth.Cluster`** | everything a member or a leaf does about identity as a resource server of the anchor: verify a session it cannot mint (`ClusterSessionValidation`) and read who holds it (`SessionClaims`), read the published key set (`SessionKeys`), admit the provider's registered clients (`IClientOrigins`), honour a session somebody ended (`SessionRevokeHandler`, `ClusterSessionRevocations`), replicate the accounts, write and read the host file a machine's leaves verify against (`HostProviderFile`, `HostSessionKeys`), and name the sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.KGSM.Auth.Testing`** | the anchor's session minter and signer, compiled from the anchor's own source, so a test presents a session exactly as the anchor would mint it. | test projects only |
 
 The deployable is **`kgsm-auth-anchor`** (`src/Auth.Anchor`), built from those libraries and shipped
-as a pacman package and a systemd unit. It publishes nothing to NuGet.
+as a pacman package and a systemd unit. It publishes nothing to NuGet: minting, the session registry,
+the Discord round trip and the OAuth handshake are its own code, so no other component can compile
+them.
 
 ## The model
 
@@ -60,8 +63,7 @@ admin mid-incident.
 
 ## Configuration
 
-Bound from the `KgsmAuth` section. The package owns the section and property names, so every surface
-binds the same keys by construction and one file can point a whole host at the same applications:
+The anchor reads the external providers it offers from the `KgsmAuth` section, keyed by provider name:
 
 ```
 KgsmAuth__Providers__discord__ClientId=…        # one OAuth application, at one provider
@@ -70,20 +72,16 @@ KgsmAuth__Providers__github__ClientId=…         # a second provider is two mor
 KgsmAuth__Providers__github__ClientSecret=…
 ```
 
-That is the whole section. Adding a provider to a host is a pair of keys and no code anywhere:
-`options.For("github")` answers with an unconfigured application when nobody wired one up, so a
-provider a host does not offer and a provider it has never heard of are one answer, and
-`ConfiguredProviders()` is the set a login page may draw a button for.
-
-A surface that signs people in needs an application and its own redirect URI; a surface that only
-authorizes needs neither, because the account store answers it.
+A provider with both keys set is offered on the sign-in page; one with either missing, and one nobody
+has heard of, are the same answer — not offered. No other component holds an application: they
+authorize, and the account store answers that.
 
 ## Why it is dependency-free
 
-Every surface takes this assembly, including the Discord bot — whose deploy is tuned for footprint —
-and the CLI, whose startup a user feels directly. Anything referenced here would reach all of them, so
-the tier model stays a pure library: no HTTP, no configuration binder, no ORM. Transports that need
-those live in sibling packages that only the surfaces needing them take.
+Every surface takes this assembly, including the Discord bot, whose deploy is tuned for footprint.
+Anything referenced here would reach all of them, so the tier model stays a pure library: no HTTP, no
+configuration binder, no ORM. Transports that need those live in sibling packages that only the
+surfaces needing them take.
 
 ## Development
 
@@ -97,9 +95,10 @@ A consumer pins a version from that feed, so a change here needs a version bump,
 the pin moved on the consumer. A published version is immutable — pushing one again is a `409` the
 script reports as already published — so the change a consumer restores is always the one you built.
 
-## The login flow
+## An external provider's round trip
 
-One handshake carries both halves of the defence, in one HttpOnly cookie:
+When the anchor sends a browser to Discord, one handshake carries both halves of the defence, in one
+HttpOnly cookie:
 
 ```csharp
 // /auth/start
@@ -118,7 +117,7 @@ if (!OAuthHandshake.TryParse(Request.Cookies["kgsm_oauth_state"], out var handsh
     || !handshake.MatchesState(state))
     return BadRequest();   // forged, expired, or another browser's login
 
-var principal = await directory.ResolveAsync(code, handshake.CodeVerifier, ct);
+KgsmIdentity? identity = await directory.VerifyAsync(code, handshake.CodeVerifier, ct);
 ```
 
 **`state` and PKCE are not alternatives.** `state` stops login CSRF — without it an attacker starts
@@ -127,12 +126,12 @@ browser is handed a session for the *attacker's* identity. PKCE stops code inter
 `code` rides back in a URL and URLs leak.
 
 **The state has to be bound to the browser, and only the cookie binds it.** Checking a returned state
-against a server-side set of issued states proves that *some* login started on this host — which is
+against a server-side set of issued states proves that *some* login started here — which is
 true of the attacker's login too, so it admits the exact request it was meant to refuse. Single-use
 consumption stops replay, not CSRF.
 
-Carrying the verifier in the same cookie is what lets a surface run PKCE with **no server-side pending
-store**, so a login survives a restart and works across nodes.
+Carrying the verifier in the same cookie is what lets the anchor run PKCE with **no server-side
+pending store**, so a round trip survives a restart.
 
 ## Honest failure
 
@@ -144,40 +143,46 @@ A login answers three different things and they must not be collapsed:
 | `4xx` from the token endpoint | an expired, replayed or forged code | `null` — a `401`, start again |
 | `5xx`, unreachable, malformed | **unknown** | `DiscordAuthException` — a `502` |
 
-The third is the one that matters. "We could not ask" is not "the answer is no": a surface that reads
+The third is the one that matters. "We could not ask" is not "the answer is no": a door that reads
 an outage as a verdict either locks out someone who really does hold the role or admits someone who
 does not. The same rule holds one layer down — a store that cannot be read throws rather than
 resolving to `none`.
 
 ## Sessions
 
-A stateless JWT can say who someone is; it cannot say whether their session is still alive. That one
-fact is what `ISessionRegistry` holds, and it is the only reason a surface needs storage at all.
+The anchor mints every session. A stateless JWT can say who someone is; it cannot say whether their
+session is still alive, and that one fact is what the anchor's session registry holds.
 
 ```csharp
-var tokens = new SessionTokenService(new SessionTokenOptions(
-    HostId: "hotrod", SigningKey: secret,
-    AccessLifetime: TimeSpan.FromMinutes(15),
-    RefreshLifetime: TimeSpan.FromDays(30),
-    Issuer: "kgsm-api"));
+var tokens = new SessionTokenService(
+    new SessionTokenOptions(
+        Audience: clusterId,
+        AccessLifetime: TimeSpan.FromMinutes(15),
+        RefreshLifetime: TimeSpan.FromDays(30),
+        Issuer: "https://auth.anchors.example.com"),
+    signer);
 
 MintedToken access  = tokens.MintAccess(identity, tier, sid);
 MintedToken refresh = tokens.MintRefresh(identity, tier, sid);
-await registry.CreateAsync(new SessionRegistration(
-    sid, identity.UserId, hostId, DateTimeOffset.UtcNow, refresh.ExpiresAt, userAgent, refresh.Jti));
 ```
-
-**The storage is a seam, and two implementations behind it is the seam working.** What a session is,
-how it rotates and when it dies are the ecosystem's; where the rows go is each surface's own — an EF
-table next to an audit log, raw SQLite, or memory.
 
 **`RefreshLifetime` is written once and used twice** — the token's expiry and the registry row's. It
 is a setting rather than a constant precisely so there is no second copy to drift, because the drift
 is invisible until a token outlives its own row or the reverse.
 
-**`Issuer` changes are breaking.** It is validated, so changing it on a running host 401s every token
-already issued and forces everyone to log in again. A surface that already mints keeps the value it
-has; the neutral default is for a surface that has never minted one.
+**The audience and the issuer are validated everywhere.** Changing either on a running cluster makes
+every member refuse every session already issued, and everybody signs in again.
+
+**A member verifies and never mints.** `ClusterSessionValidation.Accepting` takes what the anchor
+publishes — its key set, its audience, its issuer — and pins ES256, so the public key a member holds
+can never be offered back to it as an HMAC secret. A member that has not heard from the anchor accepts
+nothing. A session somebody ended arrives as `session.revoke` over the cluster bus and is held on the
+member's own deny-list until its bearer could no longer be presented.
+
+**A test mints through `Auth.Testing`.** A test project that needs a signed-in caller takes the anchor's
+`SessionTokenService` and `EcdsaSessionSigner` from that package, and hands the member under test the
+signer's public half in place of what gossip would have delivered. The member then verifies exactly as
+it does in production.
 
 ### Rotation and reuse
 
@@ -188,7 +193,7 @@ holder authenticate again.
 
 ### The cache is the revocation bound
 
-`SessionValidator` caches the registry's answer, so the hot path does not query per request. A revoke
+The anchor's `SessionValidator` caches the registry's answer, so the hot path does not query per request. A revoke
 evicts, making the kill immediate; the TTL is the backstop for what cannot evict. Expiration is
 **absolute, never sliding** — a sliding window is extended by every hit, so the busiest session, the
 one most worth revoking, would be the one that never re-checks. A "no" is cached too, because a

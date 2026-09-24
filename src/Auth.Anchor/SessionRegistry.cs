@@ -1,20 +1,14 @@
-namespace TheKrystalShip.KGSM.Auth.Sessions;
+namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// One live login — a (user × device) pair that can be revoked independently.
 /// </summary>
-/// <remarks>
-/// Named a registration rather than a record: a surface's wire DTO for "a session, as shown to its
-/// owner" is a different and equally obvious use of that word, and a shared package should not claim
-/// the more generic name.
-/// </remarks>
 /// <param name="SessionId">The <c>sid</c> both the access and the refresh token carry.</param>
 /// <param name="UserId">
-/// Who this session belongs to, in whatever form the storing surface keys users by — a
-/// <c>provider:subject</c> handle where sessions span providers, a bare subject where they do not.
-/// Opaque to the registry, which only ever groups and matches on it.
+/// Who this session belongs to: the <c>provider:subject</c> handle they signed in with. Opaque to the
+/// registry, which only ever groups and matches on it.
 /// </param>
-/// <param name="HostId">The host the session is scoped to, mirroring the token audience.</param>
+/// <param name="HostId">The cluster the session is valid on, mirroring the token audience.</param>
 /// <param name="Created">When the login happened.</param>
 /// <param name="Expires">The absolute cap: past this the session is dead however it is stored.</param>
 /// <param name="UserAgent">The device, for a human reading their own session list. Never authority.</param>
@@ -33,20 +27,12 @@ public sealed record SessionRegistration(
 
 /// <summary>
 /// Where sessions live. This is the one fact a stateless JWT cannot answer on its own — "is this
-/// session still alive" — so a surface that wants revocation at all needs a registry behind it.
+/// session still alive" — so revoking a session at all needs a registry behind it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The interface is the seam on purpose: what a session IS, how it rotates and when it dies are the
-/// ecosystem's, while where the rows go is each surface's own. kgsm-api keeps an EF/SQLite table
-/// alongside its audit log; another surface may reasonably use raw SQLite or nothing but memory.
-/// Two implementations behind one contract is the contract working, not duplication.
-/// </para>
-/// <para>
 /// Implementations must be safe to call concurrently. Every method takes the value it needs rather
 /// than reading a clock or a config, so behaviour is decided by the caller and is testable without
 /// waiting for time to pass.
-/// </para>
 /// </remarks>
 public interface ISessionRegistry
 {

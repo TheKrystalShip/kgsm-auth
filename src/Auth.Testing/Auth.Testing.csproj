@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TheKrystalShip.KGSM.Auth.Minting</RootNamespace>
+    <AssemblyName>TheKrystalShip.KGSM.Auth.Testing</AssemblyName>
+
+    <PackageId>TheKrystalShip.KGSM.Auth.Testing</PackageId>
+    <Authors>Heisenberg</Authors>
+    <Version>1.0.0-dev.1</Version>
+    <Description>
+      The auth anchor's session minter, for tests: a test project that has to present a signed-in
+      caller to a member mints the session exactly as the anchor does, and verifies it through the
+      member's own composition. Referenced by test projects only — no member or leaf mints a session.
+    </Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The anchor's own files, compiled here as they are compiled there. One implementation: a
+         session a test mints is one the anchor would have minted, down to the claim spelling. -->
+    <Compile Include="../Auth.Anchor/Minting/*.cs" LinkBase="Minting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Auth/Auth.csproj" />
+    <ProjectReference Include="../Auth.Cluster/Auth.Cluster.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The advisory Auth.Cluster carries, reaching here through its account store. See
+         Auth.Cluster.csproj; suppressions do not flow across a package boundary. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

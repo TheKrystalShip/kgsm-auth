@@ -3,7 +3,10 @@ using System.Security.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-namespace TheKrystalShip.KGSM.Auth.Sessions.Tests;
+using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.KGSM.Auth.Minting;
+
+namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
 /// <summary>
 /// Asymmetric session signing: what a holder mints, anybody with the published key can check, and
@@ -12,8 +15,7 @@ namespace TheKrystalShip.KGSM.Auth.Sessions.Tests;
 public sealed class SessionSigningTests
 {
     private static SessionTokenOptions Options(string audience = "cluster") => new(
-        HostId: audience,
-        SigningKey: "",
+        Audience: audience,
         AccessLifetime: TimeSpan.FromMinutes(15),
         RefreshLifetime: TimeSpan.FromDays(30),
         Issuer: "kgsm");
@@ -25,14 +27,14 @@ public sealed class SessionSigningTests
     public async Task A_token_it_signs_verifies_against_its_published_public_key()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        var service = new SessionTokenService(Options(), logger: null, signer: signer);
+        var service = new SessionTokenService(Options(), signer);
 
         MintedToken minted = service.MintAccess(Identity(), KgsmTier.Admin, "sid_1");
 
         // The published document, and nothing else, is what a verifier is given.
-        SessionJwks? published = EcdsaSessionSigner.ReadKeys(signer.PublicKeysJson);
+        SessionJwks? published = SessionKeys.Read(signer.PublicKeysJson);
         Assert.NotNull(published);
-        IReadOnlyList<ECDsaSecurityKey> keys = EcdsaSessionSigner.VerificationKeysFrom(published);
+        IReadOnlyList<ECDsaSecurityKey> keys = SessionKeys.VerificationKeysFrom(published);
 
         var parameters = new TokenValidationParameters
         {
@@ -58,7 +60,7 @@ public sealed class SessionSigningTests
     public void The_published_key_cannot_mint()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        ECDsaSecurityKey verification = EcdsaSessionSigner.VerificationKeyFrom(signer.PublicKey);
+        ECDsaSecurityKey verification = SessionKeys.VerificationKeyFrom(signer.PublicKey);
 
         // Signing needs the private half. What is published carries only the public point, so a
         // member holding it can check a session and cannot issue itself one.
@@ -71,10 +73,10 @@ public sealed class SessionSigningTests
         using var mine = EcdsaSessionSigner.Generate();
         using var theirs = EcdsaSessionSigner.Generate();
 
-        var impostor = new SessionTokenService(Options(), logger: null, signer: theirs);
+        var impostor = new SessionTokenService(Options(), theirs);
         MintedToken forged = impostor.MintRefresh(Identity(), KgsmTier.Admin, "sid_1");
 
-        var service = new SessionTokenService(Options(), logger: null, signer: mine);
+        var service = new SessionTokenService(Options(), mine);
         Assert.Null(await service.ReadRefreshAsync(forged.Token));
     }
 
@@ -92,10 +94,10 @@ public sealed class SessionSigningTests
         Assert.Equal(original.PublicKey.Y, reloaded.PublicKey.Y);
 
         // And a session minted before the reload is still valid after it.
-        MintedToken minted = new SessionTokenService(Options(), logger: null, signer: original)
+        MintedToken minted = new SessionTokenService(Options(), original)
             .MintRefresh(Identity(), KgsmTier.Operator, "sid_1");
 
-        RefreshClaims? read = await new SessionTokenService(Options(), logger: null, signer: reloaded)
+        RefreshClaims? read = await new SessionTokenService(Options(), reloaded)
             .ReadRefreshAsync(minted.Token);
 
         Assert.NotNull(read);
@@ -120,16 +122,5 @@ public sealed class SessionSigningTests
             System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical)));
 
         Assert.Equal(expected, jwk.Kid);
-    }
-
-    [Fact]
-    public async Task An_hmac_surface_is_unchanged_when_no_signer_is_supplied()
-    {
-        var service = new SessionTokenService(Options() with { SigningKey = "shared-secret" });
-        MintedToken minted = service.MintRefresh(Identity(), KgsmTier.Viewer, "sid_1");
-
-        RefreshClaims? read = await service.ReadRefreshAsync(minted.Token);
-        Assert.NotNull(read);
-        Assert.Equal(KgsmTier.Viewer, read.Tier);
     }
 }

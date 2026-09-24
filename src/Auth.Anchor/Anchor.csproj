@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.ComponentConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -32,11 +32,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The account store and the session tokens. Referenced by project because they are this repo's
+    <!-- The account store, and what every member does about a session — the key set this anchor
+         publishes and the claims it reads back. Referenced by project because they are this repo's
          own; every consumer outside it pins a published version instead. -->
     <ProjectReference Include="../Auth.Users/Auth.Users.csproj" />
-    <ProjectReference Include="../Auth.Sessions/Auth.Sessions.csproj" />
-    <ProjectReference Include="../Auth.Discord/Auth.Discord.csproj" />
+    <ProjectReference Include="../Auth.Cluster/Auth.Cluster.csproj" />
 
     <!-- The shape of an account event. Shared rather than spelled out here because a host that holds
          its own accounts writes the same lines from its own API, and a field spelled differently by
@@ -55,7 +55,7 @@
   <ItemGroup>
     <!-- Cluster membership and durable member-to-member messaging. The anchor is a member like any
          other: it joins directly, answers the same wire, and needs no kgsm-api to do it. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.23" />
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.24" />
     <!-- The member half of the cluster's names: stating where this anchor is reached, and keeping a
          certificate and a served site for the capability name it holds. -->
     <PackageReference Include="TheKrystalShip.KGSM.Dns" Version="0.2.0-dev.14" />

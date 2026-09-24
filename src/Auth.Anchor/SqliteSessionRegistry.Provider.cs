@@ -1,7 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 

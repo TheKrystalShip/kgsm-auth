@@ -1,15 +1,23 @@
-using TheKrystalShip.KGSM.Auth;
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Minting;
 
-namespace TheKrystalShip.KGSM.Auth.Sessions.Tests;
+namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
 public class SessionTokenServiceTests
 {
+    private const string Issuer = "https://auth.test";
+
+    private static readonly EcdsaSessionSigner Signer = EcdsaSessionSigner.Generate();
+
     private static readonly KgsmIdentity Identity =
         new("discord", "198772043", "haru", "Haru", "https://cdn.test/a.png", ["identify", "guilds"]);
 
-    private static SessionTokenService Service(string key = "a-stable-secret", string host = "hotrod") =>
-        new(new SessionTokenOptions(host, key, TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
+    private static SessionTokenService Service(
+        string audience = "cluster",
+        TimeSpan? refreshLifetime = null,
+        string issuer = Issuer,
+        EcdsaSessionSigner? signer = null) =>
+        new(new SessionTokenOptions(audience, TimeSpan.FromMinutes(15), refreshLifetime ?? TimeSpan.FromDays(30), issuer),
+            signer ?? Signer);
 
     [Fact]
     public async Task RefreshTokenRoundTripsIdentityTierAndSession()
@@ -41,28 +49,19 @@ public class SessionTokenServiceTests
     }
 
     [Fact]
-    public async Task ATokenSignedWithAnotherKeyIsRefused()
+    public async Task ATokenForAnotherClusterIsRefused()
     {
-        MintedToken foreign = Service(key: "someone-elses-secret").MintRefresh(Identity, KgsmTier.Admin, "sid_1");
+        // A session is scoped to one cluster. Without the audience check, a token minted for one
+        // cluster would be accepted by another holding the same key.
+        MintedToken other = Service(audience: "other-cluster").MintRefresh(Identity, KgsmTier.Admin, "sid_1");
 
-        Assert.Null(await Service(key: "our-secret").ReadRefreshAsync(foreign.Token));
-    }
-
-    [Fact]
-    public async Task ATokenForAnotherHostIsRefused()
-    {
-        // A bearer is scoped to one host. Without the audience check, a token minted on a shared
-        // Discord app would authorize every host in the fleet.
-        MintedToken other = Service(host: "other-host").MintRefresh(Identity, KgsmTier.Admin, "sid_1");
-
-        Assert.Null(await Service(host: "hotrod").ReadRefreshAsync(other.Token));
+        Assert.Null(await Service(audience: "cluster").ReadRefreshAsync(other.Token));
     }
 
     [Fact]
     public async Task AnExpiredTokenIsRefused()
     {
-        var svc = new SessionTokenService(
-            new SessionTokenOptions("hotrod", "k", TimeSpan.FromMinutes(15), TimeSpan.FromSeconds(-60)));
+        SessionTokenService svc = Service(refreshLifetime: TimeSpan.FromSeconds(-60));
 
         Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
     }
@@ -96,8 +95,7 @@ public class SessionTokenServiceTests
     {
         // The registry writes its row from the same lifetime. If the mint used a constant instead,
         // a token could outlive its own row, or the row outlive the token, with nothing to catch it.
-        var svc = new SessionTokenService(
-            new SessionTokenOptions("hotrod", "k", TimeSpan.FromMinutes(15), TimeSpan.FromDays(7)));
+        SessionTokenService svc = Service(refreshLifetime: TimeSpan.FromDays(7));
 
         MintedToken refresh = svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1");
         TimeSpan life = refresh.ExpiresAt - DateTimeOffset.UtcNow;
@@ -106,35 +104,12 @@ public class SessionTokenServiceTests
     }
 
     [Fact]
-    public async Task AnEphemeralKeyStillMintsUsableTokensWithinOneProcess()
-    {
-        // Blank key = a dev/test run. It must work, and the warning is what says it will not survive
-        // a restart.
-        var svc = new SessionTokenService(
-            new SessionTokenOptions("hotrod", "", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
-
-        Assert.NotNull(await svc.ReadRefreshAsync(svc.MintRefresh(Identity, KgsmTier.Viewer, "sid_1").Token));
-    }
-
-    [Fact]
-    public async Task TwoProcessesWithEphemeralKeysCannotReadEachOthersTokens()
-    {
-        var a = new SessionTokenService(new SessionTokenOptions("hotrod", "", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
-        var b = new SessionTokenService(new SessionTokenOptions("hotrod", "", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
-
-        Assert.Null(await b.ReadRefreshAsync(a.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
-    }
-
-    [Fact]
     public async Task ATokenFromAnotherIssuerIsRefused()
     {
-        // The issuer is not cosmetic: changing it on a running host invalidates every token already
-        // out there and forces everyone to log in again. This is what makes that consequence real, so
-        // a surface that already mints tokens keeps the value it has.
-        var mine = new SessionTokenService(
-            new SessionTokenOptions("hotrod", "k", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30), "kgsm-api"));
-        var theirs = new SessionTokenService(
-            new SessionTokenOptions("hotrod", "k", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30), "kgsm-other"));
+        // The issuer is not cosmetic: changing it on a running cluster invalidates every token already
+        // out there and forces everyone to sign in again. This is what makes that consequence real.
+        SessionTokenService mine = Service(issuer: "https://auth.one.test");
+        SessionTokenService theirs = Service(issuer: "https://auth.other.test");
 
         Assert.Null(await mine.ReadRefreshAsync(theirs.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
         Assert.NotNull(await mine.ReadRefreshAsync(mine.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
@@ -145,8 +120,7 @@ public class SessionTokenServiceTests
     [Fact]
     public async Task ADiscordSubjectIsExactlyProviderColonId()
     {
-        // The subject claim is `discord:<id>` and is also what a session row is keyed by on some
-        // surfaces. It is pinned here because a change to its spelling is a flag day — every live
+        // The subject claim is `discord:<id>` and is also what a session row is keyed by. It is pinned here because a change to its spelling is a flag day — every live
         // token stops validating and every stored row stops matching — and nothing else in the mint
         // path would fail loudly enough to catch it.
         SessionTokenService svc = Service();
@@ -161,7 +135,7 @@ public class SessionTokenServiceTests
     [Fact]
     public async Task AnIdentityFromAnotherProviderRoundTripsIntact()
     {
-        // Nothing in the token layer is Discord's. A host signing people in elsewhere mints and reads
+        // Nothing in the token layer is Discord's. A person signing in elsewhere is minted and read
         // the same way, and the provider survives the round trip rather than being assumed on the way
         // back out.
         SessionTokenService svc = Service();
@@ -197,8 +171,7 @@ public class SessionTokenServiceTests
     {
         // A bare subject cannot say who issued it, so it names nobody in particular. Reading it as an
         // identity would invent a provider; the caller treats the request as unauthenticated instead.
-        var svc = new SessionTokenService(
-            new SessionTokenOptions("hotrod", "k", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30)));
+        SessionTokenService svc = Service();
         var unqualified = new KgsmIdentity("", "198772043", "haru", "Haru", null, []);
 
         Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(unqualified, KgsmTier.Admin, "sid_1").Token));

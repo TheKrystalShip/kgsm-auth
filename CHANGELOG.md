@@ -7,6 +7,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the packages match the roles (2.0.1, auth 4.0.0-dev.2, users 1.4.0-dev.7, cluster 1.0.0-dev.8, testing 1.0.0-dev.1)
+
+No behaviour changes: the wire, the issuer and the key are untouched, and a session held before the
+redeploy still verifies everywhere. What moved is which component compiles what.
+
+- **The anchor's own code.** Minting (`SessionTokenService`, `EcdsaSessionSigner`, under
+  `src/Auth.Anchor/Minting`), the session registry, its validator and sweep, `DiscordDirectory`,
+  `OAuthHandshake`, `LinkTicketStore`, `IIdentityProvider` and `KgsmOAuthApplication` live in the
+  anchor and publish to no feed. `TheKrystalShip.KGSM.Auth.Sessions` and
+  `TheKrystalShip.KGSM.Auth.Discord` publish no further versions.
+- **`Auth.Cluster` is everything a resource server needs.** It gains `ClusterSessionValidation`,
+  `SessionClaims`, `ClusterAuthFacts`, `IClusterSessionKeys`, the client announcement and origins, and
+  the published key set with `SessionKeys` to read it. The minter takes `ClusterSessionValidation.ClockSkew`
+  from here, so the mint and every door share one tolerance.
+- **`TheKrystalShip.KGSM.Auth.Testing`** compiles the anchor's `Minting` files for test projects.
+- **Removed:** the HMAC signing path and `ISessionSigner` (the minter takes its ES256 signer, required;
+  `SessionTokenOptions` is `Audience`, lifetimes, `Issuer`); `ClusterSessionValidation`'s overload
+  pairing a surface's own sessions with the cluster's, and `IsClusterSession`; `IClusterSessionAuthority`
+  and the `ISessionValidator` argument to `SessionRevokeHandler`, which takes an `IClusterSessionDenyList`
+  and acts on `scope: sid` alone; `SignInService`/`ISignInService`; `KgsmAuthOptions`;
+  `KgsmRelayHeaders` and `KgsmRelaySecret`.
+- Takes `TheKrystalShip.KGSM.Cluster 1.0.0-dev.24`.
+
 ### Changed — the provider's doors are the only way in (2.0.0, auth 4.0.0-dev.1, sessions 2.2.0-dev.6, cluster 1.0.0-dev.7)
 
 The anchor signs people in through its OpenID Connect doors and nothing else. Removed: `/auth/sign-in`,

@@ -1,13 +1,13 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace TheKrystalShip.KGSM.Auth.Sessions;
+namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// Deletes expired sessions on a timer, so the registry does not grow forever across a long run.
 /// </summary>
 /// <remarks>
-/// A catch-up pass runs at startup: a host that was down for a while has a backlog, and waiting a
+/// A catch-up pass runs at startup: an anchor that was down for a while has a backlog, and waiting a
 /// full interval to start shedding it serves nobody. Each tick is wrapped, because one failed sweep
 /// must not kill the worker — the next tick simply tries again.
 /// </remarks>
@@ -30,7 +30,7 @@ public sealed class SessionCleanupWorker(
         }
         catch (OperationCanceledException)
         {
-            // The host is stopping. Not a failure.
+            // The anchor is stopping. Not a failure.
         }
     }
 

@@ -1,4 +1,5 @@
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
@@ -189,7 +190,7 @@ public sealed class PublishedFactTests(AnchorFixture anchor)
     {
         Assert.True(Facts.TryGetValue(ClusterAuthFacts.PublicKey, out string? published));
 
-        SessionJwks? keys = EcdsaSessionSigner.ReadKeys(published!);
+        SessionJwks? keys = SessionKeys.Read(published!);
         Assert.NotNull(keys);
         Assert.NotEmpty(keys.Keys);
 

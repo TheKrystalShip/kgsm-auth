@@ -5,7 +5,7 @@ using System.Text.Json.Serialization.Metadata;
 using TheKrystalShip.KGSM.Auth;
 using TheKrystalShip.KGSM.Auth.Journal;
 using TheKrystalShip.KGSM.Events;
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.Api.Contracts;
 

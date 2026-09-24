@@ -9,13 +9,14 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Cluster</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0-dev.7</Version>
+    <Version>1.0.0-dev.8</Version>
     <Description>
-      What a cluster member does about identity that is not the anchor's job: verify a session it
-      cannot mint, resolve the person from a replica of the cluster's accounts, refuse the auth doors
-      that belong to whichever member holds them, and apply the account and session changes that
-      arrive over the bus. One implementation for every member, because two surfaces that answer "who
-      is this" differently is the one disagreement identity cannot survive.
+      Everything a cluster member or a leaf does about identity, as a resource server of the auth
+      anchor: verify a session it cannot mint against the key the anchor publishes, read who is asking
+      off it, resolve the person from a replica of the cluster's accounts, admit the provider's
+      registered clients, honour a session somebody ended, and name the sign-in provider. One
+      implementation for every member, because two surfaces that answer "who is this" differently is
+      the one disagreement identity cannot survive.
     </Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
@@ -23,12 +24,13 @@
 
   <ItemGroup>
     <ProjectReference Include="../Auth/Auth.csproj" />
-    <ProjectReference Include="../Auth.Sessions/Auth.Sessions.csproj" />
     <ProjectReference Include="../Auth.Users/Auth.Users.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.22" />
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.24" />
+    <!-- Verifying the anchor's ES256 sessions against the key set it publishes. -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.16.0" />
     <!-- BackgroundService, for the two workers that follow cluster state rather than answering a
          request. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />

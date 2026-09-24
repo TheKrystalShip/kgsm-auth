@@ -1,9 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
 
 using TheKrystalShip.KGSM.Auth;
-using TheKrystalShip.KGSM.Auth.Discord;
 using TheKrystalShip.KGSM.Auth.Anchor;
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Extensions;
@@ -116,14 +115,12 @@ builder.Services.AddSingleton<LinkTicketStore>();
 // Sessions are cluster-scoped: the audience is the cluster, not this machine, because a session
 // minted here is presented to every member of it. Signed with the private key above, so a member can
 // verify one and cannot mint one.
-builder.Services.AddSingleton<ISessionTokenService>(sp => new SessionTokenService(
+builder.Services.AddSingleton<ISessionTokenService>(_ => new SessionTokenService(
     new SessionTokenOptions(
-        HostId: options.ClusterId,
-        SigningKey: "",
+        Audience: options.ClusterId,
         AccessLifetime: options.AccessLifetime,
         RefreshLifetime: options.RefreshLifetime,
         Issuer: options.Issuer),
-    sp.GetRequiredService<ILogger<SessionTokenService>>(),
     signer));
 
 // Cluster membership. Registered unconditionally and inert without a secret: a host that is not part

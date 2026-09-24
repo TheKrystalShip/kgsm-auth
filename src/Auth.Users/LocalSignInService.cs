@@ -73,8 +73,8 @@ public sealed record LocalSignInResult(
 /// </summary>
 /// <remarks>
 /// <para>
-/// Deliberately not an <see cref="IIdentityProvider"/>. That seam models the authorization-code
-/// flow — an authorize URL, a redirect, a code to exchange — and none of those exist here. A local
+/// Deliberately not an external identity provider. That seam models the authorization-code flow — an
+/// authorize URL, a redirect, a code to exchange — and none of those exist here. A local
 /// password is verified in one call against a hash on this host. Forcing it through a shape built
 /// for a redirect would mean inventing a code and a state that nothing issues.
 /// </para>

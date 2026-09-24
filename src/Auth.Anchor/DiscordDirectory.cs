@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace TheKrystalShip.KGSM.Auth.Discord;
+namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// Discord could not be reached, or answered in a way that leaves authority unknown. The caller
@@ -17,7 +17,7 @@ namespace TheKrystalShip.KGSM.Auth.Discord;
 public sealed class DiscordAuthException(string message, Exception? inner = null)
     : KgsmAuthProviderException(message, inner);
 
-/// <summary>This surface's own OAuth endpoint details — not shared, because every surface has its own.</summary>
+/// <summary>Where this anchor's Discord round trip returns, and what it asks for.</summary>
 /// <param name="RedirectUri">
 /// Where Discord returns the browser. Must match a redirect registered on the application exactly.
 /// </param>
@@ -28,9 +28,8 @@ public sealed class DiscordAuthException(string message, Exception? inner = null
 public sealed record DiscordOAuthEndpoints(string RedirectUri, string Scopes = "identify");
 
 /// <summary>
-/// The one chokepoint to <c>discord.com</c>. Everything a KGSM surface asks Discord goes through
-/// here, which is what makes the whole authorization surface — the callback verdict, the tier gate,
-/// the 401/403 matrix — testable in-process against a fake.
+/// The one chokepoint to <c>discord.com</c>. Everything the anchor asks Discord goes through here,
+/// which is what makes a provider sign-in testable in-process against a fake.
 /// <para>
 /// It answers <b>one</b> half of a login: <see cref="IIdentityProvider"/> verifies who someone is by
 /// exchanging the OAuth code. What they may do is the account store's answer and only its answer, so

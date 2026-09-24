@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Auth.Cluster/Auth.Cluster.csproj" />
+    <!-- Sessions to verify, minted exactly as the anchor mints them. -->
+    <ProjectReference Include="../../src/Auth.Testing/Auth.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

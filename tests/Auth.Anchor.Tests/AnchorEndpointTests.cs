@@ -6,7 +6,7 @@ using System.Text.Json;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Cluster;
 using TheKrystalShip.KGSM.Auth.Users;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
@@ -46,7 +46,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
 
         // Exactly what a member has: the published document, fetched over HTTP, and nothing else.
         string published = await anchor.Client.GetStringAsync("/auth/cluster/public-key");
-        SessionJwks? keys = EcdsaSessionSigner.ReadKeys(published);
+        SessionJwks? keys = SessionKeys.Read(published);
         Assert.NotNull(keys);
 
         TokenValidationResult result = await new JsonWebTokenHandler().ValidateTokenAsync(session.Access,
@@ -54,7 +54,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
             {
                 ValidIssuer = AnchorFixture.Issuer,
                 ValidAudience = AnchorFixture.ClusterId,
-                IssuerSigningKeys = EcdsaSessionSigner.VerificationKeysFrom(keys),
+                IssuerSigningKeys = SessionKeys.VerificationKeysFrom(keys),
                 ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],
             });
 

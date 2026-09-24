@@ -5,16 +5,22 @@ the "what you must not break".
 
 ## What this is
 
-The shared authorization model for the ecosystem. `TheKrystalShip.KGSM.Auth` is consumed by kgsm-api,
-kgsm-llm and kgsm-bot, so a change here changes who can do what on every surface at once.
+The shared authorization model for the ecosystem, and the cluster's sign-in provider. The packages are
+consumed by kgsm-api, kgsm-llm, kgsm-bot and kgsm-dns, so a change here changes who can do what on
+every surface at once.
 
-**Identity and authority are two seams, not one.** `IIdentityProvider` answers *who is this* (the
-OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they do* (the tier);
-`ISignInService`/`SignInService` composes them into one login. The two halves come from two different
-places: an identity provider answers the first, and `Auth.Users` answers the second for everyone,
-however they signed in. **`IAuthorityProvider` has exactly one implementation that ships: the account
-store.** A provider package implements the identity half and nothing else, which is what lets one be
-added with no authority story of its own. Nothing above the seams names a provider.
+**The packages match the roles.** The anchor is the provider: it mints every session, and minting,
+the session registry, the Discord round trip and the OAuth handshake are its own code, published to no
+feed. Every other component is a resource server and takes `Auth.Cluster`, which verifies and reads a
+session and cannot produce one. `Auth.Testing` compiles the anchor's minter for test projects, so a
+test presents exactly the session the anchor would mint; no production project references it.
+
+**Identity and authority are two seams, not one.** The anchor's `IIdentityProvider` answers *who is
+this* (the OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they do* (the
+tier). The two halves come from two different places: an identity provider answers the first, and
+`Auth.Users` answers the second for everyone, however they signed in. **`IAuthorityProvider` has
+exactly one implementation that ships: the account store.** A provider implements the identity half
+and nothing else, which is what lets one be added with no authority story of its own.
 
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
 its own with a password, and an external identity is a credential attached to it. So the two seams
@@ -23,8 +29,8 @@ what they may do.
 
 **The repo also holds one deployable.** `src/Auth.Anchor` builds `kgsm-auth-anchor`, the cluster
 member that holds the accounts and signs people in to the whole cluster at once. It is built from
-these libraries and publishes nothing to NuGet, so a change to a library is a compile break here
-before it is anything else.
+these libraries by project reference, so a change to a library is a compile break here before it is
+anything else.
 
 This file is the authority for the auth design; the account-store design is also covered by
 **`../auth-internal-users-plan.md`**, and the anchor's own design by **`../cluster-auth-plan.md`**.
@@ -46,24 +52,22 @@ This file is the authority for the auth design; the account-store design is also
   viewer requirement admit an operator. Do not add a tier between them without walking every
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
   lets surfaces answer the same question differently.
-- **No surface derives authority from a group, a guild or a role.** `KgsmAuthOptions` carries the
-  host's OAuth applications and nothing else; the account store is the single authority on what
-  anyone may do, including for kgsm-bot, whose caller is a Discord account with no login behind it.
+- **No surface derives authority from a group, a guild or a role.** An OAuth application carries the
+  application and nothing else; the account store is the single authority on what anyone may do, including for kgsm-bot, whose caller is a Discord account with no login behind it.
   Do not add a role map: an authority source that lives outside the account lets surfaces disagree
   about one person.
 - **Parsing is fail-closed.** `KgsmTiers.Parse` maps anything unrecognised — absent, misspelled, or a
   tier invented by a newer peer — to `None`. Never add a permissive fallback.
-- **A provider is a key in a map, never a property.** `KgsmAuthOptions.Providers` is keyed by
-  provider name, so wiring a host to a new provider is a pair of environment keys and no code — and
-  no type above it names one. Do not add a per-provider property beside the map: an asymmetry there
-  is how one provider ends up with a login path the others do not have. `For()` returns an
-  unconfigured application rather than null on purpose, so an unwired provider and an unknown one are
-  one answer and no caller writes an existence check that could disagree with the configured check.
+- **A provider is a key, never a property.** The anchor reads `KgsmAuth:Providers:<name>:ClientId`
+  and `ClientSecret`, so wiring it to a new provider is a pair of environment keys and no code. Do not
+  add a per-provider setting beside that pattern: an asymmetry there is how one provider ends up with
+  a sign-in path the others do not have. An unwired provider and an unknown one are one answer — not
+  offered — so no caller writes an existence check that could disagree with the configured check.
 
-## `Auth.Discord` — locked decisions
+## The anchor's Discord round trip — locked decisions
 
 - **It answers who, and only who.** `DiscordDirectory` is an `IIdentityProvider` and stays the only
-  chokepoint to `discord.com`. It takes **one** `KgsmOAuthApplication`, not the host's set, so a
+  chokepoint to `discord.com`. It takes **one** `KgsmOAuthApplication`, not every provider's, so a
   composition cannot hand it another provider's by accident. It holds no guild, reads no role and
   takes no bot token: what a person
   may do is the account store's answer, and a login here proves one fact — that the caller holds this
@@ -80,35 +84,30 @@ This file is the authority for the auth design; the account-store design is also
   code — the caller's problem, a `401`, start again. A 5xx or an unreachable host is
   `DiscordAuthException`, which is a `502`. Collapsing them reports one as the other and sends a
   browser round a retry loop that cannot succeed.
-- **`OAuthHandshake` is in the core, not here.** The state+PKCE pair is a property of the
-  authorization-code flow, not of Discord, and every provider's login uses it unchanged.
+- **`OAuthHandshake` is its own type, not Discord's.** The state+PKCE pair is a property of the
+  authorization-code flow, not of Discord, and every provider's round trip uses it unchanged.
 - **`state` and PKCE ride one cookie and neither is optional.** `state` stops login CSRF and only
   works because the cookie binds it to the browser that started the login; a server-side set of issued
   states admits the attacker's own state. PKCE stops code interception. Do not "simplify" either away.
 - **`SameSite=Lax`, never `Strict`.** Strict suppresses the cookie on the top-level redirect back from
   Discord, which breaks every login.
-- **No web framework dependency.** The package hands the host a cookie *value*; the host writes the
-  cookie. Taking a dependency on ASP.NET to save three lines would put it in every consumer and make
-  the handshake untestable without standing up a server.
+## Minting — locked decisions
 
-## `Auth.Sessions` — locked decisions
+`src/Auth.Anchor/Minting`, compiled into the anchor and, unchanged, into `Auth.Testing`.
 
 - **The token layer knows nothing about providers.** It mints and reads whatever `provider:subject`
-  it is handed. A Discord login produces the subject `discord:<id>` —
-  `SessionTokenServiceTests` pins that string, because changing its spelling is a flag day that
-  invalidates every live token and orphans every stored session row at once.
-- **The registry is a seam, not an implementation.** Two surfaces storing sessions differently behind
-  one contract is the contract working. Don't add a "default" store that consumers drift onto.
-- **`RefreshLifetime` and `Issuer` are settings, and both are load-bearing.** The lifetime is written
-  once and used for both the token and the row, so there is no second copy to drift. The issuer is
-  validated, so changing it on a running host logs everyone out — the neutral default is only for a
-  surface that has never minted a token.
-- **The validator's cache is absolute, never sliding, and caches denials.** Sliding would exempt the
-  busiest session from ever re-checking; not caching "no" would let a revoked token query the registry
-  on every request it makes.
-- **A per-surface switch belongs at composition, not in the package.** kgsm-api's inert-sessions mode
-  is a validator it substitutes and a worker it does not register — the shared types know nothing
-  about a flag one surface has.
+  it is handed. A Discord sign-in produces the subject `discord:<id>` — `SessionTokenServiceTests`
+  pins that string, because changing its spelling is a flag day that invalidates every live token and
+  orphans every stored session row at once.
+- **One signer, ES256, required.** `SessionTokenService` takes the `EcdsaSessionSigner` and nothing
+  else can sign with it; there is no symmetric path, so nothing a member holds can be a key.
+- **`RefreshLifetime`, `Audience` and `Issuer` are settings, and all are load-bearing.** The lifetime
+  is written once and used for both the token and the row, so there is no second copy to drift. The
+  audience and the issuer are validated on every member, so changing either on a running cluster ends
+  every session.
+- **The files stay free of anything only the anchor has.** `Auth.Testing` compiles them against
+  `Auth` and `Auth.Cluster` alone, so a reference to an anchor type here breaks the test package's
+  build rather than giving a test a different minter.
 
 ## `Auth.Users` — locked decisions
 
@@ -203,9 +202,15 @@ This file is the authority for the auth design; the account-store design is also
 
 ## `Auth.Cluster` — locked decisions
 
-What a **member** does about identity, as opposed to what the anchor does. The anchor holds the
-accounts and mints the sessions; every other member verifies, resolves and applies. That half runs on
-kgsm-api, on the assistant and on the bot, so it is one package rather than one implementation each.
+What a **member** or a **leaf** does about identity, as opposed to what the anchor does. The anchor
+holds the accounts and mints the sessions; everybody else verifies, resolves and applies. That half
+runs on kgsm-api, the assistant, the bot and the DNS anchor, so it is one package rather than one
+implementation each.
+
+- **A member verifies what it cannot mint.** `ClusterSessionValidation.Accepting` takes the anchor's
+  published keys, audience and issuer and pins ES256. The key set a member holds is public points
+  (`SessionKeys`), so a verifier built from it cannot sign, and a public key offered as an HMAC secret
+  is refused before its signature is looked at. `ClockSkew` is the one tolerance, shared with the mint.
 
 - **A published fact is read through the capability's holder, never off whichever member states it.**
   `ClusterFacts.FromHolderAsync`, for the keys, the audience and the issuer alike. A key taken from any
@@ -220,10 +225,10 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   `HostSessionKeys` from the host file, so no member is configured with a list: registering a client at
   the provider is what admits it everywhere. A member answers them without credentials — a session is
   a bearer, and nothing a member serves reads a cookie.
-- **A session a member minted is held to an allow-list; one the anchor minted is held to a deny-list.**
-  Opposite questions about the same session id, which is why they are separate methods rather than one
-  store — a surface answering one with the other refuses every cluster session or accepts every ended
-  one.
+- **An ended session is held to a deny-list.** A session is verified against a published key and
+  needs no row to be accepted, so the one thing a member stores is that somebody ended it —
+  `IClusterSessionDenyList`, filled by `SessionRevokeHandler` from `session.revoke` and read through
+  `ClusterSessionRevocations`, whose cache an end evicts.
 - **No handler throws.** A `500` is the only answer that keeps a message in the sender's outbox, so it
   is reserved for a transient failure. A stale change never becomes newer and a username conflict never
   resolves itself, so both are logged and acknowledged; throwing would wedge the sender's queue behind
@@ -241,16 +246,15 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
 - **The provider is named only when it is a URL.** `ProtectedResourceMetadata` answers with the
   issuer a member verifies against, or with `no_issuer`; a surface given a value it cannot navigate
   to would try to.
-- **Three seams, and the package owns none of them:** `IReplicatedAccounts` is the member's own store,
-  `IClusterSessionAuthority` its own sessions, `ISessionValidator` its own cache. Opening a file and
-  serving a route stay the member's business.
+- **Two seams, and the package owns neither:** `IReplicatedAccounts` is the member's own store and
+  `IClusterSessionDenyList` its own record of ended sessions. Opening a file and serving a route stay
+  the member's business.
 
 ## `Auth.Anchor` — locked decisions
 
 - **A session's audience is the CLUSTER, not a machine.** That single value is what makes one
   sign-in valid on every member, and changing `Anchor__ClusterId` on a running cluster invalidates
-  every token at once. It is `SessionTokenOptions.HostId` because that field has always been the
-  audience; what moved is what the audience names.
+  every token at once. It reaches the minter as `SessionTokenOptions.Audience`.
 - **Signing is asymmetric and the verification key is published.** A member must be able to check a
   session it cannot mint — one that could mint what it verifies could mint itself an admin session.
   `ValidAlgorithms` is pinned for the same reason: a public key offered as an HMAC secret would make
@@ -342,9 +346,8 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   what exists. A session an admin acts on is addressed under the account it belongs to, so the check
   is whether the sid is that person's — an admin ending a session without knowing whose it was could
   not be recorded honestly.
-- **The session registry is the anchor's own, on its own file.** `Auth.Sessions` deliberately ships
-  no default store, and sessions are not accounts: a member replicating the cluster's accounts
-  replicates none of the sign-ins.
+- **The session registry is the anchor's own, on its own file.** Sessions are not accounts: a member
+  replicating the cluster's accounts replicates none of the sign-ins.
 - **The anchor administers itself, because on the ordinary topology nothing else is there to.** A
   leaf is configured and read through the node that runs it; an anchor is a peer of every node rather
   than something one of them hosts, and the machine it sits on need run no Control Panel at all. So
@@ -439,12 +442,13 @@ Each package versions on its own clock, and the daemon on one of its own. `deplo
 the daemon's, because that is the one the pacman package ships.
 
 **Tags carry the prefix of the thing they version**, since one repo's commits move several numbers:
-`auth-v*`, `sessions-v*`, `users-v*`, `discord-v*`, `journal-v*`, `cluster-v*` for the packages, and a
-bare `v*` for the daemon.
+`auth-v*`, `users-v*`, `journal-v*`, `cluster-v*`, `testing-v*` for the packages, and a bare `v*` for
+the daemon.
 Only the bare `v*` fires the release workflow, which asserts the tag against `deploy/version.sh` — so
 a package tag can never publish a pacman package by accident.
 
-- **Version source:** `<Version>` in `src/Auth/Auth.csproj`.
+- **Version source:** each package's `<Version>` in its own csproj; the daemon's in
+  `src/Auth.Anchor/Anchor.csproj`.
 - Bump on any user-facing change; patch for fixes, minor for additions, major for a breaking change.
 - Update `CHANGELOG.md` under `## [Unreleased]`.
 - Consumers pin a version from the org's GitHub Packages feed, so shipping a change means **bump the
@@ -455,7 +459,8 @@ a package tag can never publish a pacman package by accident.
 
 - A change to how a tier is resolved changes live authority on four running surfaces at once. The
   tests in `tests/Auth.Users.Tests/` are the specification — extend them before the code.
-- The package is referenced by projects in three other repos. Build those before declaring work done.
+- The packages are referenced by projects in four other repos — kgsm-api, kgsm-llm, kgsm-bot and
+  kgsm-dns. Build those before declaring work done.
 
 ## Documentation & comments: present-tense canon only
 

@@ -7,7 +7,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster.Membership;
 

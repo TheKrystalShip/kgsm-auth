@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace TheKrystalShip.KGSM.Auth;
+namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>A link in flight: which account started it, and the handshake it must come back with.</summary>
 /// <param name="UserId">The account the arriving identity will be attached to.</param>
@@ -25,11 +25,6 @@ public sealed record LinkTicket(
 /// Single-use and short-lived: redeeming removes the ticket, so a callback replayed from history or a
 /// log attaches nothing. In memory, deliberately: a restart drops links in flight, which costs a click
 /// and cannot grant anything.
-/// </para>
-/// <para>
-/// Here rather than in a provider package or a surface, for the same reason
-/// <see cref="OAuthHandshake"/> is: a link ticket is a property of the authorization-code flow, not
-/// of any one provider and not of whichever component happens to run the flow.
 /// </para>
 /// </remarks>
 public sealed class LinkTicketStore

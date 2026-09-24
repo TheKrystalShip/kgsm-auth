@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Storage;
@@ -173,7 +173,7 @@ public sealed class HostProviderFileTests : IDisposable
         // A machine that has moved to another cluster and has not been told who holds its accounts yet:
         // a file naming the old cluster would have its leaves accept that cluster's sessions.
         File.WriteAllText(FilePath, new HostProviderFile(Issuer, Audience,
-            EcdsaSessionSigner.ReadKeys(_signer.PublicKeysJson)!.Keys).ToJson());
+            SessionKeys.Read(_signer.PublicKeysJson)!.Keys).ToJson());
 
         ClusterSessionKeys member = await MemberAsync(facts: null);
         Writer(member).Reconcile();

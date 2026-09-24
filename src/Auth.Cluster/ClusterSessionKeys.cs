@@ -2,7 +2,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
@@ -180,8 +179,8 @@ public sealed class ClusterSessionKeys(
 
         try
         {
-            return EcdsaSessionSigner.ReadKeys(published) is { } set
-                ? [.. EcdsaSessionSigner.VerificationKeysFrom(set)]
+            return SessionKeys.Read(published) is { } set
+                ? [.. SessionKeys.VerificationKeysFrom(set)]
                 : [];
         }
         catch (Exception e)

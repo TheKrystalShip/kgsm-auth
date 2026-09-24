@@ -1,16 +1,15 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
 
-using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-namespace TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Cluster;
+
+namespace TheKrystalShip.KGSM.Auth.Minting;
 
 /// <summary>A just-minted token, its absolute expiry, and the <c>jti</c> it was minted with.</summary>
 /// <remarks>
-/// The expiry is returned rather than left for the client to decode out of the JWT: a surface handing
+/// The expiry is returned rather than left for the client to decode out of the JWT: the anchor handing
 /// a session to a browser should be able to say when it dies without the browser parsing a token it
 /// is not supposed to interpret. The <c>jti</c> goes to the registry, where a refresh token's value
 /// becomes the reuse-detection key.
@@ -22,43 +21,37 @@ public sealed record MintedToken(string Token, DateTimeOffset ExpiresAt, string 
 /// identity provider.
 /// </summary>
 /// <remarks>
-/// The tier comes off the token rather than being re-resolved, so a role change takes effect at the
-/// next full login rather than the next refresh. That is a deliberate cost of not re-asking the
-/// authority on every rotation; a surface that needs faster propagation re-derives the tier itself.
+/// The tier here is what was true when the token was minted. The anchor re-reads the account before
+/// it mints the next pair, so nothing is decided on it.
 /// </remarks>
 public sealed record RefreshClaims(KgsmIdentity Identity, KgsmTier Tier, string SessionId, string Jti);
 
-/// <summary>How this surface mints session tokens.</summary>
-/// <param name="HostId">The token audience — a bearer is scoped to one host and useless on another.</param>
-/// <param name="SigningKey">
-/// The HMAC secret, of any length (it is hashed to 256 bits), for a surface that signs and verifies
-/// its own tokens. Blank generates an ephemeral per-process key: every token dies on restart, which
-/// is fine for a test and never for a real host. A surface supplying an <see cref="ISessionSigner"/>
-/// signs with that instead and this value is not read.
+/// <summary>How the anchor mints session tokens.</summary>
+/// <param name="Audience">
+/// The token audience: the cluster a session is valid on. Every member verifies against it, so
+/// changing it on a running cluster invalidates every session at once.
 /// </param>
 /// <param name="AccessLifetime">How long an access bearer lives. Short — it bounds privilege.</param>
 /// <param name="RefreshLifetime">
 /// The absolute session cap: how long someone stays signed in, rotating access tokens, before a fresh
-/// login. <b>The registry's expiry must be written from this same value</b>, which is why it is a
+/// sign-in. <b>The registry's expiry must be written from this same value</b>, which is why it is a
 /// setting and not a constant — two copies of one lifetime drift, and the drift is invisible until a
 /// token outlives its own row or the reverse.
 /// </param>
 /// <param name="Issuer">
-/// The <c>iss</c> claim, and what validation requires. <b>Changing it on a running host invalidates
-/// every token already issued</b>, forcing every signed-in person to log in again — so a surface that
-/// already mints tokens keeps the value it has always used rather than adopting a tidier one.
+/// The <c>iss</c> claim: the provider's browser-facing URL, which every member validates. <b>Changing
+/// it on a running cluster invalidates every token already issued</b>.
 /// </param>
 public sealed record SessionTokenOptions(
-    string HostId,
-    string SigningKey,
+    string Audience,
     TimeSpan AccessLifetime,
     TimeSpan RefreshLifetime,
-    string Issuer = "kgsm");
+    string Issuer);
 
 /// <summary>
-/// Mints and validates the host-scoped session JWTs. An <em>access</em> token is the bearer on every
-/// protected request; a <em>refresh</em> token buys a new one without going back to the identity
-/// provider, until the absolute cap.
+/// Mints and reads the cluster's session JWTs. An <em>access</em> token is the bearer on every
+/// protected request; a <em>refresh</em> token buys a new one without a fresh sign-in, until the
+/// absolute cap.
 /// </summary>
 public interface ISessionTokenService
 {
@@ -76,14 +69,13 @@ public interface ISessionTokenService
     Task<RefreshClaims?> ReadRefreshAsync(string token);
 
     /// <summary>
-    /// The validation rules, shared with the host's bearer pipeline so access and refresh tokens
-    /// validate identically. Handing these out rather than re-declaring them is what keeps the
-    /// issuer, audience and key from disagreeing between the mint and the check.
+    /// The validation rules for what this service mints. Handing these out rather than re-declaring
+    /// them is what keeps the issuer, audience and key from disagreeing between the mint and the check.
     /// </summary>
     TokenValidationParameters ValidationParameters { get; }
 }
 
-/// <summary>HMAC-SHA256 session tokens.</summary>
+/// <summary>ES256 session tokens, signed with the anchor's private key.</summary>
 public sealed class SessionTokenService : ISessionTokenService
 {
     private readonly SessionTokenOptions _options;
@@ -92,76 +84,36 @@ public sealed class SessionTokenService : ISessionTokenService
 
     public TokenValidationParameters ValidationParameters { get; }
 
-    /// <param name="options">The audience, lifetimes and issuer this surface mints under.</param>
-    /// <param name="logger">Reports an ephemeral key, which is the one misconfiguration that works.</param>
+    /// <param name="options">The audience, lifetimes and issuer the anchor mints under.</param>
     /// <param name="signer">
-    /// How tokens are signed. Absent, the surface signs and verifies with the shared HMAC secret in
-    /// <paramref name="options"/> — the right shape where the minting surface is also the only one
-    /// checking. A surface whose tokens are verified elsewhere supplies an asymmetric signer, so the
-    /// verifier holds only what checks a signature and cannot produce one.
+    /// The private key. Every member verifies against its published public half and holds nothing that
+    /// could produce a signature.
     /// </param>
-    public SessionTokenService(
-        SessionTokenOptions options,
-        ILogger<SessionTokenService>? logger = null,
-        ISessionSigner? signer = null)
+    public SessionTokenService(SessionTokenOptions options, EcdsaSessionSigner signer)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(signer);
+
         _options = options;
-
-        SecurityKey verificationKey;
-        string algorithm;
-
-        if (signer is not null)
-        {
-            _signing = signer.Credentials;
-            verificationKey = signer.VerificationKey;
-            algorithm = signer.Algorithm;
-        }
-        else
-        {
-            byte[] keyBytes;
-            if (!string.IsNullOrWhiteSpace(options.SigningKey))
-            {
-                // Hashed, so any length of secret works and the key is always exactly 256 bits.
-                keyBytes = SHA256.HashData(Encoding.UTF8.GetBytes(options.SigningKey));
-            }
-            else
-            {
-                keyBytes = RandomNumberGenerator.GetBytes(32);
-                logger?.LogWarning(
-                    "No session signing key is configured — generated an EPHEMERAL one. Every session "
-                    + "dies on restart. Set a stable secret on any real host.");
-            }
-
-            var symmetric = new SymmetricSecurityKey(keyBytes);
-            _signing = new SigningCredentials(symmetric, SecurityAlgorithms.HmacSha256);
-            verificationKey = symmetric;
-            algorithm = SecurityAlgorithms.HmacSha256;
-        }
+        _signing = signer.Credentials;
 
         ValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidIssuer = options.Issuer,
             ValidateAudience = true,
-            ValidAudience = options.HostId,
+            ValidAudience = options.Audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = verificationKey,
+            IssuerSigningKey = signer.VerificationKey,
             // Pinned, so a token offering any other algorithm is refused before its signature is
             // looked at. Without it a public verification key is one an attacker may present as an
             // HMAC secret, and the key everybody holds becomes the key everybody can sign with.
-            ValidAlgorithms = [algorithm],
+            ValidAlgorithms = [SecurityAlgorithms.EcdsaSha256],
             ValidateLifetime = true,
-            ClockSkew = ClockSkew,
+            ClockSkew = ClusterSessionValidation.ClockSkew,
             NameClaimType = "sub",
         };
     }
-
-    /// <summary>
-    /// How far a token's lifetime is stretched for clocks that disagree. One value for every session
-    /// a surface verifies, whoever minted it, so a token is never alive at one door and expired at
-    /// the next for a reason neither can see.
-    /// </summary>
-    internal static readonly TimeSpan ClockSkew = TimeSpan.FromSeconds(30);
 
     public MintedToken MintAccess(KgsmIdentity identity, KgsmTier tier, string sessionId) =>
         Mint(identity, tier, KgsmTokenKind.Access, _options.AccessLifetime, sessionId);
@@ -181,7 +133,7 @@ public sealed class SessionTokenService : ISessionTokenService
         [
             new("sub", identity.Handle),
             new(KgsmAuthClaims.Tier, KgsmTiers.ToWire(tier)),
-            new(KgsmAuthClaims.Host, _options.HostId),
+            new(KgsmAuthClaims.Host, _options.Audience),
             new(KgsmAuthClaims.TokenKind, kind),
             new(KgsmAuthClaims.SessionId, sessionId),
             new(KgsmAuthClaims.Jti, jti),
@@ -196,7 +148,7 @@ public sealed class SessionTokenService : ISessionTokenService
         string token = _handler.CreateToken(new SecurityTokenDescriptor
         {
             Issuer = _options.Issuer,
-            Audience = _options.HostId,
+            Audience = _options.Audience,
             Subject = new ClaimsIdentity(claims),
             Expires = expires,
             IssuedAt = DateTime.UtcNow,

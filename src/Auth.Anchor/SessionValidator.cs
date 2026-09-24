@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 
-namespace TheKrystalShip.KGSM.Auth.Sessions;
+namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
 /// Answers "is this session still alive" on the request path, cached, so the registry is not queried
@@ -42,7 +42,7 @@ public sealed class SessionValidator(
     IMemoryCache cache,
     TimeSpan cacheTtl) : ISessionValidator
 {
-    // Namespaced so a session id cannot collide with whatever else the host keeps in a shared cache.
+    // Namespaced so a session id cannot collide with whatever else the anchor keeps in a shared cache.
     private static string Key(string sessionId) => "kgsm.session." + sessionId;
 
     private readonly TimeSpan _cacheTtl = cacheTtl > TimeSpan.Zero ? cacheTtl : TimeSpan.FromSeconds(5);

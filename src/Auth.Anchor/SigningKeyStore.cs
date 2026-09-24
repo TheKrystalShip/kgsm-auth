@@ -1,4 +1,4 @@
-using TheKrystalShip.KGSM.Auth.Sessions;
+using TheKrystalShip.KGSM.Auth.Minting;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 

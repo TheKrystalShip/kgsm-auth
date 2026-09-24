@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 
 using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Auth.Users;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;

@@ -1,28 +1,7 @@
 using System.Net;
 using System.Text;
 
-using TheKrystalShip.KGSM.Auth;
-using TheKrystalShip.KGSM.Auth.Discord;
-
-namespace TheKrystalShip.KGSM.Auth.Discord.Tests;
-
-/// <summary>
-/// A whole login through the Discord provider. The directory answers one half — who someone is — and
-/// the second argument answers the other, which in production is the KGSM account store. A guild role
-/// is not in this picture anywhere: composing an identity provider with an authority that knows
-/// nothing about Discord is the real wiring.
-/// </summary>
-internal static class DiscordSignIn
-{
-    private sealed class FixedAuthority(KgsmTier tier) : IAuthorityProvider
-    {
-        public Task<KgsmTier> ResolveTierAsync(KgsmIdentity identity, CancellationToken ct) =>
-            Task.FromResult(tier);
-    }
-
-    public static SignInService SignIn(this DiscordDirectory directory, KgsmTier tier = KgsmTier.Viewer) =>
-        new(directory, new FixedAuthority(tier));
-}
+namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
 /// <summary>
 /// The failure contract. Every branch here decides whether someone gets in during an outage, so each
@@ -83,28 +62,14 @@ public class DiscordDirectoryTests
     [Fact]
     public async Task ResolvesTheIdentity()
     {
-        ResolvedPrincipal? principal = await Directory(Route)
-            .SignIn(KgsmTier.Operator).ResolveAsync("code", "verifier", default);
+        KgsmIdentity? identity = await Directory(Route).VerifyAsync("code", "verifier", default);
 
-        Assert.NotNull(principal);
-        Assert.Equal("42", principal.Identity.Subject);
-        Assert.Equal("haru", principal.Identity.Username);
-        Assert.Equal("Haru", principal.Identity.Display);
-        Assert.Equal("https://cdn.discordapp.com/avatars/42/abc.png", principal.Identity.AvatarUrl);
-        Assert.Equal(KgsmTier.Operator, principal.Tier);
-    }
-
-    [Fact]
-    public async Task TheTierComesFromTheAuthority_NeverFromDiscord()
-    {
-        // Nothing Discord answers moves this. The directory asks discord.com exactly one question —
-        // who is holding this code — and the tier is decided by a seam that never heard of a guild.
-        ResolvedPrincipal? principal = await Directory(Route)
-            .SignIn(KgsmTier.None).ResolveAsync("code", "verifier", default);
-
-        Assert.NotNull(principal);
-        Assert.Equal("42", principal.Identity.Subject);
-        Assert.Equal(KgsmTier.None, principal.Tier);
+        Assert.NotNull(identity);
+        Assert.Equal(KgsmActorProvider.Discord, identity.Provider);
+        Assert.Equal("42", identity.Subject);
+        Assert.Equal("haru", identity.Username);
+        Assert.Equal("Haru", identity.Display);
+        Assert.Equal("https://cdn.discordapp.com/avatars/42/abc.png", identity.AvatarUrl);
     }
 
     [Fact]
@@ -112,13 +77,13 @@ public class DiscordDirectoryTests
     {
         // An expired or replayed code is the caller's problem: 401, start again. Throwing would report
         // it as an upstream outage.
-        ResolvedPrincipal? principal = await Directory(r =>
+        KgsmIdentity? identity = await Directory(r =>
                 r.RequestUri!.AbsolutePath == "/api/oauth2/token"
                     ? new HttpResponseMessage(HttpStatusCode.BadRequest)
                     : Route(r))
-            .SignIn().ResolveAsync("stale-code", "verifier", default);
+            .VerifyAsync("stale-code", "verifier", default);
 
-        Assert.Null(principal);
+        Assert.Null(identity);
     }
 
     [Fact]
@@ -128,7 +93,7 @@ public class DiscordDirectoryTests
             Directory(r => r.RequestUri!.AbsolutePath == "/api/oauth2/token"
                     ? new HttpResponseMessage(HttpStatusCode.BadGateway)
                     : Route(r))
-                .SignIn().ResolveAsync("code", "verifier", default));
+                .VerifyAsync("code", "verifier", default));
     }
 
     [Fact]
@@ -142,7 +107,7 @@ public class DiscordDirectoryTests
             return Route(r);
         });
 
-        await directory.SignIn().ResolveAsync("code", "the-verifier", default);
+        await directory.VerifyAsync("code", "the-verifier", default);
 
         Assert.NotNull(sent);
         Assert.Contains("code_verifier=the-verifier", sent);
@@ -152,7 +117,7 @@ public class DiscordDirectoryTests
     public async Task TheCallersTokenBuysExactlyOneThing()
     {
         // The user token is presented to users/@me and then dropped. Nothing else is asked with it and
-        // nothing is stored, so a login leaves this host holding no credential at Discord at all.
+        // nothing is stored, so a login leaves the anchor holding no credential at Discord at all.
         string? meAuth = null;
         DiscordDirectory directory = Directory(r =>
         {
@@ -161,7 +126,7 @@ public class DiscordDirectoryTests
             return Route(r);
         });
 
-        await directory.SignIn().ResolveAsync("code", "verifier", default);
+        await directory.VerifyAsync("code", "verifier", default);
 
         Assert.Equal("Bearer user-token", meAuth);
     }

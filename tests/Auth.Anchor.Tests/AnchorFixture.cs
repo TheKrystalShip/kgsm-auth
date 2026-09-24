@@ -228,7 +228,7 @@ public sealed class AnchorFixture : IDisposable
     public async Task<Session> SignInAsync(KgsmUser user, string device = "anchor-tests", KgsmIdentity? arrivedAs = null)
     {
         var registry = Service<SqliteSessionRegistry>();
-        var tokens = Service<TheKrystalShip.KGSM.Auth.Sessions.ISessionTokenService>();
+        var tokens = Service<TheKrystalShip.KGSM.Auth.Minting.ISessionTokenService>();
         KgsmIdentity identity = arrivedAs ?? user.AsIdentity();
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
@@ -242,7 +242,7 @@ public sealed class AnchorFixture : IDisposable
         var access = tokens.MintAccess(identity, user.EffectiveTier, sid);
         var refresh = tokens.MintRefresh(identity, user.EffectiveTier, sid);
         await registry.CreateAsync(
-            new TheKrystalShip.KGSM.Auth.Sessions.SessionRegistration(
+            new SessionRegistration(
                 sid, identity.Handle, ClusterId, now, refresh.ExpiresAt, device, refresh.Jti),
             provider);
 

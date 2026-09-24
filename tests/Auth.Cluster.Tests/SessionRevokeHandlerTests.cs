@@ -3,35 +3,19 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
 namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
 
 /// <summary>
-/// Ending a session because another member said so. The handler runs on every member, so what it does
+/// Ending a session because the anchor said so. The handler runs on every member, so what it does
 /// with a payload is the one place a sign-out either reaches a machine or silently does not.
 /// </summary>
 public class SessionRevokeHandlerTests
 {
-    private sealed class Sessions : IClusterSessionAuthority
+    private sealed class Ended : IClusterSessionDenyList
     {
-        public List<string> Revoked { get; } = [];
         public List<string> Recorded { get; } = [];
-        public List<string> RevokedHandles { get; } = [];
-        public IReadOnlyList<string> ReturnsForHandle { get; set; } = [];
-
-        public Task RevokeAsync(string sessionId, CancellationToken ct = default)
-        {
-            Revoked.Add(sessionId);
-            return Task.CompletedTask;
-        }
-
-        public Task<IReadOnlyList<string>> RevokeAllForHandleAsync(string handle, CancellationToken ct = default)
-        {
-            RevokedHandles.Add(handle);
-            return Task.FromResult(ReturnsForHandle);
-        }
 
         public Task<bool> IsRevokedAsync(string sessionId, CancellationToken ct = default) =>
             Task.FromResult(Recorded.Contains(sessionId));
@@ -43,72 +27,48 @@ public class SessionRevokeHandlerTests
         }
     }
 
-    private sealed class Validator : ISessionValidator
+    private static (SessionRevokeHandler Handler, Ended Ended, ClusterSessionRevocations Revocations) Build()
     {
-        public List<string> Evicted { get; } = [];
-        public Task<bool> IsValidAsync(string sessionId, CancellationToken ct = default) => Task.FromResult(true);
-        public void Evict(string sessionId) => Evicted.Add(sessionId);
-    }
-
-    private static (SessionRevokeHandler Handler, Sessions Sessions, Validator Validator) Build()
-    {
-        var sessions = new Sessions();
-        var validator = new Validator();
+        var ended = new Ended();
         var revocations = new ClusterSessionRevocations(
-            sessions, new MemoryCache(new MemoryCacheOptions()), TimeSpan.FromSeconds(5));
+            ended, new MemoryCache(new MemoryCacheOptions()), TimeSpan.FromMinutes(5));
 
         return (
             new SessionRevokeHandler(
-                sessions, validator, revocations, TimeSpan.FromDays(30), NullLogger<SessionRevokeHandler>.Instance),
-            sessions,
-            validator);
+                ended, revocations, TimeSpan.FromDays(30), NullLogger<SessionRevokeHandler>.Instance),
+            ended,
+            revocations);
     }
 
     private static ClusterEnvelope Envelope(string payload) =>
         new("msg_1", "session.revoke", "other-member", DateTimeOffset.UtcNow, JsonDocument.Parse(payload).RootElement);
 
     [Fact]
-    public async Task Ending_one_session_both_revokes_a_row_and_records_that_it_is_over()
+    public async Task Ending_a_session_records_that_it_is_over()
     {
-        // The two writes are not alternatives. A session this member minted has a row to revoke; one
-        // the anchor minted has none, and the record is the only thing that ends it here. The handler
-        // does both because it cannot tell which it was handed.
-        (SessionRevokeHandler handler, Sessions sessions, Validator validator) = Build();
+        (SessionRevokeHandler handler, Ended ended, _) = Build();
 
         await handler.HandleAsync(Envelope("""{"scope":"sid","sid":"sid_abc"}"""), default);
 
-        Assert.Equal(["sid_abc"], sessions.Revoked);
-        Assert.Equal(["sid_abc"], sessions.Recorded);
-        Assert.Equal(["sid_abc"], validator.Evicted);
+        Assert.Equal(["sid_abc"], ended.Recorded);
     }
 
     [Fact]
-    public async Task A_person_is_named_by_handle()
+    public async Task The_end_takes_effect_at_once_however_long_the_cache_holds()
     {
-        (SessionRevokeHandler handler, Sessions sessions, _) = Build();
-        sessions.ReturnsForHandle = ["sid_1", "sid_2"];
+        // The request path caches "not ended" for minutes. A sign-out that waited out the cache would
+        // leave the session accepted here for exactly that long.
+        (SessionRevokeHandler handler, _, ClusterSessionRevocations revocations) = Build();
+        Assert.False(await revocations.IsRevokedAsync("sid_abc"));
 
-        await handler.HandleAsync(Envelope("""{"scope":"user","handle":"local:usr_abc"}"""), default);
+        await handler.HandleAsync(Envelope("""{"scope":"sid","sid":"sid_abc"}"""), default);
 
-        Assert.Equal(["local:usr_abc"], sessions.RevokedHandles);
-    }
-
-    [Fact]
-    public async Task A_bare_discord_id_names_a_discord_identity()
-    {
-        // A sender stating a bare id is naming a Discord identity, which is one of the two spellings
-        // the credential store keys on. Read as a handle it would match nobody, and the sign-out
-        // would report success having ended nothing.
-        (SessionRevokeHandler handler, Sessions sessions, _) = Build();
-
-        await handler.HandleAsync(Envelope("""{"scope":"user","discordId":"245717107596197888"}"""), default);
-
-        Assert.Equal(["discord:245717107596197888"], sessions.RevokedHandles);
+        Assert.True(await revocations.IsRevokedAsync("sid_abc"));
     }
 
     [Theory]
     [InlineData("""{"scope":"sid"}""")]
-    [InlineData("""{"scope":"user"}""")]
+    [InlineData("""{"scope":"user","handle":"local:usr_abc"}""")]
     [InlineData("""{"scope":"nonsense"}""")]
     [InlineData("""{}""")]
     [InlineData("""[]""")]
@@ -117,13 +77,10 @@ public class SessionRevokeHandlerTests
         // A throw surfaces as a transient 500, which keeps the message in the sender's outbox — so a
         // payload that can never become valid would wedge the queue behind it, taking every later
         // message with it, including a disable.
-        (SessionRevokeHandler handler, Sessions sessions, Validator validator) = Build();
+        (SessionRevokeHandler handler, Ended ended, _) = Build();
 
         await handler.HandleAsync(Envelope(payload), default);
 
-        Assert.Empty(sessions.Revoked);
-        Assert.Empty(sessions.Recorded);
-        Assert.Empty(sessions.RevokedHandles);
-        Assert.Empty(validator.Evicted);
+        Assert.Empty(ended.Recorded);
     }
 }

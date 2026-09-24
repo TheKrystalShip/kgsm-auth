@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Sessions;
 using TheKrystalShip.KGSM.Cluster;
 
 namespace TheKrystalShip.KGSM.Auth.Cluster;
@@ -66,7 +65,7 @@ public sealed record HostProviderFile(
 
     /// <summary>The verification keys the file names.</summary>
     public IReadOnlyList<SecurityKey> VerificationKeys() =>
-        [.. EcdsaSessionSigner.VerificationKeysFrom(new SessionJwks(Keys))];
+        [.. SessionKeys.VerificationKeysFrom(new SessionJwks(Keys))];
 }
 
 /// <summary>Serializer metadata for the host file.</summary>
@@ -184,7 +183,7 @@ public sealed class HostProviderFileWriter(
             return null;
 
         return keys.PublishedKeySet is { } published
-            && EcdsaSessionSigner.ReadKeys(published) is { Keys.Count: > 0 } set
+            && SessionKeys.Read(published) is { Keys.Count: > 0 } set
                 ? new HostProviderFile(issuer, audience, set.Keys, keys.ClientOrigins)
                 : null;
     }
