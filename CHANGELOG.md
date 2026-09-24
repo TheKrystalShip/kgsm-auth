@@ -7,6 +7,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the provider's doors are the only way in (2.0.0, auth 4.0.0-dev.1, sessions 2.2.0-dev.6, cluster 1.0.0-dev.7)
+
+The anchor signs people in through its OpenID Connect doors and nothing else. Removed: `/auth/sign-in`,
+`/auth/register`, `/auth/session/refresh`, `/auth/session/sign-out`, `/auth/session`, `/auth/providers`,
+the provider bounce that answered in a URL fragment (`/auth/{provider}/start`), and the self-service
+doors the account page replaces — `/auth/password`, `/auth/identities`, `/auth/reauth`,
+`/auth/identities/{provider}/start`, `DELETE /auth/identities/{id}`, `/auth/sessions` and
+`/auth/session/revoke`. Also removed: `Anchor__FrontendUrl`, `Anchor__AllowedOrigins` and `ReauthGate`
+(from `TheKrystalShip.KGSM.Auth`, hence its major); recent proof is the provider session's
+`credential_at`. `AnchorHeld`'s refusal vocabulary leaves `Auth.Cluster`; `AnchorHeldGate` stays as the
+reader of who holds the accounts.
+
+- A provider callback completes the request in flight or proves the person again for the account page,
+  and otherwise says on the anchor's own page that the sign-in is no longer waiting. The link callback
+  always returns to `/account`.
+- An administrator lists somebody's sessions at `GET /auth/cluster/users/{id}/sessions`.
+- A surface's client id is its origin's host (`ClusterClientAnnouncement.ClientIdFor`), for announced
+  surfaces as for declared panels, so a surface derives its own. Announced clients re-key from the
+  member id to that host on the first sync.
+- The anchor publishes where its clients live as `auth.origins` (`ClusterClientOrigins`) while it holds
+  the accounts. Members read it through the holder (`ClusterSessionKeys`), leaves from the host file,
+  which now carries `clientOrigins` (`HostSessionKeys`); both answer `IClientOrigins.Admits`.
+- Cross-origin allowance is a registered client's origin only, without credentials, on discovery, the
+  key set, `/token`, `/userinfo`, `/auth/identity`, `/auth/cluster/*` and the anchor's own surface.
+- A session row that is neither a provider session nor minted under one is deleted as the registry
+  opens, so every session held before the provider's doors were the only ones ends at its next renewal.
+- The provider's pages carry `Referrer-Policy: same-origin` where they carried `no-referrer`. Under
+  `no-referrer` a browser posts the sign-in form with `Origin: null`, and over plain http it sends no
+  `Sec-Fetch-Site` either, so a provider served without TLS refused every browser sign-in as cross-site.
+
 ### Added — panels on static hosts are declared in configuration (1.30.0, sessions 2.2.0-dev.5)
 
 `Anchor__PanelOrigins` names the origins a Control Panel is served from with no member behind it. Each

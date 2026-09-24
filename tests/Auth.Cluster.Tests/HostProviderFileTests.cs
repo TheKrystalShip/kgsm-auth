@@ -90,6 +90,43 @@ public sealed class HostProviderFileTests : IDisposable
     }
 
     [Fact]
+    public async Task The_origins_the_holder_admits_are_the_ones_the_member_and_its_leaves_admit()
+    {
+        Dictionary<string, string> facts = Stated();
+        facts[ClusterAuthFacts.ClientOrigins] = ClusterClientOrigins.ToJson(
+            ["https://kgsm.example.com", "http://192.168.1.10:8080", "not an origin"]);
+
+        ClusterSessionKeys member = await MemberAsync(facts);
+        Writer(member).Reconcile();
+        var leaf = new HostSessionKeys(FilePath, NullLogger<HostSessionKeys>.Instance);
+
+        // Registering a client at the provider is what admits it everywhere, so nothing on a member is
+        // configured with a list — and an entry that is not an origin is dropped rather than failing
+        // the rest.
+        foreach (IClientOrigins origins in new IClientOrigins[] { member, leaf })
+        {
+            Assert.True(origins.Admits("https://kgsm.example.com"));
+            Assert.True(origins.Admits("http://192.168.1.10:8080"));
+            Assert.False(origins.Admits("https://elsewhere.example.com"));
+            Assert.False(origins.Admits(null));
+        }
+
+        await member.StopAsync(default);
+    }
+
+    [Fact]
+    public async Task Origins_stated_by_a_member_that_does_not_hold_the_accounts_admit_nobody()
+    {
+        ClusterSessionKeys member = await MemberAsync(Stated());
+
+        // Only the holder is believed. A member announcing origins of its own would otherwise choose
+        // who may call every other member with a bearer.
+        Assert.False(member.Admits("https://kgsm.example.com"));
+
+        await member.StopAsync(default);
+    }
+
+    [Fact]
     public async Task A_session_the_anchor_signed_verifies_against_what_the_leaf_read()
     {
         ClusterSessionKeys member = await MemberAsync(Stated());

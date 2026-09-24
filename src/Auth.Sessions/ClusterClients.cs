@@ -14,8 +14,8 @@ namespace TheKrystalShip.KGSM.Auth.Sessions;
 /// for it. A member announcing full URLs could name any origin on the internet as a place codes are sent.
 /// </para>
 /// <para>
-/// The client id is the announcing member's id. One member serves at most one surface; a second is a
-/// second member or a client an administrator registers.
+/// The client id is <see cref="ClientIdFor"/> the member's browser address. One member serves at most
+/// one surface; a second is a second member or a client an administrator registers.
 /// </para>
 /// </remarks>
 /// <param name="Name">What a person is shown on the sign-in page: whose sign-in they are completing.</param>
@@ -39,6 +39,28 @@ public sealed record ClusterClientAnnouncement(
     /// </summary>
     public static ClusterClientAnnouncement ControlPanel { get; } = new("Control Panel", ["/signed-in"], ["/"]);
 
+    /// <summary>
+    /// The client id of the surface served at <paramref name="origin"/>: its host, lowercased, with
+    /// <c>-&lt;port&gt;</c> when the origin names one — or null when the origin is not one a client can
+    /// live at.
+    /// </summary>
+    /// <remarks>
+    /// A surface derives its own id from where it was loaded, so it is told nothing before it signs in
+    /// and a panel on a static host signs in through a member that never served it. The provider derives
+    /// the same string from a member's browser address and from a declared panel's origin, which is the
+    /// whole agreement: one rule, applied at both ends.
+    /// </remarks>
+    public static string? ClientIdFor(string? origin)
+    {
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+            || uri.HostNameType == UriHostNameType.IPv6)
+            return null;
+
+        string host = uri.Host.ToLowerInvariant();
+        return uri.IsDefaultPort ? host : $"{host}-{uri.Port}";
+    }
+
     /// <summary>The fact's value.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, ClusterClientJsonContext.Default.ClusterClientAnnouncement);
 
@@ -59,6 +81,53 @@ public sealed record ClusterClientAnnouncement(
     }
 }
 
-/// <summary>Serializer metadata for a client announcement.</summary>
+/// <summary>
+/// The value of <see cref="ClusterAuthFacts.ClientOrigins"/>: every origin a registered client lives at.
+/// </summary>
+/// <remarks>
+/// Written by the provider, read by every member through the holder. Sorted and de-duplicated on the
+/// way out so an unchanged registry publishes an unchanged fact, and read back tolerantly — an entry
+/// that is not an origin is dropped rather than failing the whole value, because a member must not stop
+/// admitting every client over one it cannot read.
+/// </remarks>
+public static class ClusterClientOrigins
+{
+    /// <summary>The fact's value for <paramref name="origins"/>.</summary>
+    public static string ToJson(IEnumerable<string> origins) =>
+        JsonSerializer.Serialize(
+            origins.Select(Normalize).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+            ClusterClientJsonContext.Default.StringArray);
+
+    /// <summary>The origins a fact names; empty when it names none or is not one.</summary>
+    public static IReadOnlyList<string> Read(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize(json, ClusterClientJsonContext.Default.StringArray) is { } values
+                ? [.. values.Select(Normalize).OfType<string>().Distinct(StringComparer.Ordinal)]
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as a browser sends it in <c>Origin</c> — scheme, host and a non-default
+    /// port, lowercased, no slash — or null when it is not an http(s) origin.
+    /// </summary>
+    public static string? Normalize(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
+        && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+            ? uri.GetLeftPart(UriPartial.Authority).ToLowerInvariant()
+            : null;
+}
+
+/// <summary>Serializer metadata for a client announcement and the origins fact.</summary>
 [JsonSerializable(typeof(ClusterClientAnnouncement))]
+[JsonSerializable(typeof(string[]))]
 public sealed partial class ClusterClientJsonContext : JsonSerializerContext;

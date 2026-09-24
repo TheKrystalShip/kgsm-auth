@@ -146,42 +146,22 @@ internal sealed class ProviderCatalog(
 /// status on the wire is a field somebody will try to set, so neither is on it: both are decided here
 /// and the tier is always <see cref="KgsmTier.None"/>.
 /// </para>
+/// <para>
+/// The provider's registration page is the door (<see cref="OidcEndpoints.Register"/>); it answers with
+/// the wait, and the browser returns to its client once an administrator approves the account.
+/// </para>
 /// </remarks>
-internal static class RegisterEndpoint
+internal static class Registration
 {
-    internal static async Task Register(HttpContext ctx)
-    {
-        RegisterRequest? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.RegisterRequest);
-        if (body is null)
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
-                "The request body is not readable.");
-            return;
-        }
-
-        if (await CreateAsync(ctx, body) is not { } account)
-            return;
-
-        // A real session at `none`, deliberately. A bare refusal tells somebody who has just made an
-        // account nothing about what happens next; a session lets a surface say they are waiting on
-        // an administrator, and lets that administrator see them.
-        await Endpoints.MintSessionFor(ctx, account.AsIdentity(), account.EffectiveTier, account,
-            DateTimeOffset.UtcNow, Endpoints.AsJson(ctx, account, account.EffectiveTier, StatusCodes.Status201Created));
-    }
-
     /// <summary>
     /// Make the account <paramref name="body"/> asks for, or refuse with the reason already written.
     /// </summary>
-    /// <remarks>
-    /// Shared by every door that takes a registration, which differ only in what they answer with once
-    /// the account exists: a session for the provider door, the wait for the sign-in page.
-    /// </remarks>
     /// <returns>The account, unapproved and holding nothing, or null.</returns>
     internal static async Task<KgsmUser?> CreateAsync(HttpContext ctx, RegisterRequest body)
     {
         var options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.RegisterEndpoint");
+            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.Registration");
 
         if (!options.AllowSelfRegistration)
         {
@@ -317,7 +297,8 @@ internal static class RegisterEndpoint
 }
 
 /// <summary>
-/// Signing in with an account somebody already has somewhere else.
+/// Signing in with an account somebody already has somewhere else: the round trip to a provider and
+/// its way back.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -326,9 +307,10 @@ internal static class RegisterEndpoint
 /// lets a provider be added with no authority story of its own.
 /// </para>
 /// <para>
-/// What this door mints is what the password door mints: a session audienced to the <b>cluster</b>,
-/// signed with this anchor's private key, that every member verifies offline and none can produce.
-/// The two doors differ in what proves a person and in nothing after that.
+/// A round trip begins on this anchor's own pages — the sign-in page for a request in flight
+/// (<see cref="OidcEndpoints.ProviderStart"/>) and the account page to prove the person again — and
+/// ends here. It never mints a session itself: the request it completes is answered with a code for
+/// its client.
 /// </para>
 /// </remarks>
 internal static class ProviderEndpoints
@@ -343,67 +325,20 @@ internal static class ProviderEndpoints
     /// </remarks>
     private const string StateCookie = "kgsm_oauth_state";
 
-    /// <summary>What a person's browser is offered to sign in with.</summary>
-    internal static async Task Providers(HttpContext ctx)
-    {
-        var catalog = ctx.RequestServices.GetRequiredService<ProviderCatalog>();
-        var options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
-
-        // Unauthenticated on purpose: a sign-in page has to draw its buttons before anybody has
-        // signed in, and what it learns is which doors exist rather than anything behind them.
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
-            new ProvidersResult(catalog.Configured, options.RedirectsToPanel, options.AllowSelfRegistration),
-            AnchorJsonContext.Default.ProvidersResult);
-    }
-
-    /// <summary>Send the browser to the provider.</summary>
-    internal static Task Start(HttpContext ctx)
-    {
-        string provider = (string?)ctx.Request.RouteValues["provider"] ?? "";
-
-        var role = ctx.RequestServices.GetRequiredService<AnchorRole>();
-        if (!role.IsAuthority)
-        {
-            // A member standing by mints nothing, and starting a bounce it could not finish would
-            // send somebody to a provider and back to a refusal.
-            return Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_the_anchor",
-                "This member does not hold the cluster's accounts.");
-        }
-
-        if (ctx.RequestServices.GetRequiredService<ProviderCatalog>().Identity(provider) is not { } identity)
-        {
-            return Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "auth_unconfigured",
-                $"Signing in with {provider} is not configured on this anchor.");
-        }
-
-        OAuthHandshake handshake = OAuthHandshake.Create();
-        BeginHandshake(ctx, handshake);
-
-        // Honoured from the query, because a caller asking for a screen and silently not getting one
-        // is a door that lies about what it did. The default matches the one every other KGSM sign-in
-        // uses, so a person meets the same provider screen wherever they arrive.
-        string prompt = ctx.Request.Query["prompt"].ToString();
-        if (string.IsNullOrWhiteSpace(prompt))
-            prompt = "none";
-
-        // Only the challenge travels — the verifier stays in the cookie, never in a URL.
-        ctx.Response.Redirect(identity.BuildAuthorizeUrl(handshake.State, handshake.CodeChallenge, prompt));
-        return Task.CompletedTask;
-    }
-
     /// <summary>Bind a round trip to this browser: <c>state</c> and the PKCE verifier, in the one-time cookie.</summary>
     internal static void BeginHandshake(HttpContext ctx, OAuthHandshake handshake) =>
         ctx.Response.Cookies.Append(StateCookie, handshake.ToCookieValue(), CookieOptions(ctx));
 
     /// <summary>
-    /// Take the provider's answer: complete the authorization request it was started for, or mint a
-    /// session for the whole cluster.
+    /// Take the provider's answer: prove the person again for the account page, or complete the
+    /// authorization request the round trip was started for.
     /// </summary>
     /// <remarks>
     /// One callback for both, because it is the one address registered with the provider's application.
-    /// Which it is comes from the request in flight: a round trip started from the sign-in page recorded
-    /// its <c>state</c> there, and only a returning <c>state</c> that matches it completes that request.
-    /// Anything else is this door's own sign-in.
+    /// Which it is comes from the <c>state</c> that returns: a re-proof recorded its own, and a round
+    /// trip started from the sign-in page recorded its <c>state</c> on the request in flight. A state
+    /// that matches neither — a request that expired while the person was at the provider — completes
+    /// nothing and says so on this anchor's own page.
     /// </remarks>
     internal static async Task Callback(HttpContext ctx)
     {
@@ -469,8 +404,12 @@ internal static class ProviderEndpoints
         }
 
         AuthorizeRequest? inFlight = await OidcEndpoints.InFlightAsync(ctx);
-        if (inFlight is not null && !string.Equals(inFlight.UpstreamState, state, StringComparison.Ordinal))
-            inFlight = null;
+        if (inFlight is null || !string.Equals(inFlight.UpstreamState, state, StringComparison.Ordinal))
+        {
+            await Fail(ctx, options, StatusCodes.Status400BadRequest, "no_request",
+                "That sign-in is no longer waiting here. Go back to where you started and sign in again.");
+            return;
+        }
 
         string? code = ctx.Request.Query["code"];
         if (string.IsNullOrWhiteSpace(code))
@@ -576,69 +515,36 @@ internal static class ProviderEndpoints
         logger.LogInformation(
             "{Handle} signed in with {Provider} at {Tier}", verified.Handle, provider, KgsmTiers.ToWire(tier));
 
-        // A sign-in started from the provider's own page proves this browser's provider session, and the
-        // request it was started for is answered from there — a code for the client, never a session.
-        if (inFlight is not null)
-        {
-            ProviderSessionRow session = await ctx.RequestServices.GetRequiredService<ProviderSessions>()
-                .EstablishAsync(ctx, verified, account);
-            await OidcEndpoints.ProceedAsync(ctx, inFlight, session, OidcEndpoints.Answer.Navigation, silent: false);
-            return;
-        }
-
-        // The same mint every other door uses, so a session that arrives through a provider is the
-        // same session recorded the same way. This door differs only in how it answers.
-        await Endpoints.MintSessionFor(ctx, verified, tier, account, now, (access, refresh) =>
-        {
-            if (options.RedirectsToPanel)
-            {
-                // The tokens ride the URL FRAGMENT, never the query: a fragment is not sent to the
-                // server, so it stays out of access logs and out of the Referer header. The panel
-                // reads them, adopts the session and strips the fragment.
-                ctx.Response.Redirect(
-                    $"{options.FrontendUrl}#access={Uri.EscapeDataString(access.Token)}"
-                    + $"&refresh={Uri.EscapeDataString(refresh.Token)}");
-                return Task.CompletedTask;
-            }
-
-            return Endpoints.AsJson(ctx, account, tier, StatusCodes.Status200OK)(access, refresh);
-        });
+        // The sign-in proves this browser's provider session, and the request it was started for is
+        // answered from there — a code for the client, never a session.
+        ProviderSessionRow session = await ctx.RequestServices.GetRequiredService<ProviderSessions>()
+            .EstablishAsync(ctx, verified, account);
+        await OidcEndpoints.ProceedAsync(ctx, inFlight, session, OidcEndpoints.Answer.Navigation, silent: false);
     }
 
     /// <summary>
-    /// Report a failed sign-in the way the caller can act on.
+    /// Report a failed round trip on this anchor's own page, before there is a request to report it on.
     /// </summary>
-    /// <remarks>
-    /// A browser that was sent here by a redirect is sent back to the panel with the reason in the
-    /// fragment, because leaving somebody on a JSON error page at an address they did not type is not
-    /// an answer they can do anything with. Everything else gets the frozen error envelope.
-    /// </remarks>
     private static Task Fail(
         HttpContext ctx, AnchorOptions options, int status, string code, string message) =>
         Fail(ctx, options, inFlight: null, status, code, message);
 
     /// <summary>
-    /// Report a failed sign-in: on the sign-in page when it was started there, as the provider door
-    /// answers otherwise.
+    /// Report a failed sign-in: on the sign-in page of the request it was started for, or as a page of
+    /// its own when there is none.
     /// </summary>
     private static Task Fail(
         HttpContext ctx, AnchorOptions options, AuthorizeRequest? inFlight, int status, string code, string message)
     {
-        // Said out loud, because the alternative is a person staring at a panel that says something
-        // went wrong while this daemon knows exactly what and tells nobody. A browser is the only
-        // other witness to a failed sign-in and it cannot be asked afterwards.
+        // Said out loud, because a browser is the only other witness to a failed sign-in and it cannot
+        // be asked afterwards.
         ctx.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.ProviderEndpoints")
             .LogWarning("provider sign-in refused: {Code} — {Message}", code, message);
 
-        if (inFlight is not null)
-            return OidcEndpoints.SignInPageAsync(ctx, inFlight, message, status);
-
-        if (!options.RedirectsToPanel)
-            return Endpoints.Refuse(ctx, status, code, message);
-
-        ctx.Response.Redirect($"{options.FrontendUrl}#error={Uri.EscapeDataString(code)}");
-        return Task.CompletedTask;
+        return inFlight is not null
+            ? OidcEndpoints.SignInPageAsync(ctx, inFlight, message, status)
+            : ProviderPages.ProblemAsync(ctx, status, "Sign-in didn't complete", message);
     }
 
     /// <summary>

@@ -357,7 +357,7 @@ internal static class OidcEndpoints
             return;
         }
 
-        if (await RegisterEndpoint.CreateAsync(ctx, body) is not { } account)
+        if (await Registration.CreateAsync(ctx, body) is not { } account)
             return;
 
         ProviderSessionRow session = await ctx.RequestServices.GetRequiredService<ProviderSessions>()
@@ -372,9 +372,9 @@ internal static class OidcEndpoints
     /// <c>GET /authorize/{provider}</c>: sign in with an external provider, for the request in flight.
     /// </summary>
     /// <remarks>
-    /// The round trip returns through the provider door's own callback, the one address registered with the
-    /// provider's application. What makes that callback complete this request rather than answer as the
-    /// provider door does is the <c>state</c> recorded on the request here, matched when it comes back.
+    /// The round trip returns through the provider callback, the one address registered with the
+    /// provider's application. What makes that callback complete this request is the <c>state</c> recorded
+    /// on the request here, matched when it comes back.
     /// </remarks>
     internal static async Task ProviderStart(HttpContext ctx)
     {

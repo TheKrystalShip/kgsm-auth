@@ -34,7 +34,7 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 public sealed class ClusterSessionKeys(
     ClusterFacts facts,
     ClusterOptions cluster,
-    ILogger<ClusterSessionKeys> logger) : BackgroundService, IClusterSessionKeys
+    ILogger<ClusterSessionKeys> logger) : BackgroundService, IClusterSessionKeys, IClientOrigins
 {
     /// <summary>
     /// What is being read is what gossip moves, so re-reading faster than gossip changes it buys
@@ -56,6 +56,13 @@ public sealed class ClusterSessionKeys(
 
     /// <summary>The key set as the holder published it, or null when it published none.</summary>
     public string? PublishedKeySet => _state.Published;
+
+    /// <summary>The origins the holder's registered clients live at, as it published them.</summary>
+    public IReadOnlyList<string> ClientOrigins => _state.Origins;
+
+    /// <inheritdoc />
+    public bool Admits(string? origin) =>
+        ClusterClientOrigins.Normalize(origin) is { } normalized && _state.Origins.Contains(normalized, StringComparer.Ordinal);
 
     /// <summary>
     /// Whether this member has read the cluster at least once. Until it has, every answer above is "not
@@ -94,6 +101,7 @@ public sealed class ClusterSessionKeys(
         string? published;
         string? audience;
         string? issuer;
+        string? origins;
         try
         {
             published = await facts
@@ -104,6 +112,9 @@ public sealed class ClusterSessionKeys(
                 .ConfigureAwait(false);
             issuer = await facts
                 .FromHolderAsync(ClusterCapability.Auth, ClusterAuthFacts.Issuer, ct)
+                .ConfigureAwait(false);
+            origins = await facts
+                .FromHolderAsync(ClusterCapability.Auth, ClusterAuthFacts.ClientOrigins, ct)
                 .ConfigureAwait(false);
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -116,6 +127,15 @@ public sealed class ClusterSessionKeys(
         }
 
         State current = _state;
+        IReadOnlyList<string> clients = ClusterClientOrigins.Read(origins);
+        if (!clients.SequenceEqual(current.Origins, StringComparer.Ordinal))
+        {
+            _state = current = current with { Origins = clients };
+            logger.LogInformation(
+                "Admitting the cluster's registered clients across origins: {Origins}.",
+                clients.Count == 0 ? "none" : string.Join(", ", clients));
+        }
+
         if (string.Equals(published, current.Published, StringComparison.Ordinal)
             && string.Equals(audience, current.Audience, StringComparison.Ordinal)
             && string.Equals(issuer, current.Issuer, StringComparison.Ordinal))
@@ -125,7 +145,7 @@ public sealed class ClusterSessionKeys(
         }
 
         IReadOnlyList<SecurityKey> keys = Read(published);
-        _state = new State(audience, issuer, keys, published);
+        _state = new State(audience, issuer, keys, published, current.Origins);
         _hasRead = true;
 
         if (keys.Count == 0 || string.IsNullOrEmpty(audience) || string.IsNullOrEmpty(issuer))
@@ -175,8 +195,9 @@ public sealed class ClusterSessionKeys(
     /// <summary>One consistent answer, replaced whole so a reader never sees a key set beside an
     /// audience or an issuer it was not published with.</summary>
     private sealed record State(
-        string? Audience, string? Issuer, IReadOnlyList<SecurityKey> Keys, string? Published)
+        string? Audience, string? Issuer, IReadOnlyList<SecurityKey> Keys, string? Published,
+        IReadOnlyList<string> Origins)
     {
-        public static readonly State Unknown = new(null, null, [], null);
+        public static readonly State Unknown = new(null, null, [], null, []);
     }
 }

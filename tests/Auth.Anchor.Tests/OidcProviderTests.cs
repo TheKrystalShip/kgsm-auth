@@ -283,6 +283,11 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         Assert.Contains("frame-ancestors 'none'", policy, StringComparison.Ordinal);
         Assert.Contains("script-src 'self'", policy, StringComparison.Ordinal);
 
+        // Same-origin: the page's own post carries its Origin, which is the proof where a browser sends
+        // no fetch metadata, and nothing about the request leaves for another origin as a referrer.
+        Assert.Equal("same-origin", page.Headers.GetValues("Referrer-Policy").Single());
+        Assert.Contains("<meta name=\"referrer\" content=\"same-origin\">", html, StringComparison.Ordinal);
+
         string cookie = Assert.Single(page.Headers.GetValues("Set-Cookie"), c => c.StartsWith("kgsm_authz=", StringComparison.Ordinal));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
@@ -769,18 +774,20 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         string bearer = tokens.GetProperty("access_token").GetString()!;
         string providerSession = Claims(tokens.GetProperty("id_token").GetString()!).GetProperty("sid").GetString()!;
 
-        using var list = new HttpRequestMessage(HttpMethod.Get, "/auth/sessions");
-        list.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-        JsonElement page = await Json(await anchor.Client.SendAsync(list));
-        JsonElement row = Assert.Single(page.GetProperty("data").EnumerateArray(), s => s.GetProperty("sid").GetString() == providerSession);
+        // The account page, in the browser that signed in, lists this browser's sign-in beside the
+        // sessions minted under it.
+        using var me = new HttpRequestMessage(HttpMethod.Get, "/account/me");
+        me.Headers.Add("Sec-Fetch-Site", "same-origin");
+        JsonElement account = await Json(await browser.SendAsync(me));
+        JsonElement row = Assert.Single(account.GetProperty("sessions").EnumerateArray(), s => s.GetProperty("sid").GetString() == providerSession);
         Assert.Equal("provider", row.GetProperty("kind").GetString());
 
-        using var revoke = new HttpRequestMessage(HttpMethod.Post, "/auth/session/revoke")
+        using var revoke = new HttpRequestMessage(HttpMethod.Post, "/account/sessions/revoke")
         {
             Content = new StringContent(JsonSerializer.Serialize(new { sid = providerSession }), Encoding.UTF8, "application/json"),
         };
-        revoke.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-        Assert.Equal(HttpStatusCode.OK, (await anchor.Client.SendAsync(revoke)).StatusCode);
+        revoke.Headers.Add("Sec-Fetch-Site", "same-origin");
+        Assert.Equal(HttpStatusCode.OK, (await browser.SendAsync(revoke)).StatusCode);
 
         Assert.Equal(HttpStatusCode.Unauthorized, await UserInfoStatusAsync(bearer));
     }
@@ -806,13 +813,8 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
 
     // ── Clients ───────────────────────────────────────────────────────────────
 
-    private async Task<string> AdminBearerAsync()
-    {
-        (KgsmUser admin, string password) = await AccountAsync(tier: KgsmTier.Admin);
-        HttpResponseMessage signIn = await anchor.Client.PostAsync("/auth/sign-in",
-            new StringContent(JsonSerializer.Serialize(new { username = admin.Username, password }), Encoding.UTF8, "application/json"));
-        return (await Json(signIn)).GetProperty("token").GetString()!;
-    }
+    private async Task<string> AdminBearerAsync() =>
+        (await anchor.SignedInAsync(KgsmTier.Admin, "oidc-admin")).Session.Access;
 
     [Fact]
     public async Task An_administrator_registers_lists_and_removes_a_client()
@@ -917,10 +919,11 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
     {
         var registry = anchor.Service<ClientRegistry>();
         string member = "node-" + Guid.NewGuid().ToString("N")[..6];
+        string address = $"https://{member}.test";
 
         MemberRow row = MemberRow.New(member, "node") with
         {
-            Candidates = MemberCandidates.Encode([new MemberCandidate("https://node.test", Client: true)]),
+            Candidates = MemberCandidates.Encode([new MemberCandidate(address, Client: true)]),
             Published = PublishedFacts.Encode(new Dictionary<string, string>
             {
                 [ClusterClientAnnouncement.FactKey] = new ClusterClientAnnouncement(
@@ -929,21 +932,76 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         };
 
         Assert.True(await registry.SyncMembersAsync([row], DateTimeOffset.UtcNow, CancellationToken.None));
-        RegisteredClient client = registry.Find(member)!;
+
+        // Its id is the one a surface loaded from that address derives for itself, so the surface needs
+        // to be told nothing to name itself.
+        string id = ClusterClientAnnouncement.ClientIdFor(address)!;
+        Assert.Equal($"{member}.test", id);
+        RegisteredClient client = registry.Find(id)!;
         Assert.Equal(ClientSources.Member, client.Source);
-        Assert.Equal(["https://node.test/", "https://node.test/signed-in"], client.RedirectUris);
-        Assert.True(registry.IsClientOrigin("https://node.test"));
+        Assert.Equal(member, client.MemberId);
+        Assert.Equal([$"{address}/", $"{address}/signed-in"], client.RedirectUris);
+        Assert.True(registry.IsClientOrigin(address));
+        Assert.Contains(address, registry.Origins);
 
         // It leaves when the member stops announcing it.
         Assert.True(await registry.SyncMembersAsync([], DateTimeOffset.UtcNow, CancellationToken.None));
-        Assert.Null(registry.Find(member));
+        Assert.Null(registry.Find(id));
 
         // And an administrator's client of the same id is never taken over by an announcement.
-        await registry.RegisterAsync(new ClientRegistration(member, "By hand", ["https://hand.test/"], []),
+        await registry.RegisterAsync(new ClientRegistration(id, "By hand", ["https://hand.test/"], []),
             DateTimeOffset.UtcNow, CancellationToken.None);
         await registry.SyncMembersAsync([row], DateTimeOffset.UtcNow, CancellationToken.None);
-        Assert.Equal(ClientSources.Admin, registry.Find(member)!.Source);
-        await registry.RemoveAsync(member, CancellationToken.None);
+        Assert.Equal(ClientSources.Admin, registry.Find(id)!.Source);
+        await registry.RemoveAsync(id, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Where_every_client_lives_is_stated_for_the_members_to_admit()
+    {
+        await RegisterClientsAsync();
+        var publications = anchor.Service<SelfPublications>();
+
+        // Read by every member through the holder, which is what admits a client across origins on a
+        // machine nobody configured: an administrator's client and a declared panel exist only here.
+        IReadOnlyList<string> stated = [];
+        for (int attempt = 0; attempt < 50; attempt++)
+        {
+            stated = publications.Current.TryGetValue(ClusterAuthFacts.ClientOrigins, out string? value)
+                ? ClusterClientOrigins.Read(value)
+                : [];
+            if (stated.Contains("https://chat.test"))
+                break;
+            await Task.Delay(100);
+        }
+
+        Assert.Contains("https://chat.test", stated);
+        Assert.Contains("https://panel.test", stated);
+    }
+
+    [Fact]
+    public void A_session_under_no_browser_s_sign_in_is_gone_when_the_registry_opens()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "kgsm-anchor-orphans", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string path = Path.Combine(root, "sessions.db");
+
+        var first = new SqliteSessionRegistry(path);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        first.CreateAsync(new SessionRegistration("sid_orphan", "local:usr_x", "c", now, now.AddDays(1), null, "j1"))
+            .GetAwaiter().GetResult();
+        first.CreateProviderSessionAsync("sid_browser", "local:usr_x", "{}", "hash", "c", now, now.AddDays(1), null)
+            .GetAwaiter().GetResult();
+        first.CreateAsync(new SessionRegistration("sid_minted", "local:usr_x", "c", now, now.AddDays(1), null, "j2"), "sid_browser")
+            .GetAwaiter().GetResult();
+
+        // Nothing ends a session on a sign-out, or lists it with its sign-in, unless it lives under one.
+        var reopened = new SqliteSessionRegistry(path);
+        IReadOnlyList<SqliteSessionRegistry.LiveSession> live =
+            reopened.ListAsync(["local:usr_x"]).GetAwaiter().GetResult();
+
+        Assert.Equal(["sid_browser", "sid_minted"], live.Select(s => s.SessionId).Order());
+        SqliteConnection.ClearAllPools();
     }
 
     [Fact]
@@ -969,7 +1027,7 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
     // ── An external provider ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task A_provider_round_trip_from_the_page_returns_to_the_page_not_the_panel()
+    public async Task A_provider_round_trip_from_the_page_returns_to_the_page()
     {
         await RegisterClientsAsync();
         using HttpClient browser = anchor.Following();
@@ -980,26 +1038,10 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         string upstream = QueryOf(start.Headers.Location!)["state"];
 
         // The provider comes back without a code — denied at its own screen. The request in flight is
-        // this one, so the refusal lands on the sign-in page, never on the provider door's panel handoff.
+        // this one, so the refusal lands on the sign-in page with the reason.
         HttpResponseMessage back = await browser.GetAsync($"/auth/discord/callback?state={Uri.EscapeDataString(upstream)}");
         Assert.Equal(HttpStatusCode.BadRequest, back.StatusCode);
         Assert.Null(back.Headers.Location);
         Assert.Contains("/authorize/credentials", await back.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_provider_door_sign_in_is_not_captured_by_an_abandoned_request()
-    {
-        await RegisterClientsAsync();
-        using HttpClient browser = anchor.Following();
-        await browser.GetAsync(AuthorizeUrl(Panel, PanelRedirect, NewPkce()));
-
-        // Started at the provider door, not from the page: its state is not the one the request recorded.
-        HttpResponseMessage start = await browser.GetAsync("/auth/discord/start");
-        string upstream = QueryOf(start.Headers.Location!)["state"];
-
-        HttpResponseMessage back = await browser.GetAsync($"/auth/discord/callback?state={Uri.EscapeDataString(upstream)}");
-        Assert.Equal(HttpStatusCode.Redirect, back.StatusCode);
-        Assert.StartsWith(AnchorFixture.PanelUrl, back.Headers.Location!.ToString(), StringComparison.Ordinal);
     }
 }

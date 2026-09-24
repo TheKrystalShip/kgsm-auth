@@ -54,7 +54,7 @@ public sealed class AnchorFixture : IDisposable
     /// </summary>
     public const string Issuer = SignInUrl;
 
-    /// <summary>Where a browser is sent back to after a provider sign-in.</summary>
+    /// <summary>A Control Panel on a static host, declared to this anchor, so its origin is a client's.</summary>
     public const string PanelUrl = "https://panel.test";
 
     /// <summary>The secret the test cluster's members share.</summary>
@@ -69,11 +69,10 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__SessionStorePath", Path.Combine(Root, "sessions.db"));
         Environment.SetEnvironmentVariable("Anchor__SigningKeyPath", Path.Combine(Root, "signing.pem"));
         Environment.SetEnvironmentVariable("Anchor__ClusterId", ClusterId);
-        Environment.SetEnvironmentVariable("Anchor__AllowedOrigins", "https://panel.test");
+        Environment.SetEnvironmentVariable("Anchor__PanelOrigins", PanelUrl);
         Environment.SetEnvironmentVariable("Anchor__MemberId", MemberId);
         Environment.SetEnvironmentVariable("Anchor__PublicBaseUrl", SignInUrl);
         Environment.SetEnvironmentVariable("Anchor__Issuer", Issuer);
-        Environment.SetEnvironmentVariable("Anchor__FrontendUrl", PanelUrl);
         Environment.SetEnvironmentVariable("Anchor__AllowSelfRegistration", "true");
 
         // This anchor's own configuration surface, likewise relocated. Left at its default, a test
@@ -192,6 +191,70 @@ public sealed class AnchorFixture : IDisposable
             Label: null, Created: now, LastUsed: null));
 
         return user;
+    }
+
+    /// <summary>
+    /// A session as a surface holds one — its bearer, its refresh token, and the ids behind them — and
+    /// the provider cookie the browser that signed in holds.
+    /// </summary>
+    public sealed record Session(string Access, string Refresh, string Sid, string ProviderSession, string Cookie)
+    {
+        /// <summary>A request from that browser to one of the provider's own pages.</summary>
+        public HttpRequestMessage AtTheAccountPage(HttpMethod method, string path, object? body = null)
+        {
+            var request = new HttpRequestMessage(method, path);
+            request.Headers.Add("Cookie", $"{ProviderCookies.Session}={Cookie}");
+            request.Headers.Add("Sec-Fetch-Site", "same-origin");
+            request.Headers.Add("Accept", "application/json");
+            if (body is not null)
+            {
+                request.Content = new StringContent(
+                    System.Text.Json.JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json");
+            }
+            return request;
+        }
+    }
+
+    /// <summary>
+    /// Sign <paramref name="user"/> in, the way a browser completing the provider's round trip would end
+    /// up: a provider session, and a session minted under it.
+    /// </summary>
+    /// <remarks>
+    /// In process rather than through the pages, because a test about administering accounts or reading
+    /// the roster is not a test about signing in — the OpenID Connect suite drives that end to end. Built
+    /// from the running daemon's own token service and registry, so what is presented is what the anchor
+    /// verifies, and ending the provider session ends this one exactly as it would a browser's.
+    /// </remarks>
+    public async Task<Session> SignInAsync(KgsmUser user, string device = "anchor-tests", KgsmIdentity? arrivedAs = null)
+    {
+        var registry = Service<SqliteSessionRegistry>();
+        var tokens = Service<TheKrystalShip.KGSM.Auth.Sessions.ISessionTokenService>();
+        KgsmIdentity identity = arrivedAs ?? user.AsIdentity();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        string provider = Endpoints.NewSessionId();
+        string cookie = ProviderCookies.NewSecret();
+        await registry.CreateProviderSessionAsync(
+            provider, identity.Handle, StoredIdentity.From(identity).ToJson(),
+            ProviderCookies.Hash(cookie), ClusterId, now, now.AddDays(1), device);
+
+        string sid = Endpoints.NewSessionId();
+        var access = tokens.MintAccess(identity, user.EffectiveTier, sid);
+        var refresh = tokens.MintRefresh(identity, user.EffectiveTier, sid);
+        await registry.CreateAsync(
+            new TheKrystalShip.KGSM.Auth.Sessions.SessionRegistration(
+                sid, identity.Handle, ClusterId, now, refresh.ExpiresAt, device, refresh.Jti),
+            provider);
+
+        return new Session(access.Token, refresh.Token, sid, provider, cookie);
+    }
+
+    /// <summary>A fresh account at <paramref name="tier"/>, signed in.</summary>
+    public async Task<(KgsmUser User, Session Session)> SignedInAsync(KgsmTier tier, string prefix = "user")
+    {
+        KgsmUser user = await SeedAsync(
+            prefix + "-" + Guid.NewGuid().ToString("N")[..10], "a long enough password", tier);
+        return (user, await SignInAsync(user));
     }
 
     /// <summary>

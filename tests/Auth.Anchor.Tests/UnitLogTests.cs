@@ -22,18 +22,8 @@ public sealed class UnitLogTests(AnchorFixture anchor)
 
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
-    private async Task<string> BearerAsync(KgsmTier tier)
-    {
-        string username = Unique("log");
-        await anchor.SeedAsync(username, Long, tier);
-
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = Long }, Wire);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        return (await response.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("token").GetString()!;
-    }
+    private async Task<string> BearerAsync(KgsmTier tier) =>
+        (await anchor.SignedInAsync(tier, "log")).Session.Access;
 
     private async Task<HttpResponseMessage> GetAsync(string path, string? bearer)
     {

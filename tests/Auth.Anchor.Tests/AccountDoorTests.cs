@@ -9,13 +9,13 @@ using TheKrystalShip.KGSM.Auth.Users;
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
 /// <summary>
-/// The doors that change an account rather than open one: a password, an account ending, and the
-/// ways into one.
+/// What an administrator does to somebody's account: making one, setting its password, ending it.
 /// </summary>
 /// <remarks>
 /// They are the anchor's because the accounts are. A member writing any of them would land in that
 /// member's replica, unversioned, and be overwritten by the next thing published about the account —
-/// appearing to work and then quietly not having happened.
+/// appearing to work and then quietly not having happened. What a person changes about their own
+/// account is the account page's, and its suite.
 /// </remarks>
 [Collection(AnchorCollection.Name)]
 public sealed class AccountDoorTests(AnchorFixture anchor)
@@ -25,15 +25,8 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
 
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
-    private async Task<string> BearerAsync(string username, string password)
-    {
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password }, Wire);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("token").GetString()!;
-    }
+    private async Task<string> BearerAsync(string username, string password) =>
+        (await anchor.SignInAsync((await anchor.Store.FindByUsernameAsync(username))!)).Access;
 
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string path, string bearer, object? body = null)
@@ -46,8 +39,12 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
         return await anchor.Client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> SignInRawAsync(string username, string password) =>
-        await anchor.Client.PostAsJsonAsync("/auth/sign-in", new { username, password }, Wire);
+    /// <summary>Whether a password signs in: the provider's credential post, as its page sends it.</summary>
+    private async Task<HttpResponseMessage> SignInRawAsync(string username, string password)
+    {
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        return await browser.SendAsync(SignInPage.Post("/authorize/credentials", new { username, password }));
+    }
 
     // ── An account arriving ───────────────────────────────────────────────────
 
@@ -147,75 +144,6 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
             new { username = Unique("uninvited-"), tier = "admin" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    // ── A person's own password ───────────────────────────────────────────────
-
-    [Fact]
-    public async Task Changing_your_own_password_needs_the_one_you_hold()
-    {
-        string username = Unique("rotates-");
-        await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-        string bearer = await BearerAsync(username, Long);
-
-        // A bearer left open on a shared machine is otherwise enough to lock somebody out of their
-        // own account for good. It is the one door where being signed in is not the whole proof.
-        HttpResponseMessage guessed = await SendAsync(HttpMethod.Post, "/auth/password", bearer,
-            new { current = "not the password", password = "a different long password" });
-
-        Assert.Equal(HttpStatusCode.Forbidden, guessed.StatusCode);
-
-        HttpResponseMessage changed = await SendAsync(HttpMethod.Post, "/auth/password", bearer,
-            new { current = Long, password = "a different long password" });
-
-        Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
-
-        // The new one works and the old one does not, which is the whole of what "changed" means.
-        Assert.Equal(HttpStatusCode.OK,
-            (await SignInRawAsync(username, "a different long password")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await SignInRawAsync(username, Long)).StatusCode);
-    }
-
-    [Fact]
-    public async Task A_password_below_the_floor_is_refused()
-    {
-        string username = Unique("short-");
-        await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-        string bearer = await BearerAsync(username, Long);
-
-        HttpResponseMessage response = await SendAsync(HttpMethod.Post, "/auth/password", bearer,
-            new { current = Long, password = "short" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-
-        // The floor is read from the one constant every door reads, so it cannot drift low in one of
-        // them. The message says the number, because a refusal that does not is a guess.
-        JsonElement error = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("password_too_short", error.GetProperty("error").GetProperty("code").GetString());
-        Assert.Contains(
-            Passwords.MinLength.ToString(),
-            error.GetProperty("error").GetProperty("message").GetString());
-    }
-
-    [Fact]
-    public async Task Your_own_password_change_is_recorded_as_yours()
-    {
-        string username = Unique("mine-");
-        await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-        string bearer = await BearerAsync(username, Long);
-
-        await SendAsync(HttpMethod.Post, "/auth/password", bearer,
-            new { current = Long, password = "a different long password" });
-
-        JsonElement data = Assert.Single(
-            anchor.Journal(AuthEvents.UserPasswordChanged),
-            e => e.GetProperty("Data").GetProperty("Username").GetString() == username)
-            .GetProperty("Data");
-
-        // The whole point of recording it: somebody else setting your password reads completely
-        // differently from you setting it, and a line that could not tell them apart would report a
-        // takeover and a routine rotation identically.
-        Assert.True(data.GetProperty("ByHolder").GetBoolean());
     }
 
     // ── An administrator's reset ──────────────────────────────────────────────
@@ -368,109 +296,4 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
             e => e.GetProperty("Data").GetProperty("UserId").GetString() == "usr_nothinghere");
     }
 
-    // ── Ways into an account ──────────────────────────────────────────────────
-
-    [Fact]
-    public async Task The_ways_into_an_account_are_listed_with_the_id_a_detach_names()
-    {
-        string username = Unique("linked-");
-        KgsmUser user = await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-        await AttachAsync(user, "discord", "discord:1234567890");
-
-        string bearer = await BearerAsync(username, Long);
-        JsonElement body = await (await SendAsync(HttpMethod.Get, "/auth/identities", bearer))
-            .Content.ReadFromJsonAsync<JsonElement>();
-
-        JsonElement identity = Assert.Single(body.GetProperty("identities").EnumerateArray());
-
-        // The credential id, because a detach is addressed by id — an id a caller cannot learn makes
-        // the door unreachable.
-        Assert.False(string.IsNullOrEmpty(identity.GetProperty("credentialId").GetString()));
-        Assert.Equal("discord", identity.GetProperty("provider").GetString());
-        Assert.Equal("discord:1234567890", identity.GetProperty("handle").GetString());
-
-        // The password is not listed as a way in, because there is nothing about it to detach. That
-        // it EXISTS is said separately, since it is what decides whether removing the last identity
-        // would leave a way in.
-        Assert.True(body.GetProperty("hasPassword").GetBoolean());
-    }
-
-    [Fact]
-    public async Task Detaching_an_identity_records_which_one_it_was()
-    {
-        string username = Unique("detaches-");
-        KgsmUser user = await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-        string credentialId = await AttachAsync(user, "discord", "discord:2233445566");
-
-        string bearer = await BearerAsync(username, Long);
-
-        Assert.Equal(HttpStatusCode.NoContent,
-            (await SendAsync(HttpMethod.Delete, $"/auth/identities/{credentialId}", bearer)).StatusCode);
-
-        JsonElement data = Assert.Single(
-            anchor.Journal(AuthEvents.IdentityUnlinked),
-            e => e.GetProperty("Data").GetProperty("Username").GetString() == username)
-            .GetProperty("Data");
-
-        // Read before it was detached: afterwards there is nothing left to say which identity this
-        // was, and a line naming only an opaque id records that something was removed without saying
-        // what.
-        Assert.Equal("discord", data.GetProperty("Provider").GetString());
-        Assert.Equal("discord:2233445566", data.GetProperty("Handle").GetString());
-    }
-
-    [Fact]
-    public async Task The_last_way_into_an_account_is_refused()
-    {
-        string username = Unique("last-");
-        KgsmUser user = await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-        string credentialId = await AttachAsync(user, "discord", "discord:9988776655");
-
-        string bearer = await BearerAsync(username, Long);
-
-        // The password goes first, leaving the identity as the only way in.
-        UserCredential password = (await anchor.Store.ListCredentialsAsync(user.UserId))
-            .Single(c => c.Kind == CredentialKind.Password);
-        await anchor.Store.RemoveCredentialAsync(password.CredentialId);
-
-        HttpResponseMessage response =
-            await SendAsync(HttpMethod.Delete, $"/auth/identities/{credentialId}", bearer);
-
-        // An account with nothing attached is one its own holder cannot sign in to, and only an admin
-        // can rescue. The rule lives at the door so every caller gets it.
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.NotEmpty(await anchor.Store.ListCredentialsAsync(user.UserId));
-    }
-
-    [Fact]
-    public async Task Somebody_elses_credential_answers_the_same_as_one_that_does_not_exist()
-    {
-        string mine = Unique("scoped-");
-        await anchor.SeedAsync(mine, Long, KgsmTier.Viewer);
-        string bearer = await BearerAsync(mine, Long);
-
-        KgsmUser stranger = await anchor.SeedAsync(Unique("stranger-"), Long, KgsmTier.Viewer);
-        string theirs = await AttachAsync(stranger, "discord", "discord:1122334455");
-
-        HttpResponseMessage response =
-            await SendAsync(HttpMethod.Delete, $"/auth/identities/{theirs}", bearer);
-
-        // 404, the same as an id that is not real. Telling those apart would say whether an id
-        // exists, and the id is the whole of what a caller supplies.
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Contains(
-            await anchor.Store.ListCredentialsAsync(stranger.UserId),
-            c => c.CredentialId == theirs);
-    }
-
-    /// <summary>Attach an external identity to an account, as a provider sign-in would have.</summary>
-    private async Task<string> AttachAsync(KgsmUser user, string provider, string handle)
-    {
-        string credentialId = UserIds.NewCredentialId();
-        await anchor.Store.AddCredentialAsync(new UserCredential(
-            credentialId, user.UserId, CredentialKind.Identity, handle, Secret: null,
-            Label: provider, Created: DateTimeOffset.UtcNow, LastUsed: null));
-
-        return credentialId;
-    }
 }

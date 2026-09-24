@@ -133,7 +133,7 @@ internal static class ProviderPages
         var document = new StringBuilder();
         document.Append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
             .Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">")
-            .Append("<meta name=\"referrer\" content=\"no-referrer\">")
+            .Append("<meta name=\"referrer\" content=\"same-origin\">")
             .Append("<meta name=\"color-scheme\" content=\"light dark\">");
         if (refreshSeconds is { } seconds)
             document.Append("<meta http-equiv=\"refresh\" content=\"").Append(seconds).Append("\">");
@@ -163,7 +163,11 @@ internal static class ProviderPages
             "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; "
             + $"connect-src 'self'; form-action {formAction}; frame-ancestors 'none'; base-uri 'none'";
         headers.CacheControl = "no-store";
-        headers["Referrer-Policy"] = "no-referrer";
+        // Same-origin, not none: a page's own posts must carry its Origin, which is what proves a
+        // credential was sent from this page wherever the browser sends no Sec-Fetch-Site — a provider
+        // served over plain http. Nothing leaves for another origin, so the request in flight and the
+        // code a redirect carries are never handed to a client as a referrer.
+        headers["Referrer-Policy"] = "same-origin";
         headers.XContentTypeOptions = "nosniff";
         headers.XFrameOptions = "DENY";
     }

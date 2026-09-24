@@ -38,15 +38,8 @@ public sealed class AccountAnnouncementKindTests(AnchorFixture anchor)
         return Assert.Single(owed, a => a.UserId == userId).Kind;
     }
 
-    private async Task<string> BearerAsync(string username, string password)
-    {
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password }, Wire);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("token").GetString()!;
-    }
+    private async Task<string> BearerAsync(string username) =>
+        (await anchor.SignInAsync((await anchor.Store.FindByUsernameAsync(username))!)).Access;
 
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method, string path, string bearer, object? body = null)
@@ -64,7 +57,7 @@ public sealed class AccountAnnouncementKindTests(AnchorFixture anchor)
     {
         string admin = Unique("kind-resetter-");
         await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
-        string bearer = await BearerAsync(admin, Long);
+        string bearer = await BearerAsync(admin);
 
         KgsmUser user = await anchor.SeedAsync(Unique("kind-reset-"), Long, KgsmTier.Viewer);
 
@@ -81,13 +74,12 @@ public sealed class AccountAnnouncementKindTests(AnchorFixture anchor)
     [Fact]
     public async Task Somebody_changing_their_own_password_announces_a_change()
     {
-        string subject = Unique("kind-self-");
-        KgsmUser user = await anchor.SeedAsync(subject, Long, KgsmTier.Operator);
-        string bearer = await BearerAsync(subject, Long);
+        KgsmUser user = await anchor.SeedAsync(Unique("kind-self-"), Long, KgsmTier.Operator);
+        AnchorFixture.Session session = await anchor.SignInAsync(user);
 
-        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(
-            HttpMethod.Post, "/auth/password", bearer,
-            new { current = Long, password = "one they chose themselves" })).StatusCode);
+        // The account page's door, with the proof the browser's sign-in just gave it.
+        Assert.Equal(HttpStatusCode.NoContent, (await anchor.Client.SendAsync(session.AtTheAccountPage(
+            HttpMethod.Post, "/account/password", new { password = "one they chose themselves" }))).StatusCode);
 
         Assert.Equal(AccountAnnouncementKind.Changed, await OwedFor(user.UserId));
     }
@@ -97,7 +89,7 @@ public sealed class AccountAnnouncementKindTests(AnchorFixture anchor)
     {
         string admin = Unique("kind-creator-");
         await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
-        string bearer = await BearerAsync(admin, Long);
+        string bearer = await BearerAsync(admin);
 
         string subject = Unique("kind-made-");
         HttpResponseMessage response = await SendAsync(
@@ -118,7 +110,7 @@ public sealed class AccountAnnouncementKindTests(AnchorFixture anchor)
     {
         string admin = Unique("kind-remover-");
         await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
-        string bearer = await BearerAsync(admin, Long);
+        string bearer = await BearerAsync(admin);
 
         KgsmUser user = await anchor.SeedAsync(Unique("kind-gone-"), Long, KgsmTier.Operator);
 

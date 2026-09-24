@@ -32,6 +32,13 @@ public static class ClusterAuthFacts
 
     /// <summary>The address a person's browser signs in at.</summary>
     public const string SignInUrl = "auth.url";
+
+    /// <summary>
+    /// The origins the provider's registered clients live at, as a JSON array of strings: where a browser
+    /// holding one of its sessions is calling from, and so the only origins a member admits across
+    /// origins.
+    /// </summary>
+    public const string ClientOrigins = "auth.origins";
 }
 
 /// <summary>

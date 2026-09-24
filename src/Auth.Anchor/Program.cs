@@ -109,10 +109,8 @@ builder.Services.AddSingleton<AnchorJournal>();
 // made through it waits for an approval only an administrator can give.
 builder.Services.AddHostedService<AnchorBootstrapper>();
 
-// Whether a session has proved lately that its holder owns it, and the links started against that
-// proof. Both in memory: a restart makes every session prove itself again, which is the safe
-// direction to fail in, and drops links in flight, which costs a click and cannot grant anything.
-builder.Services.AddSingleton(sp => new ReauthGate(sp.GetRequiredService<AnchorOptions>().ReauthWindow));
+// The links the account page has started and a provider has not yet sent back. In memory: a restart
+// drops links in flight, which costs a click and cannot grant anything.
 builder.Services.AddSingleton<LinkTicketStore>();
 
 // Sessions are cluster-scoped: the audience is the cluster, not this machine, because a session
@@ -233,10 +231,7 @@ app.MapClusterEndpoints();
 app.MapGet("/health", () => Results.Text("ok\n"));
 
 // What this is. Unauthenticated, because a client handed one address has to establish what is behind
-// it before it can do anything, and a caller with no session is exactly who is asking. An anchor and
-// a standalone node both answer /auth/providers with a provider list, so that question cannot tell
-// them apart — and guessing wrong sends somebody to sign in at a machine that does not hold their
-// account.
+// it before it can do anything, and a caller with no session is exactly who is asking.
 app.MapGet("/auth/identity", DiscoveryEndpoints.Identity);
 
 // What the cluster contains, behind a session. The only place a client learns it: a member of a
@@ -281,15 +276,10 @@ app.MapGet("/auth/cluster/clients", OidcEndpoints.ListClients);
 app.MapPost("/auth/cluster/clients", OidcEndpoints.RegisterClient);
 app.MapDelete("/auth/cluster/clients/{clientId}", OidcEndpoints.RemoveClient);
 
-app.MapGet("/auth/providers", ProviderEndpoints.Providers);
-app.MapGet("/auth/{provider}/start", ProviderEndpoints.Start);
+// Where a provider sends the browser back: to complete the request in flight, or to prove the person
+// again for the account page. The one address registered with the provider's application.
 app.MapGet("/auth/{provider}/callback", ProviderEndpoints.Callback);
 
-app.MapPost("/auth/register", RegisterEndpoint.Register);
-app.MapPost("/auth/sign-in", Endpoints.SignIn);
-app.MapPost("/auth/session/refresh", Endpoints.Refresh);
-app.MapPost("/auth/session/sign-out", Endpoints.SignOut);
-app.MapGet("/auth/session", Endpoints.Session);
 // What this anchor answers about ITSELF — its configuration, its unit, its journal and the commands
 // it declares. It answers for itself because nothing else can: a leaf is configured through the node
 // that runs it, and an anchor is a peer of every node rather than something one hosts.
@@ -303,21 +293,13 @@ app.MapGet("/auth/cluster/users", Endpoints.Accounts);
 app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount);
 app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);
 
-// What somebody may do to their OWN account. A person holds one account across the whole cluster, so
-// this is the only place any of it can be changed — a member writing to its replica would be
-// overwritten by the next thing published about that account.
-app.MapPost("/auth/password", AccountEndpoints.ChangePassword);
-app.MapGet("/auth/identities", AccountEndpoints.Identities);
-
-// Changing what proves an account asks for a credential again. Holding a session is not the same as
-// having proved you own it, and attaching an identity outlives the session that attached it.
-app.MapPost("/auth/reauth", IdentityEndpoints.Reauth);
-app.MapPost("/auth/identities/{provider}/start", IdentityEndpoints.StartLink);
+// Where a provider sends the browser back after the account page began attaching an identity. A
+// different address from the sign-in callback: one attaches whoever comes back to an account already
+// signed in, and sharing an address would let a link return through the sign-in door.
 app.MapGet("/auth/identities/{provider}/callback", IdentityEndpoints.CompleteLink);
-app.MapDelete("/auth/identities/{credentialId}", AccountEndpoints.Unlink);
 
-// What an administrator may do to somebody else's. Setting a password knows no current one, because
-// the case it exists for is a person who has lost theirs.
+// What an administrator may do to somebody else's account. Setting a password knows no current one,
+// because the case it exists for is a person who has lost theirs.
 app.MapPost("/auth/cluster/users/{userId}/password", AccountEndpoints.SetPassword);
 app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount);
 
@@ -326,8 +308,7 @@ app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount);
 // asked what devices somebody holds answers honestly with none — an empty card rather than a wrong
 // question. Ending one is never gated on holding the capability, because revoking takes authority
 // away and a member that has stood down still holds the rows for what it minted.
-app.MapGet("/auth/sessions", SessionEndpoints.List);
-app.MapPost("/auth/session/revoke", SessionEndpoints.Revoke);
+app.MapGet("/auth/cluster/users/{userId}/sessions", SessionEndpoints.List);
 app.MapPost("/auth/cluster/users/{userId}/sessions/revoke-all", SessionEndpoints.RevokeAll);
 app.MapPost("/auth/cluster/users/{userId}/sessions/{sid}/revoke", SessionEndpoints.RevokeOne);
 

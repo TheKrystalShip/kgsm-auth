@@ -28,13 +28,7 @@ public sealed class AnchorSnapshotTests(AnchorFixture anchor)
     [Fact]
     public async Task A_person_s_own_session_does_not_open_this_door()
     {
-        string username = Unique("person-");
-        await anchor.SeedAsync(username, "an admin session", KgsmTier.Admin);
-        HttpResponseMessage signIn = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = "an admin session" },
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        string bearer = (await signIn.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("token").GetString()!;
+        string bearer = (await anchor.SignedInAsync(KgsmTier.Admin, "person")).Session.Access;
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "/auth/cluster/snapshot");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);

@@ -297,8 +297,7 @@ internal static class AccountPageEndpoints
     /// </summary>
     /// <remarks>
     /// Same-origin, so the link ticket's cookie is first-party. It returns through the link callback
-    /// registered with the provider, which sends the browser back to this page because the ticket names a
-    /// provider session.
+    /// registered with the provider, which sends the browser back to this page.
     /// </remarks>
     internal static async Task StartLink(HttpContext ctx)
     {
@@ -374,7 +373,6 @@ internal static class AccountPageEndpoints
             foreach (string sid in ended)
             {
                 validator.Evict(sid);
-                ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(sid);
                 await broadcast.RevokedAsync(sid, ctx.RequestAborted);
             }
 
@@ -408,7 +406,6 @@ internal static class AccountPageEndpoints
         {
             await registry.RevokeAsync(target, ctx.RequestAborted);
             ctx.RequestServices.GetRequiredService<ISessionValidator>().Evict(target);
-            ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(target);
             await ctx.RequestServices.GetRequiredService<SessionBroadcast>().RevokedAsync(target, ctx.RequestAborted);
             await journal.SessionRevokedAsync(SessionRevokeScopes.Self, user.UserId, user.Username, target,
                 count: null, actor, AnchorJournal.OriginUi, ctx.RequestAborted);

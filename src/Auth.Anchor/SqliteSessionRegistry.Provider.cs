@@ -194,6 +194,14 @@ internal sealed partial class SqliteSessionRegistry
             );
             """;
         cmd.ExecuteNonQuery();
+
+        // Every session lives under a browser's sign-in here: a provider session, or one minted under
+        // one. A row that is neither is no session this anchor continues — nothing ends it on a
+        // sign-out and nothing lists it with the sign-in it came from — so it goes as the registry opens.
+        // Its bearer is refused at its next renewal and runs out within one access lifetime.
+        using SqliteCommand orphans = connection.CreateCommand();
+        orphans.CommandText = "DELETE FROM sessions WHERE kind IS NULL AND provider_session IS NULL;";
+        orphans.ExecuteNonQuery();
     }
 
     // ── Sessions minted under a provider session ─────────────────────────────

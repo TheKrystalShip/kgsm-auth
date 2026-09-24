@@ -12,7 +12,8 @@ using TheKrystalShip.Api.Contracts;
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
-/// The anchor's HTTP surface: signing in, keeping a session, and reading the accounts.
+/// What every door here shares — checking a password, minting and rotating a session, reading the
+/// caller — and the administration of the accounts.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -69,62 +70,7 @@ internal static class Endpoints
         return false;
     }
 
-    // ── Sign in ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Verify a KGSM password and mint a cluster-scoped session for it.
-    /// </summary>
-    /// <remarks>
-    /// This is the one door. A person signs in here, once, and the session works on every member —
-    /// so no member ever holds a credential, and none of them proxies one.
-    /// </remarks>
-    internal static async Task SignIn(HttpContext ctx)
-    {
-        if (!await RequireAuthorityAsync(ctx))
-            return;
-
-        SignInRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.SignInRequest);
-        if (body is null)
-        {
-            await Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request", "The request body is not readable.");
-            return;
-        }
-
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        if (await CheckPasswordAsync(ctx, body.Username, body.Password, now) is not { } result)
-        {
-            await Unavailable(ctx);
-            return;
-        }
-
-        switch (result.Outcome)
-        {
-            case LocalSignInOutcome.LockedOut:
-                // The wait is stated, because a person who has mistyped their own password twice
-                // needs to know it is a wait rather than a permanent refusal.
-                if (result.RetryAfter is { } until)
-                    ctx.Response.Headers.RetryAfter = RetryAfterSeconds(until, now).ToString();
-
-                await Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
-                    "Too many failed attempts. Try again shortly.");
-                return;
-
-            case LocalSignInOutcome.Disabled:
-                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
-                    "This account has been switched off.");
-                return;
-
-            case LocalSignInOutcome.Success when result.Principal is { } principal && result.User is { } user:
-                await MintSessionFor(ctx, principal.Identity, principal.Tier, user, now,
-                    AsJson(ctx, user, principal.Tier, StatusCodes.Status200OK));
-                return;
-
-            default:
-                await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_credentials",
-                    "That username and password do not match an account.");
-                return;
-        }
-    }
+    // ── Proving a password ────────────────────────────────────────────────────
 
     /// <summary>
     /// Check a KGSM password, with everything a check has to record already recorded.
@@ -217,9 +163,7 @@ internal static class Endpoints
 
 
     /// <summary>
-    /// Record a session and answer with it. One path, so a session that arrives through any door is
-    /// the same session recorded the same way — the doors differ in what proves a person and in
-    /// nothing after that.
+    /// Record a session and answer with it.
     /// </summary>
     /// <remarks>
     /// <b>The one place a session begins, and therefore the one place a sign-in is recorded.</b> A
@@ -231,17 +175,13 @@ internal static class Endpoints
     /// <param name="tier">What the account store says they may do, resolved now.</param>
     /// <param name="user">The account behind that identity.</param>
     /// <param name="now">The clock, so a session's row and its tokens agree on when it started.</param>
-    /// <param name="respond">
-    /// Answers the caller with the session. A door that returns JSON and one that redirects a browser
-    /// carrying the tokens in the URL fragment differ here and nowhere else.
-    /// </param>
+    /// <param name="respond">Answers the caller with the session.</param>
     /// <param name="providerSession">
-    /// The provider session this was minted under, for a session that came through the OpenID Connect
-    /// doors — so ending that browser's sign-in ends this too. Null for one a door minted directly.
+    /// The browser's sign-in this was minted under, so ending that sign-in ends this too.
     /// </param>
     internal static async Task MintSessionFor(
         HttpContext ctx, KgsmIdentity identity, KgsmTier tier, KgsmUser user, DateTimeOffset now,
-        Func<MintedToken, MintedToken, Task> respond, string? providerSession = null)
+        Func<MintedToken, MintedToken, Task> respond, string providerSession)
     {
         var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
@@ -262,15 +202,7 @@ internal static class Endpoints
             UserAgent: UserAgentOf(ctx),
             CurrentJti: refresh.Jti);
 
-        if (providerSession is not null)
-            await ((SqliteSessionRegistry)registry).CreateAsync(registration, providerSession, ctx.RequestAborted);
-        else
-            await registry.CreateAsync(registration, ctx.RequestAborted);
-
-        // Arriving IS proving a credential, so somebody who has just signed in changes how they sign
-        // in without being asked for anything, and somebody returning to a week-old tab is asked
-        // once. Stamped here because this is the one place a session begins.
-        ctx.RequestServices.GetRequiredService<ReauthGate>().Stamp(sessionId);
+        await ((SqliteSessionRegistry)registry).CreateAsync(registration, providerSession, ctx.RequestAborted);
 
         // Recorded after the session exists and before the caller is answered. The actor is the
         // identity that arrived rather than this daemon: nobody else was involved in a sign-in, and
@@ -291,69 +223,7 @@ internal static class Endpoints
         await respond(access, refresh);
     }
 
-    /// <summary>Answer a caller with the session itself, as JSON.</summary>
-    internal static Func<MintedToken, MintedToken, Task> AsJson(
-        HttpContext ctx, KgsmUser user, KgsmTier tier, int status) =>
-        (access, refresh) => WriteJson(ctx, status, new SignInResult(
-            Token: access.Token,
-            Refresh: refresh.Token,
-            Tier: KgsmTiers.ToWire(tier),
-            UserId: user.UserId,
-            Status: UserStatuses.ToWire(user.Status),
-            Cluster: ctx.RequestServices.GetRequiredService<AnchorOptions>().ClusterId,
-            AccessTokenExpiresAt: access.ExpiresAt,
-            RefreshExpiresAt: refresh.ExpiresAt),
-            AnchorJsonContext.Default.SignInResult);
-
     // ── Keep a session ────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Rotate a session: a new access bearer and a new refresh token, with standing re-read.
-    /// </summary>
-    /// <remarks>
-    /// Nothing on this path leaves the machine. That is what makes a session survive an outage of
-    /// anything else — the tier comes from the account store on this host, and the signature from the
-    /// key this daemon holds.
-    /// </remarks>
-    internal static async Task Refresh(HttpContext ctx)
-    {
-        // Refusing here as well as at sign-in is what stops a member that has stood down from
-        // extending the sessions it minted while it still believed it was the authority.
-        if (!await RequireAuthorityAsync(ctx))
-            return;
-
-        RefreshRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.RefreshRequest);
-        if (body?.Refresh is not { Length: > 0 } presented)
-        {
-            await Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request", "No refresh token was sent.");
-            return;
-        }
-
-        Rotation rotation = await RotateAsync(ctx, presented);
-        switch (rotation.Outcome)
-        {
-            case RotationOutcome.Unavailable:
-                await Unavailable(ctx);
-                return;
-
-            case RotationOutcome.Withdrawn:
-                await Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled",
-                    "This account has been switched off.");
-                return;
-
-            case RotationOutcome.Invalid:
-                await Refuse(ctx, StatusCodes.Status401Unauthorized, "invalid_refresh_token",
-                    "That session cannot be continued. Sign in again.");
-                return;
-        }
-
-        await WriteJson(ctx, StatusCodes.Status200OK, new RefreshResult(
-            Token: rotation.Access!.Token,
-            Refresh: rotation.Refresh!.Token,
-            Tier: KgsmTiers.ToWire(rotation.Tier),
-            ExpiresAt: rotation.Access.ExpiresAt),
-            AnchorJsonContext.Default.RefreshResult);
-    }
 
     /// <summary>What presenting a refresh token came to.</summary>
     internal enum RotationOutcome
@@ -378,8 +248,9 @@ internal static class Endpoints
     /// Rotate the session a refresh token belongs to, with standing re-read.
     /// </summary>
     /// <remarks>
-    /// Shared by every door that renews a session, which differ only in the shape they answer in. The
-    /// caller has already established that this member is the authority.
+    /// The refresh grant at <c>/token</c>. Nothing on this path leaves the machine, which is what makes
+    /// a session survive an outage of anything else — the tier comes from the account store on this
+    /// host, and the signature from the key this daemon holds.
     /// </remarks>
     internal static async Task<Rotation> RotateAsync(HttpContext ctx, string presented)
     {
@@ -411,7 +282,6 @@ internal static class Endpoints
             // the other members is what stops that bearer from being spent on them meanwhile.
             await registry.RevokeAsync(claims.SessionId, ctx.RequestAborted);
             validator.Evict(claims.SessionId);
-            ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(claims.SessionId);
             await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
                 .RevokedAsync(claims.SessionId, ctx.RequestAborted);
 
@@ -452,135 +322,7 @@ internal static class Endpoints
         return new Rotation(RotationOutcome.Rotated, access, refresh, answer.Tier);
     }
 
-    /// <summary>
-    /// End a session.
-    /// </summary>
-    /// <remarks>
-    /// Answers 204 whether or not there was something to end. A signed-out caller wants to be signed
-    /// out, and reporting "there was no such session" would tell a stranger holding a stolen token
-    /// whether it was still live.
-    /// <para>
-    /// Not gated on holding the capability, unlike every other door here. Ending a session takes
-    /// authority away rather than granting it, and a member that has stood down still holds the rows
-    /// for sessions it minted — refusing would strand somebody signed in to a member that has since
-    /// become a candidate.
-    /// </para>
-    /// </remarks>
-    internal static async Task SignOut(HttpContext ctx)
-    {
-        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
-        var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
-        var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
-
-        string? sessionId = null;
-        KgsmIdentity? identity = null;
-        KgsmUser? user = null;
-
-        RefreshRequest? body = await ReadBodyAsync(ctx, AnchorJsonContext.Default.RefreshRequest);
-        if (body?.Refresh is { Length: > 0 } presented
-            && await tokens.ReadRefreshAsync(presented) is { } claims)
-        {
-            sessionId = claims.SessionId;
-            identity = claims.Identity;
-        }
-
-        // A caller that sent no refresh token still ends the session its bearer belongs to, so
-        // signing out works from a client that holds only the access token.
-        if (sessionId is null)
-        {
-            var auth = ctx.RequestServices.GetRequiredService<AnchorAuth>();
-            try
-            {
-                Caller caller = await auth.ResolveAsync(ctx.Request, ctx.RequestAborted);
-                sessionId = caller.SessionId;
-                identity = caller.Identity;
-                user = caller.User;
-            }
-            catch (KgsmAuthProviderException)
-            {
-                await Unavailable(ctx);
-                return;
-            }
-        }
-
-        if (sessionId is not null)
-        {
-            // Whether this call is what ENDED it. A client retrying a sign-out, or one holding a
-            // token whose session was revoked from somewhere else, presents a session that is
-            // already over — and everything below is about a session ending, which is not what just
-            // happened. The caller still gets its 204 either way: somebody wanting to be signed out
-            // is signed out, and reporting "there was no such session" would tell a stranger holding
-            // a stolen token whether it was still live.
-            bool ended = await registry.RevokeAsync(sessionId, ctx.RequestAborted);
-            validator.Evict(sessionId);
-
-            // A proof belongs to a session, so it dies with one. Left standing, a session id reissued
-            // or replayed would arrive already trusted to change what proves the account.
-            ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(sessionId);
-
-            // The row is here and the session is accepted everywhere. Ending it locally without
-            // saying so leaves somebody signed out on the door they used and signed in on every
-            // other one.
-            if (ended)
-                await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
-                    .RevokedAsync(sessionId, ctx.RequestAborted);
-
-            if (ended && identity is { } who)
-            {
-                // The account, looked up by the handle the token carries when the caller did not
-                // arrive with the row in hand. It is a real query with a real answer, not a value
-                // derived from the handle — and the id is the durable key a trail joins on, where the
-                // username is renameable. Leaving it null would mean anyone filtering auth events by
-                // account got every sign-in and silently no sign-outs, which reads as a person who
-                // never signed out rather than as a query that cannot answer.
-                user ??= await ctx.RequestServices.GetRequiredService<IUserStore>()
-                    .FindByCredentialAsync(who.Handle, ctx.RequestAborted);
-
-                await ctx.RequestServices.GetRequiredService<AnchorJournal>().SessionAsync(
-                    AuthEvents.SignedOut,
-                    userId: user?.UserId,
-                    username: who.Username,
-                    identity: who.Handle,
-                    provider: who.Provider,
-                    // A tier belongs to the session as it was minted, and the sign-in row this pairs
-                    // with by Sid already carries it. Recording it again at the other end would put
-                    // the same field on two rows meaning two different things — granted-at-mint and
-                    // happened-to-hold-at-exit — which no reader can tell apart.
-                    tier: null,
-                    sid: sessionId,
-                    userAgent: UserAgentOf(ctx),
-                    actor: who.ActorString,
-                    origin: AnchorJournal.OriginUi,
-                    ct: ctx.RequestAborted);
-            }
-        }
-
-        ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-    }
-
-    // ── Read ──────────────────────────────────────────────────────────────────
-
-    /// <summary>Who the caller is, resolved against the store rather than read off their token.</summary>
-    internal static async Task Session(HttpContext ctx)
-    {
-        if (!await RequireAuthorityAsync(ctx))
-            return;
-
-        Caller? maybe = await RequireCaller(ctx, KgsmTier.None);
-        if (maybe is not { } caller || caller.User is not { } user)
-            return;
-
-        AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
-
-        await WriteJson(ctx, StatusCodes.Status200OK, new WhoAmI(
-            UserId: user.UserId,
-            Username: user.Username,
-            DisplayName: user.DisplayName,
-            Tier: KgsmTiers.ToWire(caller.Tier),
-            Status: UserStatuses.ToWire(user.Status),
-            Cluster: options.ClusterId),
-            AnchorJsonContext.Default.WhoAmI);
-    }
+    // ── Accounts ──────────────────────────────────────────────────────────────
 
     /// <summary>Every account the anchor holds. Never carries a secret in any form.</summary>
     internal static async Task Accounts(HttpContext ctx)

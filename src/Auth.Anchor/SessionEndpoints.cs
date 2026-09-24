@@ -5,7 +5,7 @@ using TheKrystalShip.KGSM.Auth.Users;
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
-/// The sessions a person holds, and ending them.
+/// Somebody's sessions, as an administrator reads and ends them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,6 +16,11 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// surface exists to prevent.
 /// </para>
 /// <para>
+/// A person's own sessions are the account page's (<see cref="AccountPageEndpoints"/>), authenticated
+/// by the provider's cookie. These doors are an administrator's, reached from a Control Panel with the
+/// bearer it holds, and each addresses the account it acts on.
+/// </para>
+/// <para>
 /// <b>Ending a session is never gated on holding the capability.</b> Every other door here refuses
 /// while another member holds the accounts, because minting or writing would be answering for
 /// something that is not this member's. Revoking takes authority away, and a member that has stood
@@ -24,31 +29,26 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 internal static class SessionEndpoints
 {
-    /// <summary>Every live session for the caller, or for the account an admin names.</summary>
+    /// <summary>Every live session an account holds — an administrator's door.</summary>
     internal static async Task List(HttpContext ctx)
     {
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.None);
-        if (maybe is not { } caller || caller.User is not { } user)
+        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.Admin);
+        if (maybe is not { } caller)
             return;
 
-        // An admin may read somebody else's. Anybody may read their own, and a viewer asking for
-        // another account gets their own rather than a refusal that confirms the account exists.
-        string? asked = ctx.Request.Query["userId"].ToString();
-        KgsmUser subject = user;
-
-        if (!string.IsNullOrWhiteSpace(asked)
-            && !string.Equals(asked, user.UserId, StringComparison.Ordinal)
-            && caller.Holds(KgsmTier.Admin))
+        if (ctx.Request.RouteValues["userId"] as string is not { Length: > 0 } userId)
         {
-            if (await ctx.RequestServices.GetRequiredService<IUserStore>()
-                    .FindByIdAsync(asked, ctx.RequestAborted) is not { } other)
-            {
-                await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_such_account",
-                    "No account has that id.");
-                return;
-            }
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_user",
+                "A user id is required.");
+            return;
+        }
 
-            subject = other;
+        if (await ctx.RequestServices.GetRequiredService<IUserStore>()
+                .FindByIdAsync(userId, ctx.RequestAborted) is not { } subject)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_such_account",
+                "No account has that id.");
+            return;
         }
 
         IReadOnlyList<SqliteSessionRegistry.LiveSession> live =
@@ -57,57 +57,11 @@ internal static class SessionEndpoints
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new SessionsPage(
             [.. live.Select(s => new SessionRecord(
                 s.SessionId, s.UserId, s.Created, s.Expires, s.UserAgent, s.LastSeen,
-                // True on exactly the row the calling bearer belongs to, so a surface can say "this
-                // device" rather than making somebody work out which is theirs.
+                // True on exactly the row the calling bearer belongs to, so an administrator reading
+                // their own account sees which device is the one they are using.
                 Current: string.Equals(s.SessionId, caller.SessionId, StringComparison.Ordinal),
                 Kind: s.Provider ? SqliteSessionRegistry.ProviderKind : null))]),
             AnchorJsonContext.Default.SessionsPage);
-    }
-
-    /// <summary>End one of the caller's own sessions, or all of them.</summary>
-    /// <remarks>
-    /// A named session must be the caller's. A sid is opaque and unguessable, but one that leaks must
-    /// not become a way to sign somebody else out — and "not yours" answers the same as "not real",
-    /// because telling those apart says whether an id exists.
-    /// </remarks>
-    internal static async Task Revoke(HttpContext ctx)
-    {
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.None);
-        if (maybe is not { } caller || caller.User is not { } user)
-            return;
-
-        RevokeRequest? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.RevokeRequest);
-        IReadOnlyList<string> handles = await HandlesOf(ctx, user);
-
-        if (body?.All == true)
-        {
-            await EndAllAsync(ctx, user, handles, SessionRevokeScopes.All, caller);
-            return;
-        }
-
-        // Neither set ends the calling session, which is what a sign-out is.
-        string? sid = body?.Sid is { Length: > 0 } named ? named : caller.SessionId;
-        if (sid is null)
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_session",
-                "No session to end.");
-            return;
-        }
-
-        SqliteSessionRegistry registry = RegistryOf(ctx);
-        if (await registry.OwnerAsync(sid, ctx.RequestAborted) is not { } owner
-            || !handles.Contains(owner, StringComparer.Ordinal))
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_such_session",
-                "You hold no session with that id.");
-            return;
-        }
-
-        await EndAsync(ctx, sid);
-        await RecordAsync(ctx, SessionRevokeScopes.Self, user, sid, 1, caller);
-
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new RevokeResult(1),
-            AnchorJsonContext.Default.RevokeResult);
     }
 
     /// <summary>End every session an account holds — an administrator's door.</summary>
@@ -179,10 +133,9 @@ internal static class SessionEndpoints
 
         IReadOnlyList<string> handles = await HandlesOf(ctx, subject);
 
-        // A sid that belongs to somebody else answers the same as one that does not exist, for the
-        // same reason it does on the caller's own door: telling those apart says whether an id is
-        // real, and an admin acting on the wrong account should be told they have the wrong account
-        // rather than shown a stranger's session.
+        // A sid that belongs to somebody else answers the same as one that does not exist: telling
+        // those apart says whether an id is real, and an admin acting on the wrong account should be
+        // told they have the wrong account rather than shown a stranger's session.
         if (await RegistryOf(ctx).OwnerAsync(sid, ctx.RequestAborted) is not { } owner
             || !handles.Contains(owner, StringComparer.Ordinal))
         {
@@ -207,13 +160,11 @@ internal static class SessionEndpoints
             await RegistryOf(ctx).RevokeAllAsync(handles, ctx.RequestAborted);
 
         var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
-        var gate = ctx.RequestServices.GetRequiredService<ReauthGate>();
         var broadcast = ctx.RequestServices.GetRequiredService<SessionBroadcast>();
 
         foreach (string sid in ended)
         {
             validator.Evict(sid);
-            gate.Forget(sid);
 
             // Each one, because a cluster session is accepted on every member and has a row only
             // here. Ending them locally without saying so leaves somebody signed out on the door
@@ -244,7 +195,6 @@ internal static class SessionEndpoints
             .RevokeAsync(sid, ctx.RequestAborted);
 
         ctx.RequestServices.GetRequiredService<ISessionValidator>().Evict(sid);
-        ctx.RequestServices.GetRequiredService<ReauthGate>().Forget(sid);
 
         await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
             .RevokedAsync(sid, ctx.RequestAborted);

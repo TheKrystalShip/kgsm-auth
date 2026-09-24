@@ -31,12 +31,6 @@
     // Blank states no host, and the name is not published.
     "PublicHost": "",
 
-    // Where a browser is sent back to after signing in with an external provider — the Control
-    // Panel's own address. The session rides the URL fragment, which is never sent to a server, so
-    // it stays out of access logs and out of the Referer header. Blank answers the callback with
-    // the session itself instead, which is what a caller that is not a browser wants.
-    "FrontendUrl": "",
-
     // The cluster a session is scoped to. It is the token audience: a session minted here is valid
     // on every member of THIS cluster and on nothing else. Changing it invalidates every token
     // already issued, so a running cluster keeps the value it started with.
@@ -83,11 +77,6 @@
     // fresh sign-in.
     "RefreshLifetimeDays": 30,
 
-    // Browser origins allowed to call this anchor, comma-separated. A person signs in here from the
-    // Control Panel, which is served from a different origin, so without an entry the browser
-    // refuses the response before any code here sees it. Blank allows none.
-    "AllowedOrigins": "",
-
     // Origins a Control Panel is served from with no member behind it, comma-separated. Each is a
     // client of this provider at the panel's own paths. A panel a node serves is announced instead.
     "PanelOrigins": "",
@@ -108,9 +97,10 @@
     // ever removes an account nobody has granted anything to.
     "PendingTtlDays": 14,
 
-    // How long after proving a password somebody may keep attaching or detaching sign-in methods.
-    // Holding a session is not the same as having proved you own it, and attaching an identity
-    // outlives the session: afterwards whoever holds that provider account can sign in as this one.
+    // How long after proving a credential somebody may keep changing how they sign in on the account
+    // page. Being signed in on a browser is not the same as having proved you own the account, and
+    // attaching an identity outlives the session: afterwards whoever holds that provider account can
+    // sign in as this one.
     "ReauthWindowMinutes": 5,
 
     // How often dead session rows are swept. The sweep only deletes what is already past its cap;

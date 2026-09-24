@@ -79,7 +79,6 @@ internal sealed class ProviderSessions(
     AnchorOptions options,
     IUserStore store,
     ISessionValidator validator,
-    ReauthGate gate,
     SessionBroadcast broadcast,
     AnchorJournal journal)
 {
@@ -156,7 +155,6 @@ internal sealed class ProviderSessions(
         foreach ((string sid, string handle, bool provider) in ended)
         {
             validator.Evict(sid);
-            gate.Forget(sid);
             if (provider)
                 continue;
 

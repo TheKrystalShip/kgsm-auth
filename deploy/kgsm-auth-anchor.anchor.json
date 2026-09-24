@@ -44,16 +44,6 @@
   ],
   "fields": [
     {
-      "key": "frontendUrl",
-      "env": "Anchor__FrontendUrl",
-      "label": "Panel address",
-      "description": "The Control Panel address a person lands back on after signing in with an external account. Blank means the sign-in answers with the session directly instead of sending a browser anywhere.",
-      "group": "network",
-      "type": "string",
-      "default": "",
-      "risk": "wiring"
-    },
-    {
       "key": "listenAddress",
       "env": "Anchor__ListenAddress",
       "label": "Listen address",
@@ -110,16 +100,6 @@
       "type": "string",
       "default": "kgsm",
       "risk": "destructive"
-    },
-    {
-      "key": "allowedOrigins",
-      "env": "Anchor__AllowedOrigins",
-      "label": "Allowed browser origins",
-      "description": "The browser origins allowed to sign in against this anchor, comma-separated. The Control Panel is served from a different origin, so without an entry for it the browser refuses the response before this daemon's answer is read.",
-      "group": "network",
-      "type": "csv",
-      "default": "",
-      "risk": "wiring"
     },
     {
       "key": "panelOrigins",

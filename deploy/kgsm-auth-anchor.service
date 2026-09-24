@@ -31,10 +31,6 @@ Environment=Anchor__UserStorePath=/var/lib/kgsm/auth/users.db
 Environment=Anchor__SessionStorePath=/var/lib/kgsm-auth-anchor/sessions.db
 Environment=Anchor__SigningKeyPath=/var/lib/kgsm-auth-anchor/session-signing.pem
 
-# The browser origins allowed to sign in here. Blank allows none, so the Control Panel's origin
-# belongs in the env file below.
-# Environment=Anchor__AllowedOrigins=https://panel.example
-
 # The shared cluster secret, loaded before this anchor's own env file so one file serves every
 # member on the machine. Blank means this host is not part of a cluster, which is a state and not a
 # misconfiguration.

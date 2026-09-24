@@ -45,16 +45,6 @@ internal sealed class AnchorSettings
         public const int SessionCleanupMinutes = 1;
     }
 
-    /// <summary>
-    /// Where the browser is sent back to after signing in with a provider. Blank answers the callback
-    /// as JSON instead, which is what a client that is not a browser wants.
-    /// </summary>
-    /// <panel>The Control Panel address a person lands back on after signing in with an external
-    /// account. Blank means the sign-in answers with the session directly instead of sending a
-    /// browser anywhere.</panel>
-    [ConfigField("frontendUrl", "Panel address", Group = "network", Risk = ConfigRisk.Wiring)]
-    public string? FrontendUrl { get; set; }
-
     /// <summary>Whether somebody with no account may make one.</summary>
     /// <panel>Whether a person with no account can create one from the sign-in page. The account they
     /// get holds nothing until an administrator grants it something, and the limit below bounds how
@@ -196,14 +186,6 @@ internal sealed class AnchorSettings
     [ConfigField("refreshLifetimeDays", "Session lifetime", Group = "sessions",
         Min = Floors.RefreshLifetimeDays, Unit = "days")]
     public int? RefreshLifetimeDays { get; set; }
-
-    /// <summary>Browser origins allowed to call this anchor, comma-separated.</summary>
-    /// <panel>The browser origins allowed to sign in against this anchor, comma-separated. The Control
-    /// Panel is served from a different origin, so without an entry for it the browser refuses the
-    /// response before this daemon's answer is read.</panel>
-    [ConfigField("allowedOrigins", "Allowed browser origins", Group = "network", Type = ConfigType.Csv,
-        Risk = ConfigRisk.Wiring)]
-    public string AllowedOrigins { get; set; } = "";
 
     /// <summary>Origins a Control Panel is served from with no member behind it, comma-separated.</summary>
     /// <panel>Where a Control Panel is served from a plain web server rather than by a node — a static

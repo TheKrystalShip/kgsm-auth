@@ -25,17 +25,8 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
 
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
-    private async Task<string> BearerAsync()
-    {
-        string username = Unique("looker-");
-        await anchor.SeedAsync(username, Long, KgsmTier.Viewer);
-
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = Long }, Wire);
-
-        return (await response.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("token").GetString()!;
-    }
+    private async Task<string> BearerAsync() =>
+        (await anchor.SignedInAsync(KgsmTier.Viewer, "looker")).Session.Access;
 
     private async Task<JsonElement> RosterAsync(string bearer)
     {
@@ -75,9 +66,8 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
 
         JsonElement identity = await response.Content.ReadFromJsonAsync<JsonElement>();
 
-        // The name is what a client matches on. An anchor and a standalone node both answer
-        // /auth/providers with a provider list, so that question cannot tell them apart — and
-        // guessing wrong sends somebody to sign in at a machine that does not hold their account.
+        // The name is what a client matches on: anything else answering on this path is not an anchor,
+        // and treating a 200 as proof would classify a reverse proxy as the cluster's accounts.
         Assert.Equal("kgsm-auth-anchor", identity.GetProperty("name").GetString());
         Assert.Equal(AnchorFixture.ClusterId, identity.GetProperty("cluster").GetString());
         Assert.True(identity.GetProperty("holding").GetBoolean());

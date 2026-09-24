@@ -55,9 +55,9 @@ internal sealed partial class ClientRegistry
     public IReadOnlyList<RegisteredClient> Declared => _declared;
 
     /// <summary>
-    /// A client per configured panel origin, at the paths every Control Panel lands on. Its id is the
-    /// origin's host, with the port when there is one, which is stable across restarts and readable in a
-    /// listing.
+    /// A client per configured panel origin, at the paths every Control Panel lands on. Its id is
+    /// <see cref="ClusterClientAnnouncement.ClientIdFor"/> the origin, the one a panel loaded there
+    /// derives for itself.
     /// </summary>
     private static (IReadOnlyList<RegisteredClient> Declared, IReadOnlyList<(string, string)> Refused) Declare(
         IReadOnlyList<string> origins, DateTimeOffset now)
@@ -81,8 +81,7 @@ internal sealed partial class ClientRegistry
                 continue;
             }
 
-            string id = uri.IsDefaultPort ? uri.Host.ToLowerInvariant() : $"{uri.Host.ToLowerInvariant()}-{uri.Port}";
-            if (!ClientIdShape().IsMatch(id))
+            if (ClusterClientAnnouncement.ClientIdFor(origin) is not { } id || !ClientIdShape().IsMatch(id))
             {
                 refused.Add((origin, "its host cannot name a client"));
                 continue;
@@ -109,6 +108,9 @@ internal sealed partial class ClientRegistry
     /// what this provider publishes and exchange codes, and nothing that reads its cookie.
     /// </summary>
     public bool IsClientOrigin(string origin) => _snapshot.Origins.Contains(origin);
+
+    /// <summary>Every origin a registered client lives at — what members admit across origins.</summary>
+    public IReadOnlyCollection<string> Origins => [.. _snapshot.Origins];
 
     /// <summary>Whether <paramref name="uri"/> is one of the client's redirect URIs, exactly.</summary>
     public static bool Redirects(RegisteredClient client, string? uri) =>
@@ -192,8 +194,9 @@ internal sealed partial class ClientRegistry
     /// </summary>
     /// <remarks>
     /// Each announcement's paths are joined to the browser address the member's own roster row carries,
-    /// so a member announces only somewhere on the address the cluster hands out for it. A member with no
-    /// such address announces nothing reachable, and is skipped rather than registered at a guess.
+    /// so a member announces only somewhere on the address the cluster hands out for it, and the client
+    /// id is the one a surface loaded from that address derives. A member with no such address announces
+    /// nothing reachable, and is skipped rather than registered at a guess.
     /// </remarks>
     /// <returns>Whether the set changed.</returns>
     public async Task<bool> SyncMembersAsync(IReadOnlyList<MemberRow> roster, DateTimeOffset now, CancellationToken ct)
@@ -205,7 +208,8 @@ internal sealed partial class ClientRegistry
                 continue;
 
             string address = MemberCandidates.ClientUrl(MemberCandidates.Decode(row.Candidates)).TrimEnd('/');
-            if (address.Length == 0 || Problem(address) is not null)
+            if (address.Length == 0 || Problem(address) is not null
+                || ClusterClientAnnouncement.ClientIdFor(address) is not { } id || !ClientIdShape().IsMatch(id))
                 continue;
 
             string[] redirects = [.. Join(address, announcement.RedirectPaths)];
@@ -214,7 +218,7 @@ internal sealed partial class ClientRegistry
 
             string name = string.IsNullOrWhiteSpace(announcement.Name) ? row.MemberId : announcement.Name.Trim();
             announced.Add(new RegisteredClient(
-                row.MemberId, name.Length > 80 ? name[..80] : name, redirects,
+                id, name.Length > 80 ? name[..80] : name, redirects,
                 [.. Join(address, announcement.PostLogoutRedirectPaths)],
                 ClientSources.Member, row.MemberId, now));
         }

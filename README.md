@@ -197,18 +197,17 @@ revoked session still presenting its token is exactly what a stolen one does.
 ## The auth anchor
 
 `kgsm-auth-anchor` is the member of a cluster that holds the accounts. One store, one writer, one
-address a person signs in to — and a session it mints is valid on **every** member, because its
-audience is the cluster rather than a machine. The design and its phases are
-`../cluster-auth-plan.md`; this is what the daemon serves.
+address a person signs in at — an OpenID Connect provider every browser surface is a client of — and
+a session it mints is valid on **every** member, because its audience is the cluster rather than a
+machine. The identity design is `../cluster-auth-plan.md` and the sign-in's is
+`../hosted-sign-in-plan.md`; this is what the daemon serves.
 
 | | |
 |---|---|
 | `GET /health` | the ecosystem's liveness probe |
-| `POST /auth/sign-in` | verify a KGSM password, mint a cluster-scoped session |
-| `POST /auth/session/refresh` | rotate both tokens, re-reading standing from the store |
-| `POST /auth/session/sign-out` | end a session, by refresh token or by bearer |
-| `GET /auth/session` | who the caller is, resolved on this request |
+| `GET /authorize`, `POST /token`, `GET /sign-out` | the OpenID Connect doors; the only way a session is minted, renewed or ended by its holder |
 | `GET /auth/cluster/users` | every account, admin only |
+| `GET /auth/cluster/users/{id}/sessions` | an account's live sessions, admin only |
 | `GET /auth/cluster/public-key` | the verification key set |
 
 **Sessions are signed asymmetrically, and that is the whole point.** The anchor holds the private
@@ -314,10 +313,11 @@ somebody signs in needs a recent proof** — the provider session's last credent
 account already holds) when it is older. A provider round trip for that purpose accepts only an identity
 already attached to the same account; it never signs anybody in and never makes an account.
 
-**A browser signs in here directly, so the origin list is load-bearing.** The Control Panel is served
-from a different origin; without an entry in `Anchor__AllowedOrigins` the browser discards the
-anchor's answer before the sign-in code reads it. There is deliberately no wildcard — this surface
-mints credentials.
+**A client's origin is what is admitted across origins, and nothing else.** A surface on another
+origin reads the discovery document, exchanges its code and drives the administration with the bearer
+it holds, so every registered client's origin is answered on those paths — without credentials, and
+never on anything that reads the provider's cookie. There is deliberately no wildcard: this surface
+mints credentials. The same origins are published as `auth.origins` for every member to admit.
 
 ### One member of a cluster
 

@@ -9,7 +9,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <summary>
 /// Keeps this anchor's place in the cluster current: it publishes the key members verify sessions
 /// with, claims the auth capability when nobody holds it on the machine that founded the cluster,
-/// re-reads who does, and — while it holds it — keeps the clients the members announce.
+/// re-reads who does, and — while it holds it — keeps the clients the members announce and states
+/// where every client lives.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -141,8 +142,15 @@ internal sealed class ClusterMembershipWorker(
             // addresses the roster hands out for them, and leave when their member does. Only the holder
             // keeps the set: a member standing by issues no codes, and a set it kept would be stale the
             // moment it was promoted.
+            //
+            // Where those clients live is then stated for every member to read through the holder,
+            // which is what admits them across origins everywhere — an administrator's registration and
+            // a declared panel included, since those exist only here.
             if (isHolder)
+            {
                 await SyncClientsAsync(ct).ConfigureAwait(false);
+                PublishClientOrigins();
+            }
 
             if (!role.Update(standing, holder))
                 return;
@@ -171,6 +179,24 @@ internal sealed class ClusterMembershipWorker(
             // One failed read must not end the loop, and must not change where this anchor stands:
             // "I could not find out" is not "somebody else holds it".
             logger.LogWarning(ex, "could not read the cluster's account assignment");
+        }
+    }
+
+    /// <summary>
+    /// State where the registered clients live. Unchanged, it states nothing new: a fact republished
+    /// with the same value advances nothing and gossips nothing.
+    /// </summary>
+    private void PublishClientOrigins()
+    {
+        try
+        {
+            publications.Publish(ClusterAuthFacts.ClientOrigins, ClusterClientOrigins.ToJson(clients.Origins));
+        }
+        catch (ArgumentException ex)
+        {
+            // More clients than one fact can carry. Members keep admitting the set they last read, which
+            // is stale rather than wrong, and this is the line that says why a new one is refused.
+            logger.LogWarning(ex, "could not publish where the cluster's clients live");
         }
     }
 

@@ -38,10 +38,10 @@ post_install() {
 
   What it needs from you is the address people reach it at, in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env:
 
-      Anchor__Issuer          the URL a browser signs in at, e.g. http://<this machine>:8098
-      Anchor__AllowedOrigins  the Control Panel's origin, e.g. http://<this machine>:8080
+      Anchor__Issuer   the URL a browser signs in at, e.g. http://<this machine>:8098
 
-  Until the issuer is a URL the anchor signs nobody in through its OpenID Connect doors, and the node
+  The Control Panel the node serves becomes a client of it by itself, once the node names its own
+  browser address. Until the issuer is a URL the anchor signs nobody in through its OpenID Connect doors, and the node
   names no sign-in provider. kgsm-meta/NODE-PROVISIONING.md §10·b has the rest.
 
 MSG

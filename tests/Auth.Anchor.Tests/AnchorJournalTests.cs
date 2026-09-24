@@ -43,6 +43,13 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
             anchor.Journal(type), e => Text(e.GetProperty("Data"), "Username") == username);
     }
 
+    /// <summary>The provider's credential post, as its page sends it, for a browser with a request in flight.</summary>
+    private async Task<HttpResponseMessage> CredentialAsync(string username, string password)
+    {
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        return await browser.SendAsync(SignInPage.Post("/authorize/credentials", new { username, password }));
+    }
+
     // ── A session beginning ───────────────────────────────────────────────────
 
     [Fact]
@@ -51,11 +58,8 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string username = Unique("recorded-");
         KgsmUser user = await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Operator);
 
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = "correct horse battery" }, Wire);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using HttpClient browser = (await SignInPage.ThroughThePagesAsync(anchor, username, "correct horse battery")).Browser;
 
-        JsonElement session = await response.Content.ReadFromJsonAsync<JsonElement>();
         JsonElement line = Line(AuthEvents.SignedIn, username);
         JsonElement data = line.GetProperty("Data");
 
@@ -79,8 +83,6 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         // The identity that arrived, not the daemon that minted the token. Naming the component
         // would hide who came through the door.
         Assert.Equal($"local:{username}", line.GetProperty("Actor").GetString());
-
-        Assert.False(string.IsNullOrEmpty(session.GetProperty("token").GetString()));
     }
 
     [Fact]
@@ -89,8 +91,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string username = Unique("refused-");
         await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
 
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = "not the password" }, Wire);
+        HttpResponseMessage response = await CredentialAsync(username, "not the password");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
 
@@ -109,24 +110,21 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string username = Unique("left-");
         await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
 
-        JsonElement session = await (await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = "correct horse battery" }, Wire))
-            .Content.ReadFromJsonAsync<JsonElement>();
+        SignInPage.SignedIn session = await SignInPage.ThroughThePagesAsync(anchor, username, "correct horse battery");
+        using HttpClient browser = session.Browser;
 
         string sid = Text(Line(AuthEvents.SignedIn, username).GetProperty("Data"), "Sid")!;
 
-        HttpResponseMessage signedOut = await anchor.Client.PostAsJsonAsync(
-            "/auth/session/sign-out", new { refresh = session.GetProperty("refresh").GetString() }, Wire);
-        Assert.Equal(HttpStatusCode.NoContent, signedOut.StatusCode);
+        await SignInPage.SignOutAsync(session);
 
         JsonElement data = Line(AuthEvents.SignedOut, username).GetProperty("Data");
 
         // The same session id on both lines. It is the whole reason a sign-out carries one.
         Assert.Equal(sid, Text(data, "Sid"));
 
-        // The account, even though this caller arrived with a refresh token and not the row. Anyone
-        // filtering auth events by account otherwise gets every sign-in and silently no sign-outs,
-        // which reads as a person who never signed out rather than as a query that cannot answer.
+        // The account, even though the sign-out arrived with a hint and not the row. Anyone filtering
+        // auth events by account otherwise gets every sign-in and silently no sign-outs, which reads
+        // as a person who never signed out rather than as a query that cannot answer.
         string userId = Text(Line(AuthEvents.SignedIn, username).GetProperty("Data"), "UserId")!;
         Assert.Equal(userId, Text(data, "UserId"));
 
@@ -141,37 +139,35 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string username = Unique("twice-");
         await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
 
-        JsonElement session = await (await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password = "correct horse battery" }, Wire))
-            .Content.ReadFromJsonAsync<JsonElement>();
+        SignInPage.SignedIn session = await SignInPage.ThroughThePagesAsync(anchor, username, "correct horse battery");
+        using HttpClient browser = session.Browser;
 
-        object body = new { refresh = session.GetProperty("refresh").GetString() };
-        await anchor.Client.PostAsJsonAsync("/auth/session/sign-out", body, Wire);
+        await SignInPage.SignOutAsync(session);
+        await SignInPage.SignOutAsync(session);
 
-        HttpResponseMessage again = await anchor.Client.PostAsJsonAsync(
-            "/auth/session/sign-out", body, Wire);
-
-        // Still 204: a caller wanting to be signed out is signed out, and reporting "there was no
-        // such session" would tell a stranger holding a stolen token whether it was still live.
-        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
-
-        // One line, though. A session ends once, and a second would make a reader counting sign-outs
-        // against sign-ins find more of the first.
+        // One line. A session ends once, and a second would make a reader counting sign-outs against
+        // sign-ins find more of the first.
         Assert.Single(
             anchor.Journal(AuthEvents.SignedOut), e => Text(e.GetProperty("Data"), "Username") == username);
     }
 
     // ── An account arriving ───────────────────────────────────────────────────
 
+    /// <summary>The provider's registration post, as its page sends it.</summary>
+    private async Task<HttpResponseMessage> RegisterAsync(string username, string password)
+    {
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        return await browser.SendAsync(SignInPage.Post("/authorize/register", new { username, password }));
+    }
+
     [Fact]
-    public async Task Registering_records_the_account_and_the_session_it_was_given()
+    public async Task Registering_records_the_account_and_mints_nothing()
     {
         string username = Unique("newcomer-");
 
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/register", new { username, password = "a long enough password" }, Wire);
+        HttpResponseMessage response = await RegisterAsync(username, "a long enough password");
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         JsonElement data = Line(AuthEvents.UserProvisioned, username).GetProperty("Data");
 
@@ -185,8 +181,9 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         // anywhere else is not somebody waiting on an administrator.
         Assert.Equal("pending", Text(data, "ToStatus"));
 
-        // The session it was handed is recorded like any other, because it is one.
-        Assert.Equal("none", Text(Line(AuthEvents.SignedIn, username).GetProperty("Data"), "Tier"));
+        // An account nobody has approved waits and is handed nothing, so there is no sign-in to record.
+        Assert.DoesNotContain(
+            anchor.Journal(AuthEvents.SignedIn), e => Text(e.GetProperty("Data"), "Username") == username);
     }
 
     [Fact]
@@ -195,8 +192,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string username = Unique("taken-");
         await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
 
-        HttpResponseMessage response = await anchor.Client.PostAsJsonAsync(
-            "/auth/register", new { username, password = "a long enough password" }, Wire);
+        HttpResponseMessage response = await RegisterAsync(username, "a long enough password");
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.DoesNotContain(
@@ -279,10 +275,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         // Past the policy's threshold, and then well past it. Every attempt after the lock is refused
         // by the lock rather than by the password.
         for (int attempt = 0; attempt < 9; attempt++)
-        {
-            await anchor.Client.PostAsJsonAsync(
-                "/auth/sign-in", new { username, password = $"wrong-{attempt}" }, Wire);
-        }
+            await CredentialAsync(username, $"wrong-{attempt}");
 
         // One line, not one per guess. Whoever is guessing retries at once, so a line per refusal
         // would be exactly the flood that buries the line reporting the run.
@@ -304,10 +297,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string username = Unique("ghost-");
 
         for (int attempt = 0; attempt < 9; attempt++)
-        {
-            await anchor.Client.PostAsJsonAsync(
-                "/auth/sign-in", new { username, password = $"wrong-{attempt}" }, Wire);
-        }
+            await CredentialAsync(username, $"wrong-{attempt}");
 
         // There is no account to lock, so there is nothing to name. Recording it would turn the
         // record into a list of strings a stranger chose, and hand anybody who can reach the door a
@@ -316,12 +306,6 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
             anchor.Journal(AuthEvents.LockedOut), e => Text(e.GetProperty("Data"), "Username") == username);
     }
 
-    private async Task<string> BearerAsync(string username, string password)
-    {
-        JsonElement session = await (await anchor.Client.PostAsJsonAsync(
-            "/auth/sign-in", new { username, password }, Wire))
-            .Content.ReadFromJsonAsync<JsonElement>();
-
-        return session.GetProperty("token").GetString()!;
-    }
+    private async Task<string> BearerAsync(string username, string password) =>
+        (await anchor.SignInAsync((await anchor.Store.FindByUsernameAsync(username))!)).Access;
 }

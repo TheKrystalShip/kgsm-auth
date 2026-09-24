@@ -2,92 +2,6 @@ using System.Collections.Concurrent;
 
 namespace TheKrystalShip.KGSM.Auth;
 
-/// <summary>
-/// When each session last proved a credential.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Holding a session is not the same as having proved you are its owner. The two come apart exactly
-/// where it matters: an unlocked laptop, a browser left signed in, a token lifted from storage. Most
-/// of what a session does is bounded by its own life, so the distinction costs nothing — but attaching
-/// an identity outlives it, because afterwards whoever holds that provider account can sign in as this
-/// one forever. So that one write asks for the credential again.
-/// </para>
-/// <para>
-/// <b>Signing in counts as proving it.</b> A password login and a provider callback both stamp the
-/// session they mint, so someone who has just arrived links without being asked for anything, and
-/// someone returning to a week-old tab is asked once.
-/// </para>
-/// <para>
-/// In memory, deliberately. A restart makes every session prove itself again, which is the safe
-/// direction to fail in, and the alternative — a column on the session row — would persist "recently
-/// proved" across exactly the events that should end it.
-/// </para>
-/// </remarks>
-/// <param name="window">How long a proof lasts. Non-positive uses five minutes.</param>
-public sealed class ReauthGate(TimeSpan window)
-{
-    // Sessions are per-browser and expire, so this stays small; the sweep is only insurance against a
-    // surface that mints far more than it ever revokes.
-    private const int SweepAbove = 512;
-
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _proved = new(StringComparer.Ordinal);
-
-    /// <summary>How long a proof lasts.</summary>
-    public TimeSpan Window { get; } = window > TimeSpan.Zero ? window : TimeSpan.FromMinutes(5);
-
-    /// <summary>Record that this session's owner has just proved a credential.</summary>
-    /// <param name="sessionId">The session. A blank one records nothing.</param>
-    public void Stamp(string? sessionId)
-    {
-        if (string.IsNullOrEmpty(sessionId))
-            return;
-
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        _proved[sessionId] = now;
-
-        if (_proved.Count > SweepAbove)
-        {
-            foreach (KeyValuePair<string, DateTimeOffset> entry in _proved)
-            {
-                if (now - entry.Value > Window)
-                    _proved.TryRemove(entry.Key, out _);
-            }
-        }
-    }
-
-    /// <summary>Until when this session may change what proves it, or <see langword="null"/>.</summary>
-    /// <param name="sessionId">The session.</param>
-    /// <returns>When the proof lapses, or null when there is none.</returns>
-    public DateTimeOffset? FreshUntil(string? sessionId)
-    {
-        if (string.IsNullOrEmpty(sessionId) || !_proved.TryGetValue(sessionId, out DateTimeOffset at))
-            return null;
-
-        DateTimeOffset until = at + Window;
-        if (until <= DateTimeOffset.UtcNow)
-        {
-            _proved.TryRemove(sessionId, out _);
-            return null;
-        }
-
-        return until;
-    }
-
-    /// <summary>Whether this session has proved a credential recently enough.</summary>
-    /// <param name="sessionId">The session.</param>
-    /// <returns>True while the proof stands.</returns>
-    public bool IsFresh(string? sessionId) => FreshUntil(sessionId) is not null;
-
-    /// <summary>Drop a session's proof — what a sign-out or a revoke calls.</summary>
-    /// <param name="sessionId">The session.</param>
-    public void Forget(string? sessionId)
-    {
-        if (!string.IsNullOrEmpty(sessionId))
-            _proved.TryRemove(sessionId, out _);
-    }
-}
-
 /// <summary>A link in flight: which account started it, and the handshake it must come back with.</summary>
 /// <param name="UserId">The account the arriving identity will be attached to.</param>
 /// <param name="SessionId">The session that started it.</param>
@@ -109,8 +23,8 @@ public sealed record LinkTicket(
 /// </para>
 /// <para>
 /// Single-use and short-lived: redeeming removes the ticket, so a callback replayed from history or a
-/// log attaches nothing. In memory for the same reason as <see cref="ReauthGate"/> — a restart drops
-/// links in flight, which costs a click and cannot grant anything.
+/// log attaches nothing. In memory, deliberately: a restart drops links in flight, which costs a click
+/// and cannot grant anything.
 /// </para>
 /// <para>
 /// Here rather than in a provider package or a surface, for the same reason

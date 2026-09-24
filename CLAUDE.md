@@ -211,15 +211,15 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   `ClusterFacts.FromHolderAsync`, for the keys, the audience and the issuer alike. A key taken from any
   member would let any member substitute the one sessions are verified against.
 - **Knowing nothing fails closed.** A member with no cluster, or one that has not heard who holds the
-  accounts, accepts no cluster session at all and goes on serving its own. Guessing would accept a
-  token minted for a different cluster.
-- **A door closes because somebody else holds the accounts, not because a setting says so.**
-  `AnchorHeldGate` reads cluster state, so an anchor joining or being reassigned needs no
-  reconfiguration anywhere. A standalone host and a clustered one whose cluster has no anchor are the
-  same fact from here: there is nowhere else to send anybody, so the door stays open.
-- **The refusal's code and header are named once; the body is not.** Every surface already has its own
-  error envelope, and imposing one shape on all of them would be a second wire contract to keep in step
-  for no reader's benefit. What a client routes on is shared.
+  accounts, accepts no cluster session at all. Guessing would accept a token minted for a different
+  cluster.
+- **Who holds the accounts is read from cluster state, not from a setting.** `AnchorHeldGate` reads
+  the assignment, so an anchor joining or being reassigned needs no reconfiguration anywhere.
+- **The origins a member admits are the provider's registered clients, read through the holder.**
+  `IClientOrigins`, implemented by `ClusterSessionKeys` from the `auth.origins` fact and by
+  `HostSessionKeys` from the host file, so no member is configured with a list: registering a client at
+  the provider is what admits it everywhere. A member answers them without credentials — a session is
+  a bearer, and nothing a member serves reads a cookie.
 - **A session a member minted is held to an allow-list; one the anchor minted is held to a deny-list.**
   Opposite questions about the same session id, which is why they are separate methods rather than one
   store — a surface answering one with the other refuses every cluster session or accepts every ended
@@ -270,11 +270,11 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   The routing overloads that bind an arbitrary delegate reflect over its parameters, which no
   Native-AOT service can do, and the failure appears at publish time rather than at build time. The
   same goes for a shape missing from `AnchorJsonContext`: it throws at runtime, not at build.
-- **The CORS allowance is per known origin and never a wildcard.** A configured origin is answered on
-  every path with credentials; a registered client's origin only on discovery, the key set, `/token`,
-  `/userinfo` and `/auth/cluster/*`, and never with credentials. A person signs in here from a
-  browser, so this is a surface that mints credentials; a wildcard invites any page to drive
-  somebody's sign-in from their own browser.
+- **The CORS allowance is a registered client's origin, never a wildcard and never with
+  credentials.** It is answered only on what a client reads across origins — discovery, the key set,
+  `/token`, `/userinfo`, `/auth/identity`, `/auth/cluster/*` and this anchor's own surface — and never
+  on anything that reads the provider's cookie. This is a surface that mints credentials; a wildcard
+  invites any page to drive somebody's sign-in from their own browser.
 - **The package is preset-disabled.** A cluster has one anchor and which machine holds it is an
   administrator's decision. A second machine with the package installed and the unit stopped is a
   promotion candidate, not a second authority.
@@ -301,26 +301,31 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   looks exactly like a daemon that recorded nothing. A test run relocates it with
   `KGSM_JOURNAL_STATE_ROOT`; left at its default, a suite that signs people in appends invented
   sign-ins to a live audit page.
-- **A sign-in is recorded where a session is minted, which is one place.** Every door — a password, a
-  registration, a provider redirect — goes through `MintSessionFor`, and they differ only in how they
-  answer. A second mint site is a second place to forget the line, and forgetting is silent: the
-  person is signed in and nothing says so.
+- **A sign-in is recorded where a session is minted, which is one place.** `MintSessionFor`, reached
+  only from the code exchange at `/token`, and every session it mints lives under a provider session. A
+  second mint site is a second place to forget the line, and forgetting is silent: the person is signed
+  in and nothing says so.
+- **Every session lives under a browser's sign-in here.** A row that is neither a provider session nor
+  minted under one is deleted as the registry opens: nothing would end it on a sign-out or list it with
+  the sign-in it came from.
 - **One line per fact that changed, never one per request**, and only when the action actually
   happened. A patch moving both a tier and a status writes two lines; one moving neither writes none;
   a sign-out for a session that had already ended writes none. An access review reads for one fact at
   a time, and a line per request fills it with rows saying nothing.
-- **Changing what proves an account asks for the credential again; nothing else here does.** Holding
-  a session is not the same as having proved you own it, and attaching an identity outlives the
-  session that attached it — afterwards whoever holds that provider account signs in as this one.
-  Detaching carries the same gate, because it is the half that locks somebody out. Signing in counts
-  as proving it, stamped at the one mint site, and a proof dies with its session.
+- **Changing what proves an account asks for the credential again; nothing else here does.** Being
+  signed in on a browser is not the same as having proved you own the account, and attaching an
+  identity outlives the session that attached it — afterwards whoever holds that provider account signs
+  in as this one. Detaching and setting a password carry the same gate. The proof is the provider
+  session's `credential_at`, stamped whenever a credential is typed on that browser, and it dies with
+  that provider session.
 - **Attaching and detaching ship together or not at all.** Signing in again with a provider you just
   detached does not give the account back: nothing claims that handle, so it provisions a second
   account and the person is a stranger on it.
-- **The link callback is a different address from the sign-in one.** One mints a session for whoever
-  comes back; the other attaches whoever comes back to an account already signed in. One address for
-  both lets a link return through the sign-in door and mint a session instead. Both have to be
-  registered against the provider's application, or the bounce is refused where no log here sees it.
+- **The link callback is a different address from the sign-in one.** One completes a request in flight
+  for whoever comes back; the other attaches whoever comes back to an account already signed in, and
+  always returns to the account page. One address for both lets a link return through the sign-in
+  callback instead. Both have to be registered against the provider's application, or the bounce is
+  refused where no log here sees it.
 - **Freshness is checked when a link STARTS, never on the way back.** The bounce takes as long as it
   takes, and re-checking fails a link somebody legitimately began while adding nothing — the ticket is
   already one-use, short-lived and unforgeable.
@@ -329,7 +334,9 @@ kgsm-api, on the assistant and on the bot, so it is one package rather than one 
   account holds answers honestly with none — an empty card rather than a wrong question. They are
   looked up under **every credential handle the account holds**: a session is keyed by the handle
   somebody arrived with, so one account signed in with a password and with Discord has two keys.
-  Ending one is never gated on holding the capability, for the same reason sign-out is not.
+  A person reads and ends their own on the account page; an administrator reads and ends somebody's
+  under `/auth/cluster/users/{id}/sessions`. Ending one is never gated on holding the capability, for
+  the same reason sign-out is not.
 - **Ending one session and ending all of them are separate doors, and both exist.** They are different
   decisions with different costs, and an admin left only the wide one reaches for it because it is
   what exists. A session an admin acts on is addressed under the account it belongs to, so the check
@@ -394,6 +401,14 @@ Authority: `../hosted-sign-in-plan.md`.
 - **A member's client is paths joined to its roster address, never URLs it names.** A member announcing
   full URLs could make any origin a place codes are sent. An administrator's client of the same id
   wins.
+- **A surface's client id is its origin's host** (`ClusterClientAnnouncement.ClientIdFor`), for an
+  announced surface and a declared panel alike, so a surface derives its own from where it was loaded
+  and is told nothing — which is what lets a panel on a static host sign in through a member that
+  never served it.
+- **Where the clients live is published, as `auth.origins`, while this anchor holds the accounts.**
+  Every member reads it through the holder to admit those origins, so an administrator's client and a
+  declared panel — which exist only here — are admitted everywhere without anybody configuring a
+  member.
 - **A panel on a static host is declared, not stored.** `Anchor__PanelOrigins` is what the deploy said
   this process serves, so it is rebuilt on every start and wins over a stored client of the same id; the
   registry refuses to remove one or to register over it. Its paths are

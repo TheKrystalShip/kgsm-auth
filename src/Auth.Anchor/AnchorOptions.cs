@@ -24,10 +24,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="ConfigOverridePath">Where a change made through that surface is written.</param>
 /// <param name="AccessLifetime">How long an access bearer lives.</param>
 /// <param name="RefreshLifetime">The absolute session cap.</param>
-/// <param name="AllowedOrigins">Browser origins allowed to call this anchor.</param>
 /// <param name="PanelOrigins">Origins a Control Panel is served from with no member behind it.</param>
 /// <param name="SessionCleanup">How often expired session rows are swept.</param>
-/// <param name="FrontendUrl">Where a browser lands after a provider sign-in, or null to answer as JSON.</param>
 /// <param name="Pending">What is allowed to accumulate while nobody has approved it.</param>
 /// <param name="AllowSelfRegistration">Whether somebody with no account may make one.</param>
 /// <param name="ReauthWindow">How long a proved credential lets somebody change what proves them.</param>
@@ -46,10 +44,8 @@ internal sealed record AnchorOptions(
     string ConfigOverridePath,
     TimeSpan AccessLifetime,
     TimeSpan RefreshLifetime,
-    IReadOnlyList<string> AllowedOrigins,
     IReadOnlyList<string> PanelOrigins,
     TimeSpan SessionCleanup,
-    string? FrontendUrl,
     PendingPolicy Pending,
     bool AllowSelfRegistration,
     TimeSpan ReauthWindow,
@@ -88,9 +84,6 @@ internal sealed record AnchorOptions(
     /// <summary>The issuer's origin — what a browser sends as <c>Origin</c> from the provider's own pages.</summary>
     public string? IssuerOrigin => IssuerUrl?.GetLeftPart(UriPartial.Authority);
 
-    /// <summary>Whether a browser is sent anywhere after a provider sign-in.</summary>
-    public bool RedirectsToPanel => !string.IsNullOrWhiteSpace(FrontendUrl);
-
     public static AnchorOptions FromSettings(AnchorSettings s)
     {
         return new AnchorOptions(
@@ -113,13 +106,9 @@ internal sealed record AnchorOptions(
                 AtLeast(s.AccessLifetimeMinutes ?? 15, AnchorSettings.Floors.AccessLifetimeMinutes)),
             RefreshLifetime: TimeSpan.FromDays(
                 AtLeast(s.RefreshLifetimeDays ?? 30, AnchorSettings.Floors.RefreshLifetimeDays)),
-            AllowedOrigins: Origins(s.AllowedOrigins),
             PanelOrigins: Origins(s.PanelOrigins),
             SessionCleanup: TimeSpan.FromMinutes(
                 AtLeast(s.SessionCleanupMinutes ?? 60, AnchorSettings.Floors.SessionCleanupMinutes)),
-            // Blank is a decision rather than an omission: a deployment with no browser in front of it
-            // wants the session in the response, not a redirect to somewhere there is nothing.
-            FrontendUrl: string.IsNullOrWhiteSpace(s.FrontendUrl) ? null : s.FrontendUrl.Trim(),
             // Off unless a cluster says otherwise. It is an unauthenticated write, and a cluster that
             // has not decided to take strangers should not be taking them because a default did.
             AllowSelfRegistration: s.AllowSelfRegistration ?? false,

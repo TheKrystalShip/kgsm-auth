@@ -286,6 +286,122 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
         Assert.Equal("provider", current.GetProperty("kind").GetString());
     }
 
+    /// <summary>Attach an external identity to an account, as a provider sign-in would have.</summary>
+    private async Task<string> AttachAsync(KgsmUser user, string handle)
+    {
+        string credentialId = UserIds.NewCredentialId();
+        await anchor.Store.AddCredentialAsync(new UserCredential(
+            credentialId, user.UserId, CredentialKind.Identity, handle, Secret: null,
+            Label: "discord", Created: DateTimeOffset.UtcNow, LastUsed: null));
+        return credentialId;
+    }
+
+    [Fact]
+    public async Task Your_own_password_is_changed_here_recorded_as_yours_and_held_to_the_floor()
+    {
+        (KgsmUser user, string password) = await AccountAsync();
+        using HttpClient browser = await SignedInAsync(user, password);
+
+        HttpResponseMessage shortOne = await browser.SendAsync(
+            Json(HttpMethod.Post, "/account/password", new { password = "short" }));
+
+        // The floor is read from the one constant every door reads, so it cannot drift low in one of
+        // them. The message says the number, because a refusal that does not is a guess.
+        Assert.Equal(HttpStatusCode.BadRequest, shortOne.StatusCode);
+        JsonElement error = (await Read(shortOne)).GetProperty("error");
+        Assert.Equal("password_too_short", error.GetProperty("code").GetString());
+        Assert.Contains(Passwords.MinLength.ToString(), error.GetProperty("message").GetString());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await browser.SendAsync(
+            Json(HttpMethod.Post, "/account/password", new { password = "a different long password" }))).StatusCode);
+
+        // The whole point of recording it: somebody else setting your password reads completely
+        // differently from you setting it, and a line that could not tell them apart would report a
+        // takeover and a routine rotation identically.
+        JsonElement data = Assert.Single(
+            anchor.Journal(TheKrystalShip.KGSM.Auth.Journal.AuthEvents.UserPasswordChanged),
+            e => e.GetProperty("Data").GetProperty("Username").GetString() == user.Username)
+            .GetProperty("Data");
+        Assert.True(data.GetProperty("ByHolder").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_ways_into_an_account_are_listed_with_the_id_a_detach_names()
+    {
+        (KgsmUser user, string password) = await AccountAsync();
+        await AttachAsync(user, "discord:1234567890");
+        using HttpClient browser = await SignedInAsync(user, password);
+
+        JsonElement me = await Read(await browser.SendAsync(Json(HttpMethod.Get, "/account/me")));
+        JsonElement identity = Assert.Single(me.GetProperty("identities").EnumerateArray());
+
+        // The credential id, because a detach is addressed by id — an id a caller cannot learn makes
+        // the door unreachable.
+        Assert.False(string.IsNullOrEmpty(identity.GetProperty("id").GetString()));
+        Assert.Equal("discord", identity.GetProperty("provider").GetString());
+        Assert.Equal("discord:1234567890", identity.GetProperty("handle").GetString());
+    }
+
+    [Fact]
+    public async Task Detaching_an_identity_records_which_one_it_was()
+    {
+        (KgsmUser user, string password) = await AccountAsync();
+        string credentialId = await AttachAsync(user, "discord:2233445566");
+        using HttpClient browser = await SignedInAsync(user, password);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await browser.SendAsync(Json(HttpMethod.Delete, $"/account/identities/{credentialId}"))).StatusCode);
+
+        JsonElement data = Assert.Single(
+            anchor.Journal(TheKrystalShip.KGSM.Auth.Journal.AuthEvents.IdentityUnlinked),
+            e => e.GetProperty("Data").GetProperty("Username").GetString() == user.Username)
+            .GetProperty("Data");
+
+        // Read before it was detached: afterwards there is nothing left to say which identity this was.
+        Assert.Equal("discord", data.GetProperty("Provider").GetString());
+        Assert.Equal("discord:2233445566", data.GetProperty("Handle").GetString());
+    }
+
+    [Fact]
+    public async Task The_last_way_into_an_account_is_refused()
+    {
+        (KgsmUser user, _) = await AccountAsync();
+        string credentialId = await AttachAsync(user, "discord:9988776655");
+
+        // The password goes, leaving the identity as the only way in — and the browser signed in with
+        // that identity, since a sign-in is known by the handle it arrived with.
+        UserCredential held = (await anchor.Store.ListCredentialsAsync(user.UserId))
+            .Single(c => c.Kind == CredentialKind.Password);
+        await anchor.Store.RemoveCredentialAsync(held.CredentialId);
+        AnchorFixture.Session session = await anchor.SignInAsync(
+            user, arrivedAs: new KgsmIdentity("discord", "9988776655", user.Username, user.Username, null, []));
+
+        HttpResponseMessage response = await anchor.Client.SendAsync(
+            session.AtTheAccountPage(HttpMethod.Delete, $"/account/identities/{credentialId}"));
+
+        // An account with nothing attached is one its own holder cannot sign in to, and only an admin
+        // can rescue.
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.NotEmpty(await anchor.Store.ListCredentialsAsync(user.UserId));
+    }
+
+    [Fact]
+    public async Task Somebody_elses_credential_answers_the_same_as_one_that_does_not_exist()
+    {
+        (KgsmUser user, string password) = await AccountAsync();
+        using HttpClient browser = await SignedInAsync(user, password);
+
+        (KgsmUser stranger, _) = await AccountAsync();
+        string theirs = await AttachAsync(stranger, "discord:1122334455");
+
+        HttpResponseMessage response = await browser.SendAsync(Json(HttpMethod.Delete, $"/account/identities/{theirs}"));
+
+        // 404, the same as an id that is not real. Telling those apart would say whether an id exists,
+        // and the id is the whole of what a caller supplies.
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains(await anchor.Store.ListCredentialsAsync(stranger.UserId), c => c.CredentialId == theirs);
+    }
+
     [Fact]
     public async Task A_password_change_asks_for_the_password_when_the_proof_is_old_and_not_otherwise()
     {
@@ -341,6 +457,19 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
         HttpResponseMessage back = await browser.GetAsync($"/auth/identities/discord/callback?state={Uri.EscapeDataString(state)}");
         Assert.Equal(HttpStatusCode.Redirect, back.StatusCode);
         Assert.StartsWith("/account#link_error=", back.Headers.Location!.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_link_callback_with_no_ticket_attaches_nothing()
+    {
+        // A forged or replayed return. Refused before any exchange is attempted, so a stranger cannot
+        // spend somebody else's authorization code against an account — and the reason goes back to the
+        // account page as link_error, which a page never reads as a failed sign-in.
+        HttpResponseMessage response = await anchor.Following()
+            .GetAsync("/auth/identities/discord/callback?code=whatever&state=whatever");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/account#link_error=invalid_state", response.Headers.Location!.ToString());
     }
 
     [Fact]

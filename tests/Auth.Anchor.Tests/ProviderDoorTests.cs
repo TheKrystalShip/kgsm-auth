@@ -1,78 +1,132 @@
-using System.Net.Http;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
+using Microsoft.AspNetCore.WebUtilities;
+
 using TheKrystalShip.KGSM.Auth.Users;
-using System.Text.Json.Serialization;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
 /// <summary>
-/// Signing in with an account somebody already holds elsewhere.
+/// Plumbing shared by the suites that drive a sign-in from the provider's own page.
+/// </summary>
+internal static class SignInPage
+{
+    public const string Client = "door-client";
+    public const string Redirect = "https://door.test/callback";
+
+    public static async Task RegisterClientAsync(AnchorFixture anchor)
+    {
+        var registry = anchor.Service<ClientRegistry>();
+        if (registry.Find(Client) is null)
+        {
+            await registry.RegisterAsync(new ClientRegistration(Client, "Door client", [Redirect], []),
+                DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+    }
+
+    /// <summary>A browser with a request in flight: it has opened the provider's sign-in page for the client.</summary>
+    public static async Task<HttpClient> OpenAsync(AnchorFixture anchor) => (await OpenWithVerifierAsync(anchor)).Browser;
+
+    private static async Task<(HttpClient Browser, string Verifier)> OpenWithVerifierAsync(AnchorFixture anchor)
+    {
+        await RegisterClientAsync(anchor);
+        HttpClient browser = anchor.Following();
+
+        string verifier = Base64Url(RandomNumberGenerator.GetBytes(32));
+        string challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+        HttpResponseMessage page = await browser.GetAsync(QueryHelpers.AddQueryString("/authorize",
+            new Dictionary<string, string?>
+            {
+                ["client_id"] = Client, ["redirect_uri"] = Redirect, ["response_type"] = "code",
+                ["scope"] = "openid", ["state"] = "s", ["code_challenge"] = challenge,
+                ["code_challenge_method"] = "S256",
+            }));
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        return (browser, verifier);
+    }
+
+    /// <summary>What a client holds after a sign-in, and the browser that signed in.</summary>
+    public sealed record SignedIn(HttpClient Browser, string Access, string Refresh, string IdToken);
+
+    /// <summary>
+    /// Sign in with a password the whole way a browser and a client do: the page, the credential, the
+    /// code, and the exchange that mints the session.
+    /// </summary>
+    public static async Task<SignedIn> ThroughThePagesAsync(AnchorFixture anchor, string username, string password)
+    {
+        (HttpClient browser, string verifier) = await OpenWithVerifierAsync(anchor);
+
+        HttpResponseMessage answer = await browser.SendAsync(Post("/authorize/credentials", new { username, password }));
+        Assert.Equal(HttpStatusCode.OK, answer.StatusCode);
+        var redirect = new Uri((await Json(answer)).GetProperty("redirect").GetString()!);
+        string code = QueryHelpers.ParseQuery(redirect.Query)["code"]!;
+
+        HttpResponseMessage token = await anchor.Client.PostAsync("/token", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code", ["code"] = code, ["redirect_uri"] = Redirect,
+                ["client_id"] = Client, ["code_verifier"] = verifier,
+            }));
+        Assert.Equal(HttpStatusCode.OK, token.StatusCode);
+
+        JsonElement set = await Json(token);
+        return new SignedIn(browser, set.GetProperty("access_token").GetString()!,
+            set.GetProperty("refresh_token").GetString()!, set.GetProperty("id_token").GetString()!);
+    }
+
+    /// <summary>Sign out at the provider with the id token as the hint, as a client does.</summary>
+    public static Task<HttpResponseMessage> SignOutAsync(SignedIn session) =>
+        session.Browser.GetAsync(QueryHelpers.AddQueryString("/sign-out", new Dictionary<string, string?>
+        {
+            ["id_token_hint"] = session.IdToken, ["client_id"] = Client,
+        }));
+
+    /// <summary>A post the provider's own pages make: same-origin, answered as JSON.</summary>
+    public static HttpRequestMessage Post(string path, object body)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("Sec-Fetch-Site", "same-origin");
+        request.Headers.Add("Accept", "application/json");
+        return request;
+    }
+
+    public static async Task<JsonElement> Json(HttpResponseMessage response) =>
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+
+    private static string Base64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+}
+
+/// <summary>
+/// Signing in with an account somebody already holds elsewhere: the round trip the sign-in page starts,
+/// and the callback it comes back through.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Nothing here reaches a provider, and that is not a gap in the coverage — every case below is
-/// decided <b>before</b> an exchange is attempted. The bounce, the CSRF gate and the refusals are the
-/// whole of what this anchor decides on its own; what a provider says about a code is the provider's
-/// package to test, and it does.
-/// </para>
-/// <para>
-/// The one thing worth stating about the shape: what this door mints is what the password door
-/// mints. A session audienced to the cluster, signed with a key no member can reproduce. The two
-/// differ in what proves a person and in nothing after that.
-/// </para>
+/// Nothing here reaches a provider, and that is not a gap in the coverage — every case below is decided
+/// <b>before</b> an exchange is attempted. The bounce, the CSRF gate and the refusals are the whole of
+/// what this anchor decides on its own; what a provider says about a code is the provider's package to
+/// test, and it does.
 /// </remarks>
 [Collection(AnchorCollection.Name)]
 public sealed class ProviderDoorTests(AnchorFixture anchor)
 {
-    private static async Task<JsonElement> Json(HttpResponseMessage response) =>
-        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
-
-    /// <summary>
-    /// Assert a handoff back to the panel carrying <paramref name="fragment"/>.
-    /// </summary>
-    /// <remarks>
-    /// The origin and the fragment are asserted separately because the exact string is not this
-    /// anchor's to control: a bare authority gains a path when anything parses it as a URI, so
-    /// pinning the whole string would be testing the parser.
-    /// </remarks>
-    private static void RedirectedToPanel(HttpResponseMessage response, string fragment)
-    {
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Uri location = response.Headers.Location!;
-        Assert.StartsWith(AnchorFixture.PanelUrl, location.ToString(), StringComparison.Ordinal);
-        Assert.Equal(fragment, location.Fragment);
-    }
-
-    // ── What a sign-in page is told ───────────────────────────────────────────
-
-    [Fact]
-    public async Task The_providers_a_person_can_use_are_readable_without_signing_in()
-    {
-        // A sign-in page draws its buttons before anybody has signed in, so this cannot be gated on
-        // having done so. What it discloses is which doors exist, never anything behind one.
-        HttpResponseMessage response = await anchor.Client.GetAsync("/auth/providers");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        JsonElement body = await Json(response);
-        Assert.Contains(
-            "discord",
-            body.GetProperty("providers").EnumerateArray().Select(p => p.GetString()));
-        Assert.True(body.GetProperty("redirects").GetBoolean());
-
-        // Whether a sign-up card should be drawn at all. The only other way to find out is to
-        // attempt a registration, and an attempt is not a probe.
-        Assert.True(body.GetProperty("registration").GetBoolean());
-    }
+    private static string VerifierCookie(HttpResponseMessage response) =>
+        response.Headers.GetValues("Set-Cookie")
+            .First(c => c.StartsWith("kgsm_oauth_state=", StringComparison.Ordinal)).Split(';')[0];
 
     // ── The bounce ────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Starting_a_sign_in_sends_the_browser_to_the_provider()
+    public async Task Starting_a_provider_sign_in_sends_the_browser_to_the_provider()
     {
-        using HttpClient client = anchor.Following();
-        HttpResponseMessage response = await client.GetAsync("/auth/discord/start");
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        HttpResponseMessage response = await browser.GetAsync("/authorize/discord");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         string url = response.Headers.Location!.ToString();
@@ -88,8 +142,8 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
     [Fact]
     public async Task The_bounce_carries_a_challenge_and_never_the_verifier()
     {
-        using HttpClient client = anchor.Following();
-        HttpResponseMessage response = await client.GetAsync("/auth/discord/start");
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        HttpResponseMessage response = await browser.GetAsync("/authorize/discord");
 
         string url = response.Headers.Location!.ToString();
         Assert.Contains("code_challenge=", url, StringComparison.Ordinal);
@@ -106,78 +160,76 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
         Assert.NotEmpty(verifier);
         Assert.DoesNotContain(verifier, url, StringComparison.Ordinal);
 
-        // HttpOnly, so script on the panel's origin cannot read the handshake it is part of. Lax
-        // rather than Strict, because Strict suppresses the cookie on the top-level redirect back
-        // from the provider and would break every sign-in.
+        // HttpOnly, so no script reads the handshake it is part of. Lax rather than Strict, because
+        // Strict suppresses the cookie on the top-level redirect back from the provider and would break
+        // every sign-in.
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData("", "none")]
-    [InlineData("consent", "consent")]
-    [InlineData("none", "none")]
-    public async Task The_prompt_a_caller_asks_for_is_the_prompt_it_gets(string asked, string expected)
-    {
-        using HttpClient client = anchor.Following();
-        string query = asked.Length == 0 ? "" : $"?prompt={asked}";
-
-        HttpResponseMessage response = await client.GetAsync($"/auth/discord/start{query}");
-
-        // A door that takes an explicit request for a screen and silently sends the opposite is
-        // wrong however the provider happens to treat it.
-        Assert.Contains($"prompt={expected}", response.Headers.Location!.ToString(), StringComparison.Ordinal);
     }
 
     // ── The CSRF gate, which runs before any exchange ─────────────────────────
 
     [Fact]
-    public async Task A_callback_with_no_handshake_cookie_is_refused()
+    public async Task A_callback_with_no_handshake_cookie_is_refused_here()
     {
-        using HttpClient client = anchor.Following();
+        using HttpClient browser = anchor.Following();
 
-        // What a login CSRF looks like: an attacker's code and state delivered to a browser that
-        // never started a sign-in here. There is no cookie to match it against, so it is refused
-        // before this anchor talks to anybody.
-        HttpResponseMessage response = await client.GetAsync("/auth/discord/callback?code=abc&state=xyz");
+        // What a login CSRF looks like: an attacker's code and state delivered to a browser that never
+        // started a sign-in here. There is no cookie to match it against, so it is refused before this
+        // anchor talks to anybody — on this anchor's own page, since there is no client to send it to.
+        HttpResponseMessage response = await browser.GetAsync("/auth/discord/callback?code=abc&state=xyz");
 
-        RedirectedToPanel(response, "#error=invalid_state");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(response.Headers.Location);
     }
 
     [Fact]
-    public async Task A_callback_whose_state_does_not_match_the_cookie_is_refused()
+    public async Task A_callback_whose_state_does_not_match_the_cookie_is_refused_here()
     {
-        using HttpClient client = anchor.Following();
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        await browser.GetAsync("/authorize/discord");
 
-        HttpResponseMessage started = await client.GetAsync("/auth/discord/start");
-        string cookie = started.Headers.GetValues("Set-Cookie")
-            .First(c => c.StartsWith("kgsm_oauth_state=", StringComparison.Ordinal)).Split(';')[0];
+        HttpResponseMessage response =
+            await browser.GetAsync("/auth/discord/callback?code=abc&state=not-the-issued-one");
 
-        var request = new HttpRequestMessage(
-            HttpMethod.Get, "/auth/discord/callback?code=abc&state=not-the-issued-one");
-        request.Headers.Add("Cookie", cookie);
-
-        HttpResponseMessage response = await client.SendAsync(request);
-
-        RedirectedToPanel(response, "#error=invalid_state");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(response.Headers.Location);
     }
 
     [Fact]
-    public async Task A_callback_carrying_no_code_is_refused()
+    public async Task A_callback_carrying_no_code_goes_back_to_the_sign_in_page()
     {
-        using HttpClient client = anchor.Following();
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        HttpResponseMessage started = await browser.GetAsync("/authorize/discord");
+        string state = QueryHelpers.ParseQuery(started.Headers.Location!.Query)["state"]!;
 
-        HttpResponseMessage started = await client.GetAsync("/auth/discord/start");
-        string raw = started.Headers.GetValues("Set-Cookie")
-            .First(c => c.StartsWith("kgsm_oauth_state=", StringComparison.Ordinal)).Split(';')[0];
-        string state = raw["kgsm_oauth_state=".Length..].Split('.')[0];
+        // Declined at the provider's own screen. The request is still in flight, so the person is put
+        // back on the page they started from with the reason, rather than on a page of its own.
+        HttpResponseMessage response =
+            await browser.GetAsync($"/auth/discord/callback?state={Uri.EscapeDataString(state)}");
 
-        var request = new HttpRequestMessage(HttpMethod.Get, $"/auth/discord/callback?state={state}");
-        request.Headers.Add("Cookie", raw);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("/authorize/credentials", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
 
-        HttpResponseMessage response = await client.SendAsync(request);
+    [Fact]
+    public async Task A_callback_for_a_request_no_longer_waiting_completes_nothing()
+    {
+        using HttpClient browser = anchor.Following();
 
-        RedirectedToPanel(response, "#error=bad_request");
+        // Started in one browser, returned to another that has no request in flight — the state that
+        // returns matches the handshake cookie and no request here.
+        using HttpClient first = await SignInPage.OpenAsync(anchor);
+        HttpResponseMessage started = await first.GetAsync("/authorize/discord");
+        string state = QueryHelpers.ParseQuery(started.Headers.Location!.Query)["state"]!;
+        string cookie = VerifierCookie(started);
+
+        var back = new HttpRequestMessage(HttpMethod.Get, $"/auth/discord/callback?code=abc&state={Uri.EscapeDataString(state)}");
+        back.Headers.Add("Cookie", cookie);
+        HttpResponseMessage response = await browser.SendAsync(back);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(response.Headers.Location);
     }
 
     // ── Providers this anchor does not offer ──────────────────────────────────
@@ -187,14 +239,14 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
     [InlineData("nonesuch")]
     public async Task A_provider_this_anchor_does_not_offer_is_one_answer(string provider)
     {
-        using HttpClient client = anchor.Following();
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
 
-        // A provider nobody wired up and a provider nobody has heard of answer identically, so the
-        // set of providers a build knows about cannot be learned by asking about them one at a time.
-        HttpResponseMessage response = await client.GetAsync($"/auth/{provider}/start");
+        // A provider nobody wired up and a provider nobody has heard of answer identically, so the set
+        // of providers a build knows about cannot be learned by asking about them one at a time.
+        HttpResponseMessage response = await browser.GetAsync($"/authorize/{provider}");
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal("auth_unconfigured", (await Json(response)).GetProperty("error").GetProperty("code").GetString());
+        Assert.Contains("is not set up here", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     // ── Standing by ───────────────────────────────────────────────────────────
@@ -202,17 +254,16 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
     [Fact]
     public async Task A_member_that_does_not_hold_the_accounts_starts_no_sign_in()
     {
-        using HttpClient client = anchor.Following();
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
 
         await anchor.StandingBy("some-other-anchor", async () =>
         {
-            // Bouncing somebody to a provider on a member that could not finish the sign-in would
-            // spend their time to arrive at a refusal. It is refused at the door instead.
-            HttpResponseMessage response = await client.GetAsync("/auth/discord/start");
+            // Bouncing somebody to a provider on a member that could not finish the sign-in would spend
+            // their time to arrive at a refusal. It is refused before the bounce instead.
+            HttpResponseMessage response = await browser.GetAsync("/authorize/discord");
 
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Equal(
-                "not_the_anchor", (await Json(response)).GetProperty("error").GetProperty("code").GetString());
+            Assert.Contains("some-other-anchor", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         });
     }
 
@@ -243,7 +294,7 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
 }
 
 /// <summary>
-/// Making an account nobody has yet.
+/// Making an account nobody has yet, on the provider's registration page.
 /// </summary>
 /// <remarks>
 /// An unauthenticated write, so what bounds it is the interesting part: it is off unless a cluster
@@ -253,33 +304,25 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
 [Collection(AnchorCollection.Name)]
 public sealed class RegisterTests(AnchorFixture anchor)
 {
-    private static StringContent Body(string? username, string? password, string? display = null) =>
-        new(JsonSerializer.Serialize(new { username, password, displayName = display }),
-            System.Text.Encoding.UTF8, "application/json");
-
-    private static async Task<JsonElement> Json(HttpResponseMessage response) =>
-        JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
-
     private static string Code(JsonElement body) => body.GetProperty("error").GetProperty("code").GetString()!;
 
+    private async Task<HttpResponseMessage> RegisterAsync(object body)
+    {
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        return await browser.SendAsync(SignInPage.Post("/authorize/register", body));
+    }
+
     [Fact]
-    public async Task Somebody_with_no_account_gets_one_and_a_session_that_reaches_nothing()
+    public async Task Somebody_with_no_account_gets_one_that_waits_and_reaches_nothing()
     {
         string name = "newcomer" + Guid.NewGuid().ToString("N")[..8];
-        HttpResponseMessage response = await anchor.Client.PostAsync("/auth/register", Body(name, "a-long-enough-password"));
+        HttpResponseMessage response = await RegisterAsync(new { username = name, password = "a-long-enough-password" });
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        JsonElement body = await Json(response);
-
-        // A real session, deliberately. A bare refusal tells somebody who has just made an account
-        // nothing about what happens next; this lets a surface say they are waiting on an admin.
-        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("token").GetString()));
-        Assert.Equal("pending", body.GetProperty("status").GetString());
-        Assert.Equal("none", body.GetProperty("tier").GetString());
-
-        // Scoped to the cluster like every other session this anchor mints — the doors differ in
-        // what proves a person and in nothing after that.
-        Assert.Equal(AnchorFixture.ClusterId, body.GetProperty("cluster").GetString());
+        // The wait, never a code and never a session: an account nobody has approved gets nothing a
+        // client could spend.
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        JsonElement body = await SignInPage.Json(response);
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("wait").GetString()));
 
         KgsmUser? stored = await anchor.Store.FindByUsernameAsync(name);
         Assert.NotNull(stored);
@@ -296,19 +339,15 @@ public sealed class RegisterTests(AnchorFixture anchor)
     {
         string name = "roundtrip" + Guid.NewGuid().ToString("N")[..8];
         const string password = "a-long-enough-password";
+        await RegisterAsync(new { username = name, password });
 
-        Assert.Equal(
-            HttpStatusCode.Created,
-            (await anchor.Client.PostAsync("/auth/register", Body(name, password))).StatusCode);
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        HttpResponseMessage signIn = await browser.SendAsync(
+            SignInPage.Post("/authorize/credentials", new { username = name, password }));
 
-        HttpResponseMessage signIn = await anchor.Client.PostAsync(
-            "/auth/sign-in",
-            new StringContent(
-                JsonSerializer.Serialize(new { username = name, password }),
-                System.Text.Encoding.UTF8, "application/json"));
-
+        // Proven, and still waiting: the credential is right and the account holds nothing yet.
         Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
-        Assert.Equal("pending", (await Json(signIn)).GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace((await SignInPage.Json(signIn)).GetProperty("wait").GetString()));
     }
 
     [Theory]
@@ -318,24 +357,24 @@ public sealed class RegisterTests(AnchorFixture anchor)
     [InlineData("fine-name", "")]
     public async Task A_username_or_password_that_will_not_do_is_refused(string username, string password)
     {
-        HttpResponseMessage response = await anchor.Client.PostAsync("/auth/register", Body(username, password));
+        HttpResponseMessage response = await RegisterAsync(new { username, password });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Equal("bad_request", Code(await Json(response)));
+        Assert.Equal("bad_request", Code(await SignInPage.Json(response)));
     }
 
     [Fact]
     public async Task A_username_somebody_already_has_is_refused_rather_than_taken()
     {
         string name = "taken" + Guid.NewGuid().ToString("N")[..8];
-        await anchor.Client.PostAsync("/auth/register", Body(name, "a-long-enough-password"));
+        await RegisterAsync(new { username = name, password = "a-long-enough-password" });
 
-        HttpResponseMessage second = await anchor.Client.PostAsync("/auth/register", Body(name, "another-long-password"));
+        HttpResponseMessage second = await RegisterAsync(new { username = name, password = "another-long-password" });
 
         // Never merged onto the existing account: matching a stranger onto somebody else's account by
         // name is the documented route to handing one person another's access.
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-        Assert.Equal("username_taken", Code(await Json(second)));
+        Assert.Equal("username_taken", Code(await SignInPage.Json(second)));
     }
 
     [Fact]
@@ -343,20 +382,10 @@ public sealed class RegisterTests(AnchorFixture anchor)
     {
         string name = "ambitious" + Guid.NewGuid().ToString("N")[..8];
 
-        // The shape has no tier and no status, so a caller sending them is sending fields that bind
-        // to nothing. Asserted rather than assumed, because "the DTO does not have it" is exactly the
-        // kind of thing a later edit quietly changes.
-        var content = new StringContent(
-            JsonSerializer.Serialize(new
-            {
-                username = name,
-                password = "a-long-enough-password",
-                tier = "admin",
-                status = "active",
-            }),
-            System.Text.Encoding.UTF8, "application/json");
-
-        Assert.Equal(HttpStatusCode.Created, (await anchor.Client.PostAsync("/auth/register", content)).StatusCode);
+        // The shape has no tier and no status, so a caller sending them is sending fields that bind to
+        // nothing. Asserted rather than assumed, because "the DTO does not have it" is exactly the kind
+        // of thing a later edit quietly changes.
+        await RegisterAsync(new { username = name, password = "a-long-enough-password", tier = "admin", status = "active" });
 
         KgsmUser? stored = await anchor.Store.FindByUsernameAsync(name);
         Assert.Equal(KgsmTier.None, stored!.Tier);
@@ -364,15 +393,15 @@ public sealed class RegisterTests(AnchorFixture anchor)
     }
 
     [Fact]
-    public async Task A_registration_this_cluster_will_not_take_is_still_a_frozen_envelope()
+    public async Task A_refused_registration_is_the_frozen_envelope()
     {
-        // The refusal a panel renders as its own state rather than as a generic failure, so its
-        // code is part of the contract rather than an implementation detail.
-        string name = "capped" + Guid.NewGuid().ToString("N")[..8];
-        HttpResponseMessage response = await anchor.Client.PostAsync("/auth/register", Body(name, "short"));
+        // The page renders the anchor's own sentence rather than keeping a second copy of the rules, so
+        // the code and the message are both part of the contract.
+        HttpResponseMessage response = await RegisterAsync(
+            new { username = "capped" + Guid.NewGuid().ToString("N")[..8], password = "short" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        JsonElement body = await Json(response);
+        JsonElement body = await SignInPage.Json(response);
         Assert.True(body.TryGetProperty("error", out JsonElement error));
         Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("code").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("message").GetString()));
@@ -421,16 +450,20 @@ public sealed class RegisterTests(AnchorFixture anchor)
     [Fact]
     public async Task A_member_that_does_not_hold_the_accounts_creates_none()
     {
+        using HttpClient browser = await SignInPage.OpenAsync(anchor);
+        string name = "standby" + Guid.NewGuid().ToString("N")[..8];
+
         await anchor.StandingBy("some-other-anchor", async () =>
         {
-            // Writing here would create an account the holder has never heard of and will overwrite
-            // at the next snapshot — an account somebody was told they had, that quietly stops
-            // existing.
-            HttpResponseMessage response = await anchor.Client.PostAsync(
-                "/auth/register", Body("standby" + Guid.NewGuid().ToString("N")[..8], "a-long-enough-password"));
+            // Writing here would create an account the holder has never heard of and will overwrite at
+            // the next snapshot — an account somebody was told they had, that quietly stops existing.
+            HttpResponseMessage response = await browser.SendAsync(
+                SignInPage.Post("/authorize/register", new { username = name, password = "a-long-enough-password" }));
 
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Equal("not_the_anchor", Code(await Json(response)));
+            Assert.Equal("not_the_anchor", Code(await SignInPage.Json(response)));
         });
+
+        Assert.Null(await anchor.Store.FindByUsernameAsync(name));
     }
 }

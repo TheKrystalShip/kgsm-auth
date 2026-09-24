@@ -11,8 +11,9 @@ using TheKrystalShip.KGSM.Cluster;
 namespace TheKrystalShip.KGSM.Auth.Cluster;
 
 /// <summary>
-/// What a machine's leaves verify a person's session against: the cluster's issuer, its audience and
-/// the keys its auth anchor signs with, as the member on the machine read them through the holder.
+/// What a machine's leaves verify a person's session against — the cluster's issuer, its audience and
+/// the keys its auth anchor signs with — and the origins a browser holding one calls from, as the member
+/// on the machine read them through the holder.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,10 +32,12 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// <param name="Issuer">The <c>iss</c> a cluster session carries.</param>
 /// <param name="Audience">The <c>aud</c> a cluster session carries.</param>
 /// <param name="Keys">Every key a cluster session may currently be signed with.</param>
+/// <param name="ClientOrigins">The origins the provider's registered clients live at.</param>
 public sealed record HostProviderFile(
     [property: JsonPropertyName("issuer")] string Issuer,
     [property: JsonPropertyName("audience")] string Audience,
-    [property: JsonPropertyName("keys")] IReadOnlyList<SessionJwk> Keys)
+    [property: JsonPropertyName("keys")] IReadOnlyList<SessionJwk> Keys,
+    [property: JsonPropertyName("clientOrigins")] IReadOnlyList<string>? ClientOrigins = null)
 {
     /// <summary>Where the file lives: the directory the members and leaves on a machine share.</summary>
     public const string DefaultPath = "/var/lib/kgsm/cluster/auth-provider.json";
@@ -182,7 +185,7 @@ public sealed class HostProviderFileWriter(
 
         return keys.PublishedKeySet is { } published
             && EcdsaSessionSigner.ReadKeys(published) is { Keys.Count: > 0 } set
-                ? new HostProviderFile(issuer, audience, set.Keys)
+                ? new HostProviderFile(issuer, audience, set.Keys, keys.ClientOrigins)
                 : null;
     }
 }
@@ -203,7 +206,7 @@ public sealed class HostProviderFileWriter(
 /// </para>
 /// </remarks>
 public sealed class HostSessionKeys(string path, ILogger<HostSessionKeys> logger, TimeProvider? time = null)
-    : IClusterSessionKeys
+    : IClusterSessionKeys, IClientOrigins
 {
     /// <summary>How long a snapshot is answered from before the file is looked at again.</summary>
     public static readonly TimeSpan RecheckInterval = TimeSpan.FromSeconds(5);
@@ -220,6 +223,11 @@ public sealed class HostSessionKeys(string path, ILogger<HostSessionKeys> logger
 
     /// <inheritdoc />
     public IReadOnlyList<SecurityKey> Keys => Current().Keys;
+
+    /// <inheritdoc />
+    public bool Admits(string? origin) =>
+        ClusterClientOrigins.Normalize(origin) is { } normalized
+        && (Current().File?.ClientOrigins ?? []).Contains(normalized, StringComparer.Ordinal);
 
     private Snapshot Current()
     {

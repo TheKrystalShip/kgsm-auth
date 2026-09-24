@@ -4,22 +4,12 @@ using TheKrystalShip.KGSM.Auth.Users;
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
-/// Changing what proves an account.
+/// Attaching an identity to an account: the provider's answer to a link the account page started.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>These ask for a credential again, and the rest of the anchor does not.</b> Holding a session is
-/// not the same as having proved you own it, and the two come apart exactly where it matters — an
-/// unlocked laptop, a browser left signed in, a token lifted from storage. Most of what a session does
-/// is bounded by that session's own life, so the distinction costs nothing. Attaching an identity is
-/// not: afterwards whoever holds that provider account can sign in as this one, for as long as the
-/// account exists.
-/// </para>
-/// <para>
-/// <b>Signing in counts as proving it.</b> Every door that mints a session stamps it, so somebody who
-/// has just arrived attaches an account without being asked for anything, and somebody returning to a
-/// week-old tab is asked once.
-/// </para>
+/// A link outlives the session that makes it — afterwards whoever holds that provider account signs in
+/// as this one — so it starts only from the account page, behind a recent proof
+/// (<see cref="AccountPageEndpoints.StartLink"/>). This is where the provider sends the browser back.
 /// </remarks>
 internal static class IdentityEndpoints
 {
@@ -30,147 +20,26 @@ internal static class IdentityEndpoints
     /// </remarks>
     private const string TicketCookie = "kgsm_link_ticket";
 
-    /// <summary>Prove the caller's password again, opening the window in which they may change it.</summary>
-    internal static async Task Reauth(HttpContext ctx)
-    {
-        if (!await Endpoints.RequireAuthorityAsync(ctx))
-            return;
-
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.None);
-        if (maybe is not { } caller || caller.User is not { } user)
-            return;
-
-        ReauthRequest? body = await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.ReauthRequest);
-        if (body?.Password is not { Length: > 0 })
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
-                "A password is required.");
-            return;
-        }
-
-        var store = ctx.RequestServices.GetRequiredService<IUserStore>();
-        IReadOnlyList<UserCredential> credentials =
-            await store.ListCredentialsAsync(user.UserId, ctx.RequestAborted);
-
-        // A distinct answer from a wrong password, because the way through is different: there is
-        // nothing here to prove, and signing in again stamps the session it mints.
-        if (!credentials.Any(c => c.Kind == CredentialKind.Password && c.Secret is not null))
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "no_password",
-                "This account has no password. Sign in again to change your connected accounts.");
-            return;
-        }
-
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        LocalSignInResult result;
-        try
-        {
-            result = await ctx.RequestServices.GetRequiredService<LocalSignInService>()
-                .SignInAsync(user.Username, body.Password, now, ctx.RequestAborted);
-        }
-        catch (KgsmAuthProviderException)
-        {
-            await Endpoints.Unavailable(ctx);
-            return;
-        }
-
-        // The same lockout a sign-in gets, because this is the same check — an unbounded one here
-        // would be the way around it.
-        if (result.Outcome == LocalSignInOutcome.LockedOut)
-        {
-            int seconds = (int)Math.Max(1, Math.Ceiling(((result.RetryAfter ?? now) - now).TotalSeconds));
-            ctx.Response.Headers.RetryAfter = seconds.ToString();
-            await Endpoints.Refuse(ctx, StatusCodes.Status429TooManyRequests, "account_locked",
-                "Too many failed attempts. Try again shortly.");
-            return;
-        }
-
-        if (result.Outcome != LocalSignInOutcome.Success)
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "invalid_credentials",
-                "That password is not correct.");
-            return;
-        }
-
-        var gate = ctx.RequestServices.GetRequiredService<ReauthGate>();
-        gate.Stamp(caller.SessionId);
-
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
-            new ReauthResult(gate.FreshUntil(caller.SessionId) ?? now + gate.Window),
-            AnchorJsonContext.Default.ReauthResult);
-    }
-
-    /// <summary>Begin attaching an account at a provider.</summary>
-    internal static async Task StartLink(HttpContext ctx)
-    {
-        if (!await Endpoints.RequireAuthorityAsync(ctx))
-            return;
-
-        string provider = (string?)ctx.Request.RouteValues["provider"] ?? "";
-
-        if (ctx.RequestServices.GetRequiredService<ProviderCatalog>().Link(provider) is not { } directory)
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "auth_unconfigured",
-                $"Connecting a {provider} account is not configured on this cluster.");
-            return;
-        }
-
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.None);
-        if (maybe is not { } caller || caller.User is not { } user)
-            return;
-
-        if (!ctx.RequestServices.GetRequiredService<ReauthGate>().IsFresh(caller.SessionId))
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "reauth_required",
-                "Prove your password before changing how you sign in.");
-            return;
-        }
-
-        // One account per provider, per KGSM account. The store's own constraint is stricter in a
-        // different direction — an identity belongs to exactly one account, table-wide — so it would
-        // let somebody attach a second account at the same provider and never say which one signs
-        // them in.
-        IReadOnlyList<UserCredential> credentials = await ctx.RequestServices
-            .GetRequiredService<IUserStore>()
-            .ListCredentialsAsync(user.UserId, ctx.RequestAborted);
-
-        if (credentials.Any(c => c.Kind == CredentialKind.Identity
-            && string.Equals(ProviderOf(c.Handle), directory.Provider, StringComparison.OrdinalIgnoreCase)))
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "already_linked",
-                $"A {directory.Provider} account is already connected. Disconnect it first.");
-            return;
-        }
-
-        OAuthHandshake handshake = OAuthHandshake.Create();
-        string ticket = ctx.RequestServices.GetRequiredService<LinkTicketStore>()
-            .Issue(user.UserId, caller.SessionId ?? string.Empty, handshake);
-
-        SetTicketCookie(ctx, ticket);
-
-        // `consent` rather than the silent `none` a sign-in uses: somebody attaching an account is
-        // choosing WHICH account, and a silent bounce attaches whichever one that browser happens to
-        // be signed into without ever showing them which.
-        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
-            new LinkStartResponse(
-                directory.BuildAuthorizeUrl(handshake.State, handshake.CodeChallenge, "consent")),
-            AnchorJsonContext.Default.LinkStartResponse);
-    }
+    /// <summary>Where the browser goes when the link has been decided either way.</summary>
+    private const string AccountPage = "/account";
 
     /// <summary>
     /// Take the provider's answer and attach the identity to the account that started the link.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Unauthenticated by necessity: this is a top-level navigation from the provider and a bearer
-    /// does not survive one. What authorizes it is the ticket — issued to a session that had proved a
-    /// credential minutes ago, single-use, and holding the account id on this machine so the browser
-    /// never carries it.
+    /// Unauthenticated by necessity: this is a top-level navigation from the provider. What authorizes
+    /// it is the ticket — issued to a provider session that had proved a credential minutes ago,
+    /// single-use, and holding the account id on this machine so the browser never carries it.
     /// </para>
     /// <para>
     /// Freshness is checked when the link is <em>started</em> and not again here. The bounce takes as
     /// long as it takes, and re-checking would fail a link somebody legitimately began while adding
     /// nothing: the ticket is already one-use, short-lived and unforgeable.
+    /// </para>
+    /// <para>
+    /// The outcome goes back to the account page in the fragment, as <c>linked</c> or
+    /// <c>link_error</c>, which the page reads once and reports.
     /// </para>
     /// </remarks>
     internal static async Task CompleteLink(HttpContext ctx)
@@ -179,7 +48,6 @@ internal static class IdentityEndpoints
             return;
 
         string provider = (string?)ctx.Request.RouteValues["provider"] ?? "";
-        AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.IdentityEndpoints");
 
@@ -191,30 +59,21 @@ internal static class IdentityEndpoints
         LinkTicket? ticket = ctx.RequestServices.GetRequiredService<LinkTicketStore>()
             .Redeem(cookie, ctx.Request.Query["state"]);
 
-        // A link begun on the anchor's own account page names the browser's provider session, and goes
-        // back to that page; one begun from a surface goes back to the surface.
-        if (ticket is not null && await ctx.RequestServices.GetRequiredService<SqliteSessionRegistry>()
-                .IsProviderSessionAsync(ticket.SessionId, ctx.RequestAborted))
-            options = options with { FrontendUrl = "/account" };
-
         if (ticket is null)
         {
-            await Fail(ctx, options, StatusCodes.Status400BadRequest, "invalid_state",
-                "That link could not be verified. Start again.");
+            Fail(ctx, logger, "invalid_state", "that link could not be verified");
             return;
         }
 
         if (ctx.RequestServices.GetRequiredService<ProviderCatalog>().Link(provider) is not { } directory)
         {
-            await Fail(ctx, options, StatusCodes.Status503ServiceUnavailable, "auth_unconfigured",
-                $"Connecting a {provider} account is not configured on this cluster.");
+            Fail(ctx, logger, "auth_unconfigured", $"connecting a {provider} account is not configured here");
             return;
         }
 
         if (ctx.Request.Query["code"].ToString() is not { Length: > 0 } code)
         {
-            await Fail(ctx, options, StatusCodes.Status400BadRequest, "bad_request",
-                "The provider returned no authorization code.");
+            Fail(ctx, logger, "bad_request", "the provider returned no authorization code");
             return;
         }
 
@@ -226,15 +85,13 @@ internal static class IdentityEndpoints
         catch (KgsmAuthProviderException ex)
         {
             logger.LogWarning(ex, "{Provider} link exchange failed", provider);
-            await Fail(ctx, options, StatusCodes.Status502BadGateway, "auth_provider_error",
-                "Could not finish authenticating with the provider.");
+            Fail(ctx, logger, "auth_provider_error", "could not finish authenticating with the provider");
             return;
         }
 
         if (verified is null)
         {
-            await Fail(ctx, options, StatusCodes.Status401Unauthorized, "login_required",
-                "That authorization code was invalid or expired.");
+            Fail(ctx, logger, "login_required", "the authorization code was invalid or expired");
             return;
         }
 
@@ -247,8 +104,7 @@ internal static class IdentityEndpoints
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "could not attach {Handle} to {UserId}", verified.Handle, ticket.UserId);
-            await Fail(ctx, options, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
-                "The account store could not be written.");
+            Fail(ctx, logger, "authority_unavailable", "the account store could not be written");
             return;
         }
 
@@ -256,12 +112,11 @@ internal static class IdentityEndpoints
         // person another's account, and the person on the other end would never learn it happened.
         if (link.Outcome == LinkOutcome.AlreadyLinked)
         {
-            await Fail(ctx, options,
-                link.User is null ? StatusCodes.Status404NotFound : StatusCodes.Status409Conflict,
+            Fail(ctx, logger,
                 link.User is null ? "no_such_account" : "identity_taken",
                 link.User is null
-                    ? "That account no longer exists."
-                    : $"That {provider} account is already connected to another account.");
+                    ? "the account no longer exists"
+                    : $"that {provider} account is already connected to another account");
             return;
         }
 
@@ -275,7 +130,7 @@ internal static class IdentityEndpoints
 
             // Every member holds the handles an account can be proved by, so one that is not told
             // would refuse a session this identity establishes.
-            long version = await ctx.RequestServices.GetRequiredService<IAccountVersions>()
+            await ctx.RequestServices.GetRequiredService<IAccountVersions>()
                 .NextAsync(account.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);
             await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
                 .DrainAsync(ctx.RequestAborted);
@@ -293,37 +148,26 @@ internal static class IdentityEndpoints
                 "{Handle} attached to '{Username}'", verified.Handle, account.Username);
         }
 
-        if (options.RedirectsToPanel)
-        {
-            ctx.Response.Redirect($"{options.FrontendUrl}#linked={Uri.EscapeDataString(verified.Provider)}");
-            return;
-        }
-
-        ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+        ctx.Response.Redirect($"{AccountPage}#linked={Uri.EscapeDataString(verified.Provider)}");
     }
 
     /// <summary>
-    /// Report a failed link the way the caller can act on.
+    /// Send the browser back to the account page with the reason, and say it here too.
     /// </summary>
     /// <remarks>
-    /// A browser sent here by a redirect is sent back to the panel with the reason in the fragment,
-    /// because leaving somebody on a JSON error page at an address they did not type is not an answer
-    /// they can do anything with.
+    /// <c>link_error</c> rather than <c>error</c>: the page reads its fragment once, and a failed attach
+    /// must never read as a failed sign-in. Logged, because a browser is the only other witness and it
+    /// cannot be asked afterwards.
     /// </remarks>
-    private static Task Fail(
-        HttpContext ctx, AnchorOptions options, int status, string code, string message)
+    private static void Fail(HttpContext ctx, ILogger logger, string code, string why)
     {
-        if (options.RedirectsToPanel)
-        {
-            // link_error, never error. A panel reads the fragment once at boot and cannot tell two
-            // failures apart by their value, so a failed ATTACH reported as `error` is shown on the
-            // sign-in card — telling somebody who is signed in that their sign-in failed.
-            ctx.Response.Redirect($"{options.FrontendUrl}#link_error={Uri.EscapeDataString(code)}");
-            return Task.CompletedTask;
-        }
-
-        return Endpoints.Refuse(ctx, status, code, message);
+        logger.LogWarning("identity link refused: {Code} — {Why}", code, why);
+        ctx.Response.Redirect($"{AccountPage}#link_error={Uri.EscapeDataString(code)}");
     }
+
+    /// <summary>Hand the browser a link ticket, for the callback to redeem.</summary>
+    internal static void SetTicketCookie(HttpContext ctx, string ticket) =>
+        ctx.Response.Cookies.Append(TicketCookie, ticket, CookieOptions(ctx));
 
     /// <summary>
     /// The ticket cookie's attributes — shared by the set at start and the delete at callback, where
@@ -334,10 +178,6 @@ internal static class IdentityEndpoints
     /// redirect back, which breaks every link. Secure tracks the scheme so it works on an http
     /// loopback yet is Secure on a real host.
     /// </remarks>
-    /// <summary>Hand the browser a link ticket, for the callback to redeem.</summary>
-    internal static void SetTicketCookie(HttpContext ctx, string ticket) =>
-        ctx.Response.Cookies.Append(TicketCookie, ticket, CookieOptions(ctx));
-
     private static CookieOptions CookieOptions(HttpContext ctx) => new()
     {
         HttpOnly = true,
