@@ -160,6 +160,31 @@ public static class AuthEventPayloads
             w.WriteString("Handle", handle ?? string.Empty);
         };
 
+    /// <summary>
+    /// An account given a role within a scope, or losing one.
+    /// </summary>
+    /// <param name="assignmentId">The assignment.</param>
+    /// <param name="userId">The account holding it.</param>
+    /// <param name="username">What the account was called.</param>
+    /// <param name="roleId">The role.</param>
+    /// <param name="role">What the role was called.</param>
+    /// <param name="scope">Where it applies, in its wire form.</param>
+    /// <param name="authorityVersion">The authority version the change produced.</param>
+    /// <returns>The payload writer.</returns>
+    public static Action<Utf8JsonWriter> Assignment(
+        string assignmentId, string userId, string? username, string roleId, string? role, string scope,
+        long authorityVersion) =>
+        w =>
+        {
+            w.WriteString("AssignmentId", assignmentId ?? string.Empty);
+            w.WriteString("UserId", userId ?? string.Empty);
+            Nullable(w, "Username", username);
+            w.WriteString("RoleId", roleId ?? string.Empty);
+            Nullable(w, "Role", role);
+            w.WriteString("Scope", scope ?? string.Empty);
+            w.WriteNumber("AuthorityVersion", authorityVersion);
+        };
+
     /// <summary>A real null for an absent value, never an empty string.</summary>
     private static void Nullable(Utf8JsonWriter writer, string name, string? value)
     {

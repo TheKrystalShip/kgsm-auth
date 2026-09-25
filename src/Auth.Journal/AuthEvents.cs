@@ -67,6 +67,36 @@ public static class AuthEvents
 
     /// <summary>An external identity was detached from an account.</summary>
     public const string IdentityUnlinked = "identity.unlinked";
+
+    /// <summary>A role was created, renamed, ranked or given different permissions.</summary>
+    public const string RoleChanged = "auth.role.changed";
+
+    /// <summary>A role was deleted.</summary>
+    public const string RoleRemoved = "auth.role.removed";
+
+    /// <summary>A permission was created, renamed or given different actions.</summary>
+    public const string PermissionChanged = "auth.permission.changed";
+
+    /// <summary>A permission was deleted.</summary>
+    public const string PermissionRemoved = "auth.permission.removed";
+
+    /// <summary>An account was given a role within a scope.</summary>
+    public const string AssignmentGranted = "auth.assignment.granted";
+
+    /// <summary>An account lost a role within a scope.</summary>
+    public const string AssignmentRevoked = "auth.assignment.revoked";
+
+    /// <summary>A service's requirement was approved, automatically or by a person, or narrowed.</summary>
+    public const string ServiceRequirementApproved = "auth.service.requirement.approved";
+
+    /// <summary>A service's requirement was revoked.</summary>
+    public const string ServiceRequirementRevoked = "auth.service.requirement.revoked";
+
+    /// <summary>A service was refused an action.</summary>
+    public const string ServiceRefused = "auth.service.refused";
+
+    /// <summary>The catalog of declared actions changed.</summary>
+    public const string CatalogChanged = "auth.catalog.changed";
 }
 
 /// <summary>

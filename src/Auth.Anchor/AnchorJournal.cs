@@ -136,6 +136,14 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
         WriteAsync(
             type, actor, origin, AuthEventPayloads.Identity(userId, username, provider, handle), ct);
 
+    /// <summary>Record an account being given a role within a scope, or losing one.</summary>
+    internal Task AssignmentAsync(
+        string type, string assignmentId, string userId, string? username, string roleId, string? role,
+        string scope, long authorityVersion, string actor, string? origin, CancellationToken ct = default) =>
+        WriteAsync(
+            type, actor, origin,
+            AuthEventPayloads.Assignment(assignmentId, userId, username, roleId, role, scope, authorityVersion), ct);
+
     /// <summary>Append one line, saying what was lost if it cannot.</summary>
     /// <remarks>
     /// The base logs the generic failure; this adds what the base cannot know — a line nobody will

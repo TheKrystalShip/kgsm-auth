@@ -73,4 +73,30 @@ The account store: one file per host, the only production `IAuthorityProvider`. 
   door that sets one — registration, an admin reset, a holder changing their own — reads the same
   constant, because a floor checked in three callers is three places for it to drift low.
 
+## Schema version 2 — the access model
+
+- **Two readers, one per version.** `SqliteUserStore` reads version 1; `SqliteAuthorityStore` reads
+  version 2, where accounts carry `origin` and `kind` instead of a tier and the file also holds
+  permissions, roles, assignments, service accounts, requirements, the catalog, member reports and the
+  authority version. Each refuses the other's file. `UserStoreUpgrade.ToVersion2` is the only way from
+  one to the other.
+- **The upgrade is the one destructive change this file takes, and it copies the file first.** It drops
+  `tier` and `tier_source` after assigning Owner to every `admin` and taking `origin` from the
+  provenance, in one transaction, and writes an owner-only `VACUUM INTO` copy beside the file before
+  touching it. The copy's target is created `0600` and empty before SQLite writes, never chmod'd after.
+- **Every authority write is checked and applied in one immediate transaction.** The snapshot
+  `AuthorityRules` judges is loaded under the write lock, so no second writer moves the state between
+  the check and the change. A write names the version it was made against and is refused with
+  `StaleAuthorityException` when the store has moved past it.
+- **A cascade is reported one change at a time.** Foreign keys delete a role's assignments, an
+  account's assignments and requirements, and a permission's links — and the store reads each of those
+  first and reports it, so the journal carries every assignment that ended.
+- **The system's writes bypass the rules and are never reachable from a request**: the catalog,
+  service accounts and their declared requirements, and Owner granted from the host's shell.
+- **A service account's username is `<component>@<member>`**, which `Usernames` never accepts from a
+  person, so no person can register a service's name.
+- **A requirement a person decided stays as they left it.** Only one the account has never held is
+  approved automatically; one the manifest stops listing is kept with `declared = 0` and grants nothing
+  until listed again.
+
 The account-store design is also covered by `../auth-internal-users-plan.md` at the workspace root.

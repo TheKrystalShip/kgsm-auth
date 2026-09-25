@@ -7,6 +7,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the access model and its evaluator (2.2.0, access 1.0.0-dev.1, users 2.0.0-dev.1, journal 1.1.0-dev.1)
+
+The first phase of `kgsm-docs/plans/permissions.md`. Nothing enforces it yet: every surface still
+enforces tiers, and the anchor still opens its store at schema version 1.
+
+- **`TheKrystalShip.KGSM.Auth.Access`**, a new package with no dependencies and AOT-safe. It holds
+  actions and the catalog, scopes (`cluster`, `node:<id>`, `instance:<node>/<name>#<nonce>`),
+  permissions, ranked roles with the built-in Owner and `everyone`, assignments, service accounts and
+  their requirements, and the staleness bound. `AccessEvaluator.Allows` answers every access question
+  in the plan's order: account status, staleness, Owner, self actions, the union of grants.
+  `AllowsAutomation` adds the author ∩ service check, and `EffectiveActions` gives one target's answer
+  for `/me/access`. `AuthorityRules.Check` decides every administrative change: the `auth:*` action at
+  its scope, subset, ranking, the permission-edit rule, Owner-only, and the last active Owner.
+  `AuthActions` names the anchor's own actions.
+- **Account store schema version 2** (`Auth.Users`): `AuthoritySchema` gives accounts `origin` and
+  `kind` in place of a tier, plus tables for permissions, roles, assignments, service accounts,
+  requirements, the catalog, member reports and the authority version.
+  `UserStoreUpgrade.ToVersion2` brings a version 1 file forward in one transaction: it writes an
+  owner-only copy first, assigns Owner to every `admin`, maps `tier_source` to `origin`, and drops
+  `tier` and `tier_source`. Run against a copy of hotrod's live store, the four admins became the only
+  Owners and all fifteen accounts and their fifteen credentials came through.
+- **`SqliteAuthorityStore`** reads a version 2 file into an `AuthoritySnapshot`. It applies each change
+  in one immediate transaction, after `AuthorityRules` has approved it against the state it lands on.
+  A write against an older authority version is refused (`StaleAuthorityException`), and cascades are
+  reported one change at a time. It also holds the system's writes: the catalog, where an action no
+  longer declared leaves every permission; a service account's declared requirements, auto-approved at
+  the member's scope except `auth:*`, with a person's revocation or narrowing sticking; forgetting a
+  service account; and Owner granted from the shell.
+- **`kgsm-auth-anchor owner grant <username>`** assigns Owner from the anchor's host and journals
+  `auth.assignment.granted` under `local:<user>`.
+- **`Auth.Journal`** names every authority event (`auth.role.*`, `auth.permission.*`,
+  `auth.assignment.*`, `auth.service.*`, `auth.catalog.changed`) and writes the assignment payload.
+
 ### Fixed — a setting whose source this component could not read reports as unknown (2.1.2)
 
 `ComponentSurface` 1.0.0-dev.8 carries whether every declared floor source was actually read, and reads

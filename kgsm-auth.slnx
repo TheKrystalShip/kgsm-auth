@@ -1,10 +1,12 @@
 <Solution>
   <Project Path="src/Auth/Auth.csproj" />
+  <Project Path="src/Auth.Access/Auth.Access.csproj" />
   <Project Path="src/Auth.Users/Auth.Users.csproj" />
   <Project Path="src/Auth.Cluster/Auth.Cluster.csproj" />
   <Project Path="src/Auth.Anchor/Anchor.csproj" />
   <Project Path="src/Auth.Testing/Auth.Testing.csproj" />
   <Project Path="tests/Auth.Tests/Auth.Tests.csproj" />
+  <Project Path="tests/Auth.Access.Tests/Auth.Access.Tests.csproj" />
   <Project Path="tests/Auth.Users.Tests/Auth.Users.Tests.csproj" />
   <Project Path="tests/Auth.Cluster.Tests/Auth.Cluster.Tests.csproj" />
   <Project Path="tests/Auth.Anchor.Tests/Auth.Anchor.Tests.csproj" />

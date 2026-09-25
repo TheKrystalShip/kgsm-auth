@@ -30,9 +30,15 @@ member that holds the accounts and signs people in to the whole cluster at once.
 these libraries by project reference, so a change to a library is a compile break here before it is
 anything else.
 
-**Each package's locked decisions live in a `CLAUDE.md` beside it**: `src/Auth.Users/`,
-`src/Auth.Journal/`, `src/Auth.Cluster/`, `src/Auth.Anchor/` (the daemon, the Discord round trip, the
-OIDC provider) and `src/Auth.Anchor/Minting/`. This repo is the authority for the auth design; the
+**The access model that replaces the tiers is `Auth.Access`** — actions declared by components,
+permissions, ranked roles, assignments scoped to the cluster, a node or an instance, and service
+accounts — with its authority `kgsm-docs/plans/permissions.md`. The account store holds it at schema
+version 2 (`SqliteAuthorityStore`), and `UserStoreUpgrade` brings a version 1 file there. Every surface
+enforces the tiers until that plan's cutover.
+
+**Each package's locked decisions live in a `CLAUDE.md` beside it**: `src/Auth.Access/`,
+`src/Auth.Users/`, `src/Auth.Journal/`, `src/Auth.Cluster/`, `src/Auth.Anchor/` (the daemon, the Discord
+round trip, the OIDC provider) and `src/Auth.Anchor/Minting/`. This repo is the authority for the auth design; the
 account-store design is also covered by `../auth-internal-users-plan.md`, and the anchor's by
 `../cluster-auth-plan.md`.
 
@@ -76,7 +82,7 @@ Each package versions on its own clock, and the daemon on one of its own. `deplo
 the daemon's, because that is the one the pacman package ships.
 
 **Tags carry the prefix of the thing they version**, since one repo's commits move several numbers:
-`auth-v*`, `users-v*`, `journal-v*`, `cluster-v*`, `testing-v*` for the packages, and a bare `v*` for
+`auth-v*`, `access-v*`, `users-v*`, `journal-v*`, `cluster-v*`, `testing-v*` for the packages, and a bare `v*` for
 the daemon. Only the bare `v*` fires the release workflow, which asserts the tag against
 `deploy/version.sh` — so a package tag can never publish a pacman package by accident.
 

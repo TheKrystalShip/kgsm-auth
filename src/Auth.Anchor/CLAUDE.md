@@ -136,6 +136,12 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   defaults, a run resolves the descriptor the deployed daemon carries, names the live unit and
   follows its journal — and passes only on a host where the thing under test is already installed,
   which is measuring the host.
+- **`kgsm-auth-anchor owner grant <username>` is the Owner recovery path, and it is a mode of this
+  binary rather than a tool beside it.** It reads the daemon's own settings, so it opens the store and
+  writes the journal the daemon does, and is run as the anchor's service account. It bypasses the
+  administration rules — whoever can run it already holds the file — and journals
+  `auth.assignment.granted` with `local:<user>` as the actor. It opens the store at schema version 2
+  only; a version 1 file is refused, never upgraded from here.
 
 ## The Discord round trip (`DiscordDirectory`, `OAuthHandshake`)
 

@@ -40,6 +40,11 @@ AnchorSettings settings =
 AnchorOptions options = AnchorOptions.FromSettings(settings);
 builder.Services.AddSingleton(options);
 
+// `kgsm-auth-anchor owner grant <username>` — the Owner recovery path, run on this host as the anchor's
+// service account. It reads the same settings the daemon does, so it opens the store the daemon opens.
+if (args is [OwnerCommand.Verb, ..])
+    return await OwnerCommand.RunAsync(args, options);
+
 // The private key, generated once on a machine that has none. Read before the host is built so a key
 // that cannot be read stops the daemon here rather than at the first sign-in attempt.
 //

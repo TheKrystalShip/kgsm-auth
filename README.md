@@ -4,7 +4,7 @@ The shared authorization model for the KGSM ecosystem: **one definition of who m
 every surface onto a host, so the same person gets the same authority through the Control Panel, the
 assistant and the Discord bot alike.
 
-Four libraries, a test package and one daemon. The daemon — **`kgsm-auth-anchor`** — is the cluster's
+Five libraries, a test package and one daemon. The daemon — **`kgsm-auth-anchor`** — is the cluster's
 sign-in provider: it holds the accounts, signs people in, and mints every session, and every install
 runs one. The libraries are what every other component compiles against to verify those sessions and
 decide what the person holding one may do. None of them can mint a session.
@@ -14,6 +14,7 @@ decide what the person holding one may do. None of them can mint a session.
 | package | contents | taken by |
 |---|---|---|
 | **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity, the authority seam and its failure, the session claim names, the tier cache, the actor convention. **No dependencies, AOT-safe.** | every surface |
+| **`TheKrystalShip.KGSM.Auth.Access`** | the access model — actions, permissions, ranked roles, assignments scoped to the cluster, a node or an instance, service accounts and their requirements — the evaluator every access question goes through (`AccessEvaluator.Allows`), and the rules deciding who may change any of it (`AuthorityRules`). **No dependencies, AOT-safe.** | the anchor; every member at the cutover |
 | **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
 | **`TheKrystalShip.KGSM.Auth.Journal`** | the account events, named and written in one place for every writer. | the anchor, kgsm-api |
 | **`TheKrystalShip.KGSM.Auth.Cluster`** | everything a member or a leaf does about identity as a resource server of the anchor: verify a session it cannot mint (`ClusterSessionValidation`) and read who holds it (`SessionClaims`), read the published key set (`SessionKeys`), admit the provider's registered clients (`IClientOrigins`), honour a session somebody ended (`SessionRevokeHandler`, `ClusterSessionRevocations`), replicate the accounts, write and read the host file a machine's leaves verify against (`HostProviderFile`, `HostSessionKeys`), and name the sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
