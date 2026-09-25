@@ -17,25 +17,26 @@ test presents exactly the session the anchor would mint; no production project r
 
 **Identity and authority are two seams, not one.** The anchor's `IIdentityProvider` answers *who is
 this* (the OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they do* (the
-tier). The two halves come from two different places: an identity provider answers the first, and
-`Auth.Users` answers the second for everyone, however they signed in. **`IAuthorityProvider` has
-exactly one implementation that ships: the account store.** A provider implements the identity half
-and nothing else, which is what lets one be added with no authority story of its own.
+tier). An identity provider answers the first, and `Auth.Users` answers the second for everyone,
+however they signed in. **`IAuthorityProvider` has exactly one implementation that ships: the account
+store.** A provider implements the identity half and nothing else, which is what lets one be added
+with no authority story of its own.
 
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
-its own with a password, and an external identity is a credential attached to it. So the two seams
-have two different sources — a provider verifies who someone is, and the account store alone says
-what they may do.
+its own with a password, and an external identity is a credential attached to it.
 
 **The repo also holds one deployable.** `src/Auth.Anchor` builds `kgsm-auth-anchor`, the cluster
 member that holds the accounts and signs people in to the whole cluster at once. It is built from
 these libraries by project reference, so a change to a library is a compile break here before it is
 anything else.
 
-This file is the authority for the auth design; the account-store design is also covered by
-**`../auth-internal-users-plan.md`**, and the anchor's own design by **`../cluster-auth-plan.md`**.
+**Each package's locked decisions live in a `CLAUDE.md` beside it**: `src/Auth.Users/`,
+`src/Auth.Journal/`, `src/Auth.Cluster/`, `src/Auth.Anchor/` (the daemon, the Discord round trip, the
+OIDC provider) and `src/Auth.Anchor/Minting/`. This repo is the authority for the auth design; the
+account-store design is also covered by `../auth-internal-users-plan.md`, and the anchor's by
+`../cluster-auth-plan.md`.
 
-## Locked decisions (do not relitigate)
+## Locked decisions for the model (do not relitigate)
 
 - **`TheKrystalShip.KGSM.Auth` has ZERO package dependencies and stays AOT-safe.** Every surface takes
   it, including the footprint-tuned bot deploy and the CLI. No `HttpClient`, no configuration binder,
@@ -53,9 +54,9 @@ This file is the authority for the auth design; the account-store design is also
   consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
   lets surfaces answer the same question differently.
 - **No surface derives authority from a group, a guild or a role.** An OAuth application carries the
-  application and nothing else; the account store is the single authority on what anyone may do, including for kgsm-bot, whose caller is a Discord account with no login behind it.
-  Do not add a role map: an authority source that lives outside the account lets surfaces disagree
-  about one person.
+  application and nothing else; the account store is the single authority on what anyone may do,
+  including for kgsm-bot, whose caller is a Discord account with no login behind it. Do not add a role
+  map: an authority source that lives outside the account lets surfaces disagree about one person.
 - **Parsing is fail-closed.** `KgsmTiers.Parse` maps anything unrecognised — absent, misspelled, or a
   tier invented by a newer peer — to `None`. Never add a permissive fallback.
 - **A provider is a key, never a property.** The anchor reads `KgsmAuth:Providers:<name>:ClientId`
@@ -64,377 +65,10 @@ This file is the authority for the auth design; the account-store design is also
   a sign-in path the others do not have. An unwired provider and an unknown one are one answer — not
   offered — so no caller writes an existence check that could disagree with the configured check.
 
-## The anchor's Discord round trip — locked decisions
-
-- **It answers who, and only who.** `DiscordDirectory` is an `IIdentityProvider` and stays the only
-  chokepoint to `discord.com`. It takes **one** `KgsmOAuthApplication`, not every provider's, so a
-  composition cannot hand it another provider's by accident. It holds no guild, reads no role and
-  takes no bot token: what a person
-  may do is the account store's answer, and a login here proves one fact — that the caller holds this
-  subject at Discord. `DiscordAuthException` derives from `KgsmAuthProviderException` so a caller
-  handles any provider's outage identically.
-- **The caller's token buys one thing and is dropped.** It is presented to `users/@me` and never
-  stored, so a completed login leaves the host holding no credential at Discord at all.
-- **Register it transient, and resolve it once per composition.** It is a typed `HttpClient`; holding
-  one in a singleton pins a handler for the process lifetime and silently stops the factory rotating
-  it, so DNS changes never land. The composition resolves the client once and hands the same instance
-  to both halves, so one sign-in uses one client.
-
-- **A bad code is `null`; an outage throws.** A 4xx from the token endpoint is an expired or replayed
-  code — the caller's problem, a `401`, start again. A 5xx or an unreachable host is
-  `DiscordAuthException`, which is a `502`. Collapsing them reports one as the other and sends a
-  browser round a retry loop that cannot succeed.
-- **`OAuthHandshake` is its own type, not Discord's.** The state+PKCE pair is a property of the
-  authorization-code flow, not of Discord, and every provider's round trip uses it unchanged.
-- **`state` and PKCE ride one cookie and neither is optional.** `state` stops login CSRF and only
-  works because the cookie binds it to the browser that started the login; a server-side set of issued
-  states admits the attacker's own state. PKCE stops code interception. Do not "simplify" either away.
-- **`SameSite=Lax`, never `Strict`.** Strict suppresses the cookie on the top-level redirect back from
-  Discord, which breaks every login.
-## Minting — locked decisions
-
-`src/Auth.Anchor/Minting`, compiled into the anchor and, unchanged, into `Auth.Testing`.
-
-- **The token layer knows nothing about providers.** It mints and reads whatever `provider:subject`
-  it is handed. A Discord sign-in produces the subject `discord:<id>` — `SessionTokenServiceTests`
-  pins that string, because changing its spelling is a flag day that invalidates every live token and
-  orphans every stored session row at once.
-- **One signer, ES256, required.** `SessionTokenService` takes the `EcdsaSessionSigner` and nothing
-  else can sign with it; there is no symmetric path, so nothing a member holds can be a key.
-- **`RefreshLifetime`, `Audience` and `Issuer` are settings, and all are load-bearing.** The lifetime
-  is written once and used for both the token and the row, so there is no second copy to drift. The
-  audience and the issuer are validated on every member, so changing either on a running cluster ends
-  every session.
-- **The files stay free of anything only the anchor has.** `Auth.Testing` compiles them against
-  `Auth` and `Auth.Cluster` alone, so a reference to an anchor type here breaks the test package's
-  build rather than giving a test a different minter.
-
-## `Auth.Users` — locked decisions
-
-- **The account is the primary object; a credential only identifies.** A `KgsmUser` exists on its
-  own and carries the tier. A password, a Discord subject and a GitHub subject are all just
-  credentials attached to one. Nothing outside the account contributes to authority — that is what
-  lets a provider be added with no authority story of its own, and it is the rule to check any
-  change here against.
-- **A credential handle is unique across the whole table, and that constraint is load-bearing.** It
-  is simultaneously "an external identity belongs to exactly one account" and "an account has at
-  most one password" (a password is filed under `local:<user id>`). Both rules are enforced by the
-  database rather than by a check a second service could be written without.
-- **Keyed by the opaque `usr_` id, never by the username.** A username is renameable and
-  enumerable; keying on one detaches a person from their own sessions, links and audit trail the day
-  they change it.
-- **Additive-only schema, and the version is a floor.** The ecosystem's `EnsureCreated`-and-wipe rule
-  does not apply to this one file: wiping it is every account and every password, and two
-  independently deployed services share it, so one is routinely a version ahead. Add tables, add
-  nullable columns, add indexes — never drop, rename, or repurpose. A file newer than the build
-  opening it is **refused**, because half-understood accounts is the failure mode here that grants
-  access quietly.
-- **`0600`, set before WAL is enabled.** SQLite stamps `-wal`/`-shm` with the mode the database had
-  when it created them, so chmod-after would leave two world-readable files carrying the same pages.
-- **An unknown username and a wrong password are one outcome at one cost.** Distinguishable answers
-  are a username oracle and so is a faster one — the unmatched path still spends a hash verification
-  against a decoy. Do not add a "no such user" result for the sake of a nicer error.
-- **The store fails closed on every parse**, the same rule as `KgsmTiers.Parse`: an unrecognised
-  status reads as `disabled`, an unrecognised provenance as `derived`, an unrecognised credential
-  kind as `identity`. Enums are stored as words, never ordinals, so reordering one cannot silently
-  repoint every row.
-- **A store that cannot be read throws, and never resolves to `None`.** "We could not ask" is not
-  "the answer is no".
-- **Lockout is exponential from a threshold, never a hard cap.** A hard cap hands anyone who knows a
-  username a denial of service against its owner. The policy is a value applied inside the same
-  transaction that records the failure, so the count and the lock it implies cannot disagree.
-- **`PasswordHasher<T>` from `Microsoft.Extensions.Identity.Core`, behind `IUserPasswordHasher`.**
-  Do not hand-roll, and do not reach for `UserManager`/EF Identity — this package owns its own schema
-  and its own store. The seam plus the rehash-on-upgrade path is what lets the format be replaced
-  later with no forced reset.
-- **No SMTP, and no password reset by email.** A mail dependency in the package whose purpose is
-  removing outside dependencies would be self-defeating. Resets are admin-initiated.
-- **The store is the only production `IAuthorityProvider`.** An external provider proves you are an
-  account this host already has and contributes nothing else, which is what lets a provider be added
-  with no authority story of its own.
-- **Three answers, never one tier.** `UserStoreAuthority.ResolveAsync` reports *usable*, *no account*
-  and *disabled* separately, because only the third is a reason to end a live session and the first
-  covers a pending account (which authenticates at `None`). Its cache TTL is the staleness bound on a
-  demotion; a read failure throws and is never cached, or a moment of unavailability becomes a
-  full-TTL lockout for somebody who really does hold the role.
-- **Linking is scoped to an account, and the last credential is refused.** `UnlinkAsync` takes the
-  account as well as the credential id, because the id is the whole of what a caller supplies and an
-  unscoped one copied from elsewhere would detach a stranger's identity — "not yours" and "not real"
-  are one answer for the same reason. An account with nothing attached is one its own holder cannot
-  sign in to, so the rule lives here rather than in each caller; the store itself refuses nothing and
-  only reports what happened.
-- **An arriving identity is provisioned unapproved, never auto-linked.** `IdentityLinkService` creates
-  a `Pending`/`None` account for a subject nobody has claimed. It never matches on an email or a
-  username: providers disagree about what "verified" means, and matching on one is a documented
-  account-takeover route. Provisioning is reachable by anyone who can complete a login at a configured
-  provider, so `PendingPolicy` caps it and expires what nobody looks at — and expiry only ever removes
-  an account that arrived on its own and is still unapproved. Provenance is what it reads, not whether
-  a password is set: an account an admin created or approved carries `TierSource.Granted` and is
-  spared however long it waits, while a self-registered one holds a password and must still expire,
-  or the cap fills with a queue nobody can drain.
-- **A store with no accounts gets one administrator, and `FirstAdmin` is where that lives.** Both a
-  host's API and a cluster's anchor open account stores, and both must agree on what the first account
-  is called, what the one-time password file holds and when it is removed — so there is one
-  implementation and whichever opens an empty store first wins. It reports failures rather than
-  logging them: this package holds no logger and should not, or every surface that opens a store takes
-  one too.
-- **A password is at least `Passwords.MinLength` characters, and length is the whole rule.** Every
-  door that sets one — registration, an admin reset, a holder changing their own — reads the same
-  constant, because a floor checked in three callers is three places for it to drift low.
-
-## `Auth.Journal` — locked decisions
-
-- **It has ZERO package dependencies, and that is the whole design.** It is a wire shape two
-  components must agree on, and one of them is a Native AOT daemon holding a cluster's account store.
-  Anything that needs a logger, a container or a journal writer belongs in the caller.
-- **The names and the payload writers live together and are called, never copied.** kgsm-api writes
-  these lines on a host that holds its own accounts; the anchor writes them when a cluster's accounts
-  are held by one. A reader deserializes into a fixed shape, so a field spelled differently by one
-  writer does not throw — it lands as a null and the row renders with a name missing and nothing
-  reported. That failure is why one implementation exists rather than two descriptions of it.
-- **An absent value is a real null, never an empty string.** "Nobody looked this up" and "this is
-  blank" are different facts, and a reader that meets `""` cannot tell which it has.
-- **Facts, not sentences.** No summary, no severity, no formatted value: a reader builds those at read
-  time, which is what lets one fact be worded one way in a Control Panel and another in a chat
-  surface, and what keeps a wording improvement from applying only to rows written after it.
-- **It never takes a password parameter.** What is recorded is that a credential was set and by whom —
-  the only signal an account takeover leaves — and the credential is not part of that fact.
-
-## `Auth.Cluster` — locked decisions
-
-What a **member** or a **leaf** does about identity, as opposed to what the anchor does. The anchor
-holds the accounts and mints the sessions; everybody else verifies, resolves and applies. That half
-runs on kgsm-api, the assistant, the bot and the DNS anchor, so it is one package rather than one
-implementation each.
-
-- **A member verifies what it cannot mint.** `ClusterSessionValidation.Accepting` takes the anchor's
-  published keys, audience and issuer and pins ES256. The key set a member holds is public points
-  (`SessionKeys`), so a verifier built from it cannot sign, and a public key offered as an HMAC secret
-  is refused before its signature is looked at. `ClockSkew` is the one tolerance, shared with the mint.
-
-- **A published fact is read through the capability's holder, never off whichever member states it.**
-  `ClusterFacts.FromHolderAsync`, for the keys, the audience and the issuer alike. A key taken from any
-  member would let any member substitute the one sessions are verified against.
-- **Knowing nothing fails closed.** A member with no cluster, or one that has not heard who holds the
-  accounts, accepts no cluster session at all. Guessing would accept a token minted for a different
-  cluster.
-- **Who holds the accounts is read from cluster state, not from a setting.** `AnchorHeldGate` reads
-  the assignment, so an anchor joining or being reassigned needs no reconfiguration anywhere.
-- **The origins a member admits are the provider's registered clients, read through the holder.**
-  `IClientOrigins`, implemented by `ClusterSessionKeys` from the `auth.origins` fact and by
-  `HostSessionKeys` from the host file, so no member is configured with a list: registering a client at
-  the provider is what admits it everywhere. A member answers them without credentials — a session is
-  a bearer, and nothing a member serves reads a cookie.
-- **An ended session is held to a deny-list.** A session is verified against a published key and
-  needs no row to be accepted, so the one thing a member stores is that somebody ended it —
-  `IClusterSessionDenyList`, filled by `SessionRevokeHandler` from `session.revoke` and read through
-  `ClusterSessionRevocations`, whose cache an end evicts.
-- **No handler throws.** A `500` is the only answer that keeps a message in the sender's outbox, so it
-  is reserved for a transient failure. A stale change never becomes newer and a username conflict never
-  resolves itself, so both are logged and acknowledged; throwing would wedge the sender's queue behind
-  a message it can never deliver, taking every later account change with it, including a disable.
-- **The snapshot is taken once and then the stream carries everything.** Both paths carry the same
-  per-account version and the replica refuses anything not newer, so "snapshot, then follow" is a
-  sequence rather than a handover, and re-reading the whole set on a timer would be a poll standing in
-  for a push that works.
-- **A leaf verifies what its machine's member verified, through the host file.** A leaf joins no
-  cluster, so it cannot resolve the holder; the node writes `HostProviderFile` from its own read
-  through the holder, and `HostSessionKeys` reads it back. One writer per machine, the node. The file
-  is removed when the member has read the cluster and the holder states nothing — a file naming a
-  cluster the machine has left would have its leaves accept that cluster's sessions — and left alone
-  before the member's first read, so a restart costs no leaf its sessions.
-- **The provider is named only when it is a URL.** `ProtectedResourceMetadata` answers with the
-  issuer a member verifies against, or with `no_issuer`; a surface given a value it cannot navigate
-  to would try to.
-- **Two seams, and the package owns neither:** `IReplicatedAccounts` is the member's own store and
-  `IClusterSessionDenyList` its own record of ended sessions. Opening a file and serving a route stay
-  the member's business.
-
-## `Auth.Anchor` — locked decisions
-
-- **A session's audience is the CLUSTER, not a machine.** That single value is what makes one
-  sign-in valid on every member, and changing `Anchor__ClusterId` on a running cluster invalidates
-  every token at once. It reaches the minter as `SessionTokenOptions.Audience`.
-- **Signing is asymmetric and the verification key is published.** A member must be able to check a
-  session it cannot mint — one that could mint what it verifies could mint itself an admin session.
-  `ValidAlgorithms` is pinned for the same reason: a public key offered as an HMAC secret would make
-  the key everybody holds the key everybody can sign with.
-- **The private key is generated exactly once, on a machine that has none.** Every member in the
-  cluster verifies against its public half, so a key that changed would invalidate every session and
-  leave every member checking against something nothing signs with. A file that exists and cannot be
-  read stops the daemon; it is never a reason to generate. It is created with mode `0600` rather than
-  chmod'd after — the gap between write and chmod is exactly what the mode exists to close.
-- **Authority is read from the store on every request, never off the token.** The tier claim is what
-  was true at mint time. The same read happens on refresh, and a withdrawn account has its session
-  revoked there rather than left to run out its bearer's lifetime.
-- **A store that cannot be read is `503`, never `403`.** "We could not find out what this person may
-  do" is a different fact from "they may do nothing", and reporting the first as the second locks out
-  an admin mid-incident. It is the same rule `Auth.Users` states for the store itself.
-- **Every endpoint is a plain `RequestDelegate` and every wire shape has source-generated metadata.**
-  The routing overloads that bind an arbitrary delegate reflect over its parameters, which no
-  Native-AOT service can do, and the failure appears at publish time rather than at build time. The
-  same goes for a shape missing from `AnchorJsonContext`: it throws at runtime, not at build.
-- **The CORS allowance is a registered client's origin, never a wildcard and never with
-  credentials.** It is answered only on what a client reads across origins — discovery, the key set,
-  `/token`, `/userinfo`, `/auth/identity`, `/auth/cluster/*` and this anchor's own surface — and never
-  on anything that reads the provider's cookie. This is a surface that mints credentials; a wildcard
-  invites any page to drive somebody's sign-in from their own browser.
-- **The package is preset-disabled.** A cluster has one anchor and which machine holds it is an
-  administrator's decision. A second machine with the package installed and the unit stopped is a
-  promotion candidate, not a second authority.
-- **Three standings, and collapsing the first into the third breaks every standalone install.** A
-  machine with no cluster secret is not "not the holder" — there is no assignment to read, its
-  accounts are its own, and it serves everything. `AnchorRole` is where that lives, and a clustered
-  anchor starts at `StandingBy` rather than assuming it holds the capability until told otherwise:
-  the optimistic default would make it the authority for exactly the window in which it does not know
-  whether it is one.
-- **`TryClaimAsync` returning true is not holding it.** It is compare-and-set against what *this*
-  member currently knows, so two isolated anchors both succeed; the tie resolves when their gossip
-  meets. Every claim is followed by a re-read, and a member that finds itself not the holder stands
-  down. Measured: a second anchor claims, publishes, then stands down within one gossip round.
-- **Only the anchor on the machine that founded the cluster claims the accounts into an empty
-  assignment** — `ClusterFounding.IsFoundedHere`, the founding record naming the secret it holds.
-  Anywhere else an empty assignment means gossip has not arrived, and a claim made then competes with
-  the real holder under a tie-break that can hand this anchor the cluster's accounts. A founding
-  machine that takes another cluster's secret stops being the founder by that comparison alone.
-- **The anchor writes its own event journal, and it is the only witness there is.** Signing in,
-  creating an account and moving somebody's authority happen here for the whole cluster, so a line the
-  anchor does not write is a fact that exists nowhere. The producer id has to be the name in the
-  unit's `StateDirectory=`, because a reader establishes the producer from the path it read a line out
-  of — a journal written anywhere else is not reported as misplaced, it is simply never found, and
-  looks exactly like a daemon that recorded nothing. A test run relocates it with
-  `KGSM_JOURNAL_STATE_ROOT`; left at its default, a suite that signs people in appends invented
-  sign-ins to a live audit page.
-- **A sign-in is recorded where a session is minted, which is one place.** `MintSessionFor`, reached
-  only from the code exchange at `/token`, and every session it mints lives under a provider session. A
-  second mint site is a second place to forget the line, and forgetting is silent: the person is signed
-  in and nothing says so.
-- **Every session lives under a browser's sign-in here.** A row that is neither a provider session nor
-  minted under one is deleted as the registry opens: nothing would end it on a sign-out or list it with
-  the sign-in it came from.
-- **One line per fact that changed, never one per request**, and only when the action actually
-  happened. A patch moving both a tier and a status writes two lines; one moving neither writes none;
-  a sign-out for a session that had already ended writes none. An access review reads for one fact at
-  a time, and a line per request fills it with rows saying nothing.
-- **Changing what proves an account asks for the credential again; nothing else here does.** Being
-  signed in on a browser is not the same as having proved you own the account, and attaching an
-  identity outlives the session that attached it — afterwards whoever holds that provider account signs
-  in as this one. Detaching and setting a password carry the same gate. The proof is the provider
-  session's `credential_at`, stamped whenever a credential is typed on that browser, and it dies with
-  that provider session.
-- **Attaching and detaching ship together or not at all.** Signing in again with a provider you just
-  detached does not give the account back: nothing claims that handle, so it provisions a second
-  account and the person is a stranger on it.
-- **The link callback is a different address from the sign-in one.** One completes a request in flight
-  for whoever comes back; the other attaches whoever comes back to an account already signed in, and
-  always returns to the account page. One address for both lets a link return through the sign-in
-  callback instead. Both have to be registered against the provider's application, or the bounce is
-  refused where no log here sees it.
-- **Freshness is checked when a link STARTS, never on the way back.** The bounce takes as long as it
-  takes, and re-checking fails a link somebody legitimately began while adding nothing — the ticket is
-  already one-use, short-lived and unforgeable.
-- **Sessions are listed and ended HERE, because they exist only here.** A member verifies a cluster
-  session offline against a published key and stores nothing, so a member asked what devices an
-  account holds answers honestly with none — an empty card rather than a wrong question. They are
-  looked up under **every credential handle the account holds**: a session is keyed by the handle
-  somebody arrived with, so one account signed in with a password and with Discord has two keys.
-  A person reads and ends their own on the account page; an administrator reads and ends somebody's
-  under `/auth/cluster/users/{id}/sessions`. Ending one is never gated on holding the capability, for
-  the same reason sign-out is not.
-- **Ending one session and ending all of them are separate doors, and both exist.** They are different
-  decisions with different costs, and an admin left only the wide one reaches for it because it is
-  what exists. A session an admin acts on is addressed under the account it belongs to, so the check
-  is whether the sid is that person's — an admin ending a session without knowing whose it was could
-  not be recorded honestly.
-- **The session registry is the anchor's own, on its own file.** Sessions are not accounts: a member
-  replicating the cluster's accounts replicates none of the sign-ins.
-- **The anchor administers itself, because on the ordinary topology nothing else is there to.** A
-  leaf is configured and read through the node that runs it; an anchor is a peer of every node rather
-  than something one of them hosts, and the machine it sits on need run no Control Panel at all. So
-  `/auth/config` and `/auth/logs` are served by the daemon being configured and the daemon being read,
-  and both are admin-only — a daemon's log is the account store described from the side.
-- **The unit both surfaces name is the descriptor's, never a second setting.** One name in one place
-  cannot disagree with itself, and a log surface reading the wrong unit reports somebody else's
-  silence as this one's. The unit carries `SupplementaryGroups=systemd-journal`, without which
-  `journalctl` exits 0 having printed nothing — a success indistinguishable from a daemon that has
-  logged nothing.
-- **One `journalctl -f` for however many people are watching.** The first subscriber starts the
-  follow, the last one to leave stops it, and an unwatched page costs nothing. A subscriber that
-  falls behind drops its own oldest lines rather than stalling the follow for everybody else — the
-  journal on disk is the durable record, and a reconnect re-reads it. The stream carries no backlog:
-  the caller hydrated its scrollback from the read, and sending history here shows every line twice
-  on every attach.
-- **An idle journal and a dropped connection look identical on screen.** The stream opens with a
-  comment line, which is what makes a proxy release a response that has carried no bytes, and
-  heartbeats after it — so a viewer can show a tail that has stopped as stopped rather than as quiet.
-- **A test relocates every absolute path this daemon reads, not only the ones it writes.**
-  `ConfigDescriptorPath` and `ConfigOverridePath` join the stores and the journal root: left at their
-  defaults, a run resolves the descriptor the deployed daemon carries, names the live unit and
-  follows its journal — and passes only on a host where the thing under test is already installed,
-  which is measuring the host.
-
-## `Auth.Anchor` as an OpenID Connect provider — locked decisions
-
-Authority: `../hosted-sign-in-plan.md`.
-
-- **The issuer is configuration and the OIDC doors require it to be a URL.** Never inferred from a
-  request: a Host header is the caller's to set. An anchor whose issuer is not an absolute URL answers
-  `no_issuer` at every OIDC door rather than guessing one.
-- **Until the client and its redirect are known to be registered, a refusal is rendered on the anchor's
-  own origin.** Redirecting to an unregistered address with an error is the open redirect
-  `/authorize` exists to refuse. Redirects are matched exactly — no prefix, no pattern.
-- **The request in flight lives here, behind `kgsm_authz`.** The page, its form and its provider links
-  carry no request field. One request per browser: beginning another deletes the last.
-- **A credential post is refused before the credential is read** unless it carries the request cookie
-  and a same-origin `Sec-Fetch-Site`, or an `Origin` equal to the issuer's where no fetch metadata is
-  sent. That is the login-CSRF gate, and moving the check after the password check turns it into a
-  lockout anybody can trigger.
-- **A code is taken out of the store before anything about the exchange is checked**, by one
-  delete-returning statement. A code presented wrongly is spent; two exchanges racing get one row.
-- **Every session minted through the provider records its provider session, in one column set at
-  mint.** It is what makes sign-out, a second account on one browser, and ending the provider session
-  from the sessions list each end exactly the right set. A mint site that skips it strands a surface
-  signed in after its browser signed out.
-- **The account is re-read on every pass**, cookie or no cookie: disabled or deleted ends the provider
-  session and is refused, pending gets the wait and no code, only active gets a code.
-- **An external provider's round trip completes the request in flight only when its returning `state`
-  is the one the request recorded.** The callback is the one address registered with the provider's
-  application and it also serves the provider door's own sign-in; matching on the cookie alone would let
-  an abandoned request capture that sign-in.
-- **A member's client is paths joined to its roster address, never URLs it names.** A member announcing
-  full URLs could make any origin a place codes are sent. An administrator's client of the same id
-  wins.
-- **A surface's client id is its origin's host** (`ClusterClientAnnouncement.ClientIdFor`), for an
-  announced surface and a declared panel alike, so a surface derives its own from where it was loaded
-  and is told nothing — which is what lets a panel on a static host sign in through a member that
-  never served it.
-- **Where the clients live is published, as `auth.origins`, while this anchor holds the accounts.**
-  Every member reads it through the holder to admit those origins, so an administrator's client and a
-  declared panel — which exist only here — are admitted everywhere without anybody configuring a
-  member.
-- **A panel on a static host is declared, not stored.** `Anchor__PanelOrigins` is what the deploy said
-  this process serves, so it is rebuilt on every start and wins over a stored client of the same id; the
-  registry refuses to remove one or to register over it. Its paths are
-  `ClusterClientAnnouncement.ControlPanel`, the same statement a node announces its panel with.
-- **`id_token`'s subject is the account, its audience the client.** It is never accepted as a bearer,
-  and a bearer is never accepted as a sign-out hint.
-- **The pages are `kgsm-web-auth`'s documents, served as built.** The anchor writes the provider links
-  at the marker and nothing else, reads the files per request, and serves `/ui/` only from under
-  `UiPath` — a resolved path outside it is a 404, because this daemon can open its signing key. A
-  failed plain form post is answered on the built-in page with the reason: the static document has
-  nowhere to put one.
-- **The account page is the only place a credential changes, and a change needs a recent proof** —
-  the provider session's `credential_at` inside the re-authentication window. Its sign-in is a request
-  in flight for the `kgsm-account` pseudo-client, which is never registered and never issued a code.
-- **A provider round trip begun to re-prove the person accepts only an identity already attached to
-  that account**, resolved and never provisioned. It is recognised by the `state` it began with and
-  returns to `/account`; it never mints anything.
-
 ## Conventions
 
 - Namespace `TheKrystalShip.KGSM.Auth`; package id matches. The daemon is
   `TheKrystalShip.KGSM.Auth.Anchor`, and its binary and unit are `kgsm-auth-anchor`.
-- Doc comments say what the code does now and why that rule exists — never what it replaced.
 
 ## Version tracking
 
@@ -443,17 +77,15 @@ the daemon's, because that is the one the pacman package ships.
 
 **Tags carry the prefix of the thing they version**, since one repo's commits move several numbers:
 `auth-v*`, `users-v*`, `journal-v*`, `cluster-v*`, `testing-v*` for the packages, and a bare `v*` for
-the daemon.
-Only the bare `v*` fires the release workflow, which asserts the tag against `deploy/version.sh` — so
-a package tag can never publish a pacman package by accident.
+the daemon. Only the bare `v*` fires the release workflow, which asserts the tag against
+`deploy/version.sh` — so a package tag can never publish a pacman package by accident.
 
 - **Version source:** each package's `<Version>` in its own csproj; the daemon's in
   `src/Auth.Anchor/Anchor.csproj`.
-- Bump on any user-facing change; patch for fixes, minor for additions, major for a breaking change.
-- Update `CHANGELOG.md` under `## [Unreleased]`.
+- Bump on any user-facing change; patch for fixes, minor for additions, major for a breaking change,
+  with a `CHANGELOG.md` entry under `## [Unreleased]`.
 - Consumers pin a version from the org's GitHub Packages feed, so shipping a change means **bump the
-  version, publish, then bump the pin** — `../scripts/publish-packages.sh kgsm-auth`. A published
-  version is immutable, so there is no same-version republish to get wrong.
+  version, publish, then bump the pin** — `../scripts/publish-packages.sh kgsm-auth`.
 
 ## Gotchas
 
@@ -461,38 +93,3 @@ a package tag can never publish a pacman package by accident.
   tests in `tests/Auth.Users.Tests/` are the specification — extend them before the code.
 - The packages are referenced by projects in four other repos — kgsm-api, kgsm-llm, kgsm-bot and
   kgsm-dns. Build those before declaring work done.
-
-## Documentation & comments: present-tense canon only
-
-Prose in this repo — every doc, `README`/`CLAUDE.md` section, and in-code comment — describes
-**how the thing works right now**, nothing else. History lives in the `CHANGELOG` and git
-history; never duplicate it into docs or code.
-
-- **No transitions.** Never "was X, now Y", "used to…", "changed from…", "no longer…", or any
-  before/after framing. State the current rule flat: a sentence that only makes sense to a reader
-  who knows what the code *used to* do is dead weight, because that "before" no longer exists
-  anywhere in the code.
-- **Tombstones leave no marker.** When something is removed — dying naturally as part of the work,
-  or explicitly asked to be deleted — the removal is silent: no *"removed X"*, no *"X is gone"*,
-  no *"deprecated, use Y instead"* pointing at a corpse. The prose reads as if it never was. Code
-  kept while the thing that justified it was deleted gets a live present-tense reason to exist —
-  or goes too.
-- **No residue of the active work.** References only meaningful *during* a piece of work don't
-  survive it: *"temporary shim for the rework"*, *"added to satisfy the new requirement"*,
-  milestone/phase labels (*"per M2"*, *"the Phase 1 step"*). If a line's justification is the work
-  that produced it rather than the system as it now stands, it goes.
-- **No volatile numbers.** Counts and versions that drift — how many projects/files/tests/
-  partials exist, a dependency's pinned version, a file's line count — never go in prose: they are
-  stale the moment anything changes, and nothing fails to remind anyone. Name the authoritative
-  source instead (the csproj, the directory, the barrel file). A number belongs in prose only when
-  it *is* the contract (a port, a timeout, a cap) or a measured fact that is itself the reason a
-  design exists.
-- **Edits are replacements, not appends.** When changing an existing feature, rewrite the affected
-  doc/comment fresh as if writing it for the first time — never append a correction under the
-  stale version, and never leave the stale version standing beside the new. The current revision
-  does not converse with prior revisions.
-
-A reader six months from now should learn the system from the doc without knowing what it
-replaced. If you catch yourself explaining a change, stop — that sentence belongs in the commit
-message. When touching prose that already violates this, rewrite it to present-tense canon in
-passing.
