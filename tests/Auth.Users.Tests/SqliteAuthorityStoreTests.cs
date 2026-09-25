@@ -502,4 +502,153 @@ public sealed class SqliteAuthorityStoreTests : IDisposable
         Assert.Empty(write.Changes);
         Assert.Contains(write.CreatedId!, (await _store.LoadAsync()).Accounts.Keys);
     }
+
+    // ── members' reports ──────────────────────────────────────────────────────────────────────
+
+    private static ActionManifest ReactorManifest(string version, params string[] extra) => new(
+        1, "reactor", version,
+        [
+            new ManifestAction("rules.write", "Change reactor rules", "write", "node", null),
+            .. extra.Select(e => new ManifestAction(e, e, "read", "node", null)),
+        ],
+        [new ManifestRequirement(Start, "instance", "restart a crashed server")]);
+
+    private static ActionManifest Engine() => new(
+        1, "kgsm", null,
+        [
+            new ManifestAction("server.start", "Start servers", "execute", "instance", null),
+            new ManifestAction("server.console.read", "Read consoles", "read", "instance", null),
+        ],
+        []);
+
+    private static MemberCatalogReport Node(params ActionManifest[] manifests) => new(false, manifests);
+
+    [Fact]
+    public async Task TheCatalogIsTheUnionOfEveryMembersReport()
+    {
+        await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")), _now);
+        AuthorityWrite second = await _store.RecordMemberReportAsync("jessie", Node(Engine(), ReactorManifest("0.5.0", "rules.read")), _now);
+
+        IReadOnlyList<CatalogEntry> catalog = await _store.CatalogAsync();
+        Assert.Equal(
+            ["kgsm:server.console.read", "kgsm:server.start", "reactor:rules.read", "reactor:rules.write"],
+            catalog.Select(e => e.Action.Id));
+        Assert.Equal(
+            [new ActionDeclaration("jessie", "0.5.0"), new ActionDeclaration("walter", "0.4.0")],
+            catalog.Single(e => e.Action.Id == "reactor:rules.write").DeclaredBy);
+        Assert.Equal([new ActionDeclaration("jessie", "0.5.0")], catalog.Single(e => e.Action.Id == "reactor:rules.read").DeclaredBy);
+
+        Assert.Equal(["reactor:rules.read"], second.Changes.Where(c => c.Kind == AuthorityChangeKind.CatalogActionAdded).Select(c => c.Subject));
+        Assert.Equal(4, (await _store.LoadAsync()).Catalog.Count);
+    }
+
+    [Fact]
+    public async Task ANewActionArrivesUnmappedAndOnlyAnOwnerPerformsIt()
+    {
+        string owner = Person("owner");
+        await _store.GrantOwnerLocallyAsync("owner", "local:heisen", _now);
+        string alice = Person("alice");
+
+        await _store.RecordMemberReportAsync("walter", Node(ReactorManifest("0.4.0")), _now);
+
+        AuthoritySnapshot s = await _store.LoadAsync();
+        Assert.DoesNotContain(s.Permissions.Values, p => p.Actions.Contains("reactor:rules.write"));
+        AccessEvaluator evaluator = new(s);
+        Assert.True(evaluator.Allows(owner, "reactor:rules.write", Walter).Allowed);
+        Assert.Equal(DenyReason.NotGranted, evaluator.Allows(alice, "reactor:rules.write", Walter).Reason);
+    }
+
+    [Fact]
+    public async Task ReportingTheSameThingAgainWritesNothing()
+    {
+        await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")), _now);
+        long version = await _store.VersionAsync();
+
+        AuthorityWrite again = await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")), _now.AddMinutes(15));
+
+        Assert.Empty(again.Changes);
+        Assert.Equal(version, again.Version);
+        Assert.Equal(version, await _store.VersionAsync());
+    }
+
+    [Fact]
+    public async Task AReportOlderThanTheOneHeldIsIgnored()
+    {
+        await _store.RecordMemberReportAsync("walter", Node(Engine()) with { Sequence = 200 }, _now);
+
+        AuthorityWrite late = await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")) with { Sequence = 100 }, _now);
+
+        Assert.Empty(late.Changes);
+        Assert.DoesNotContain("reactor:rules.write", (await _store.LoadAsync()).Catalog.Keys);
+    }
+
+    [Fact]
+    public async Task AComponentsRequirementsBecomeItsServiceAccountOnThatMember()
+    {
+        await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")), _now);
+
+        AuthoritySnapshot s = await _store.LoadAsync();
+        AccessAccount reactor = s.Accounts.Values.Single(a => a.Service == new ServiceIdentity("reactor", "walter"));
+        AccessEvaluator evaluator = new(s);
+        Assert.True(evaluator.Allows(reactor.AccountId, Start, Terraria).Allowed);
+        Assert.False(evaluator.Allows(reactor.AccountId, Start, AccessScope.ForInstance("jessie", "terraria", "77bb")).Allowed);
+        Assert.DoesNotContain(s.Accounts.Values, a => a.Service?.Component == "kgsm");
+    }
+
+    [Fact]
+    public async Task AComponentAMemberStopsReportingHasItsServiceAccountForgotten()
+    {
+        await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")), _now);
+
+        AuthorityWrite write = await _store.RecordMemberReportAsync("walter", Node(Engine()), _now);
+
+        Assert.Contains(write.Changes, c => c.Kind == AuthorityChangeKind.AccountDeleted);
+        Assert.Contains(write.Changes, c => c.Kind == AuthorityChangeKind.CatalogActionRemoved && c.Subject == "reactor:rules.write");
+        Assert.DoesNotContain((await _store.LoadAsync()).Accounts.Values, a => a.Kind == AccountKind.Service);
+    }
+
+    [Fact]
+    public async Task AnOfflineMemberKeepsItsActionsAndARemovedOneLosesOnlyThoseNobodyElseDeclares()
+    {
+        string owner = Person("owner");
+        await _store.GrantOwnerLocallyAsync("owner", "local:heisen", _now);
+        await _store.RecordMemberReportAsync("walter", Node(Engine(), ReactorManifest("0.4.0")), _now);
+        await _store.RecordMemberReportAsync("jessie", Node(Engine(), ReactorManifest("0.5.0", "rules.read")), _now);
+
+        string permission = (await ApplyAsync(owner, new CreatePermission("Reactor"))).CreatedId!;
+        await ApplyAsync(owner, new SetPermissionActions(permission, new HashSet<string> { "reactor:rules.write", "reactor:rules.read" }));
+
+        AuthorityWrite forgotten = await _store.ForgetMemberAsync("jessie", _now);
+
+        AuthoritySnapshot s = await _store.LoadAsync();
+        Assert.Equal(["reactor:rules.write"], s.Permissions[permission].Actions);
+        Assert.DoesNotContain("reactor:rules.read", s.Catalog.Keys);
+        Assert.Contains("reactor:rules.write", s.Catalog.Keys);
+        Assert.DoesNotContain(s.Accounts.Values, a => a.Service?.Member == "jessie");
+        Assert.Contains(s.Accounts.Values, a => a.Service?.Member == "walter");
+        Assert.Contains(forgotten.Changes, c => c.Kind == AuthorityChangeKind.PermissionChanged && c.Subject == permission);
+        Assert.Equal(["walter"], await _store.ReportingMembersAsync());
+    }
+
+    [Fact]
+    public async Task AnUninstallTakesTheGrantsOnThatInstallAndNoOther()
+    {
+        string owner = await OwnerAsync();
+        string role = await RoleAsync(owner, "Runner", Start);
+        string alice = Person("alice");
+        AccessScope first = AccessScope.ForInstance("walter", "terraria", "1111");
+        AccessScope reinstall = AccessScope.ForInstance("walter", "terraria", "2222");
+        await ApplyAsync(owner, new Assign(alice, role, first));
+        await ApplyAsync(owner, new Assign(alice, role, reinstall));
+        await ApplyAsync(owner, new Assign(alice, role, AccessScope.ForInstance("jessie", "terraria", "1111")));
+
+        AuthorityWrite write = await _store.RemoveInstanceAsync("walter", "1111", _now);
+
+        AuthorityChange revoked = Assert.Single(write.Changes);
+        Assert.Equal(first.ToString(), revoked.Scope);
+        AccessEvaluator evaluator = new(await _store.LoadAsync());
+        Assert.False(evaluator.Allows(alice, Start, first).Allowed);
+        Assert.True(evaluator.Allows(alice, Start, reinstall).Allowed);
+        Assert.True(evaluator.Allows(alice, Start, AccessScope.ForInstance("jessie", "terraria", "1111")).Allowed);
+    }
 }

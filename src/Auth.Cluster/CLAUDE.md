@@ -43,6 +43,12 @@ implementation each.
 - **The provider is named only when it is a URL.** `ProtectedResourceMetadata` answers with the
   issuer a member verifies against, or with `no_issuer`; a surface given a value it cannot navigate
   to would try to.
+- **A member reports what it is responsible for from disk, and a leaf gains nothing from being
+  reported.** `AuthorityReporter` reads the manifests a node's leaves installed and sends them to the
+  holder of the accounts. It sends again on a change, on a new holder and on an interval, and a report
+  replaces the last one, so sending twice is always safe. A member that holds the accounts itself hands
+  the report to its own `IAuthorityIntake` rather than across the bus to itself. A manifest that cannot
+  be read is left out and logged: a component shipping no readable manifest declares nothing.
 - **Two seams, and the package owns neither:** `IReplicatedAccounts` is the member's own store and
   `IClusterSessionDenyList` its own record of ended sessions. Opening a file and serving a route stay
   the member's business.

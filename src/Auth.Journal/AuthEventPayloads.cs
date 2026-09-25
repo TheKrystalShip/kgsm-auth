@@ -185,6 +185,65 @@ public static class AuthEventPayloads
             w.WriteNumber("AuthorityVersion", authorityVersion);
         };
 
+    /// <summary>
+    /// The catalog of declared actions changing: which actions arrived and which left.
+    /// </summary>
+    /// <param name="member">The member whose report, or removal, changed it.</param>
+    /// <param name="added">Action ids that arrived, unmapped.</param>
+    /// <param name="removed">Action ids no member declares any more, gone from every permission.</param>
+    /// <param name="authorityVersion">The authority version the change produced.</param>
+    /// <returns>The payload writer.</returns>
+    public static Action<Utf8JsonWriter> Catalog(
+        string member, IReadOnlyList<string> added, IReadOnlyList<string> removed, long authorityVersion) =>
+        w =>
+        {
+            w.WriteString("Member", member ?? string.Empty);
+            Strings(w, "Added", added);
+            Strings(w, "Removed", removed);
+            w.WriteNumber("AuthorityVersion", authorityVersion);
+        };
+
+    /// <summary>A service's requirement approved, narrowed or revoked.</summary>
+    /// <param name="accountId">The service account.</param>
+    /// <param name="service">The service, as <c>svc:&lt;component&gt;@&lt;member&gt;</c>, when known.</param>
+    /// <param name="action">The action it requires.</param>
+    /// <param name="scope">Where it is approved, or null when revoked.</param>
+    /// <param name="automatic">Whether nobody decided it: approved because it was never held before.</param>
+    /// <param name="authorityVersion">The authority version the change produced.</param>
+    /// <returns>The payload writer.</returns>
+    public static Action<Utf8JsonWriter> Requirement(
+        string accountId, string? service, string action, string? scope, bool automatic, long authorityVersion) =>
+        w =>
+        {
+            w.WriteString("AccountId", accountId ?? string.Empty);
+            Nullable(w, "Service", service);
+            w.WriteString("Action", action ?? string.Empty);
+            Nullable(w, "Scope", scope);
+            w.WriteBoolean("Automatic", automatic);
+            w.WriteNumber("AuthorityVersion", authorityVersion);
+        };
+
+    /// <summary>A permission or a role created, changed or removed.</summary>
+    /// <param name="id">The permission's or role's id.</param>
+    /// <param name="name">What it is called, when known.</param>
+    /// <param name="authorityVersion">The authority version the change produced.</param>
+    /// <returns>The payload writer.</returns>
+    public static Action<Utf8JsonWriter> Authority(string id, string? name, long authorityVersion) =>
+        w =>
+        {
+            w.WriteString("Id", id ?? string.Empty);
+            Nullable(w, "Name", name);
+            w.WriteNumber("AuthorityVersion", authorityVersion);
+        };
+
+    private static void Strings(Utf8JsonWriter writer, string name, IReadOnlyList<string> values)
+    {
+        writer.WriteStartArray(name);
+        foreach (string value in values)
+            writer.WriteStringValue(value);
+        writer.WriteEndArray();
+    }
+
     /// <summary>A real null for an absent value, never an empty string.</summary>
     private static void Nullable(Utf8JsonWriter writer, string name, string? value)
     {

@@ -144,6 +144,25 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
             type, actor, origin,
             AuthEventPayloads.Assignment(assignmentId, userId, username, roleId, role, scope, authorityVersion), ct);
 
+    /// <summary>Record the catalog of declared actions changing.</summary>
+    internal Task CatalogAsync(
+        string member, IReadOnlyList<string> added, IReadOnlyList<string> removed, long authorityVersion,
+        string actor, CancellationToken ct = default) =>
+        WriteAsync(AuthEvents.CatalogChanged, actor, origin: null,
+            AuthEventPayloads.Catalog(member, added, removed, authorityVersion), ct);
+
+    /// <summary>Record a service's requirement approved or revoked.</summary>
+    internal Task RequirementAsync(
+        string type, string accountId, string? service, string action, string? scope, bool automatic,
+        long authorityVersion, string actor, CancellationToken ct = default) =>
+        WriteAsync(type, actor, origin: null,
+            AuthEventPayloads.Requirement(accountId, service, action, scope, automatic, authorityVersion), ct);
+
+    /// <summary>Record a permission or role changing or being removed.</summary>
+    internal Task AuthorityRecordAsync(
+        string type, string id, string? name, long authorityVersion, string actor, CancellationToken ct = default) =>
+        WriteAsync(type, actor, origin: null, AuthEventPayloads.Authority(id, name, authorityVersion), ct);
+
     /// <summary>Append one line, saying what was lost if it cannot.</summary>
     /// <remarks>
     /// The base logs the generic failure; this adds what the base cannot know — a line nobody will

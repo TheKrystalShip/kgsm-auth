@@ -7,6 +7,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the catalog, reported across the cluster (2.3.0, access 1.0.0-dev.2, users 2.0.0-dev.2, journal 1.1.0-dev.2, cluster 1.0.0-dev.10)
+
+The second phase of `kgsm-docs/plans/permissions.md`: every member tells the auth anchor which actions
+it performs, and the anchor's catalog of what can be granted is the union of what they say.
+
+- **`Auth.Access`** reads action manifests (`ActionManifest`, `ActionManifests.TryRead`) and holds the
+  wire shapes a member reports in: `MemberCatalogReport` (`catalog.declared`), which carries a sequence
+  because the bus does not order delivery, and `InstanceUninstalledReport` (`instance.uninstalled`).
+  `CatalogUnion` adds reports up. Two versions of one component are one action, recorded with every
+  member and version declaring it, and the highest version's wording wins.
+- **`Auth.Cluster`'s `AuthorityReporter`** reads a member's manifests from disk and reports them to
+  whoever holds the accounts, handing them straight to the holder's own `IAuthorityIntake` when that is
+  this member. It reports on start, on any change, on a change of holder, and every 15 minutes. It also
+  reports an install that went away.
+- **`SqliteAuthorityStore`** takes a member's report (`RecordMemberReportAsync`). The catalog becomes
+  the union of every stored report, arrivals and departures are reported one action at a time, each
+  component that requires something gets its service account on that member, and a component the member
+  stopped reporting has its account forgotten. A removed member's report is forgotten
+  (`ForgetMemberAsync`), and `RemoveInstanceAsync` drops the grants on one install by its nonce.
+  Bookkeeping is kept apart from authority: an unchanged report commits and does not advance the
+  authority version, so re-reporting costs every member's replica nothing. A report older than the one
+  held is ignored.
+- **The anchor** takes reports over the bus (`CatalogDeclaredHandler`, `InstanceUninstalledHandler`) and
+  from itself, reports its own manifest from the `actions` directory beside its descriptor, and forgets a
+  member once the roster marks it left (`MemberDepartureWorker`). A member that is only offline, or dead
+  and reaped, keeps its report. Every change is journaled: `auth.catalog.changed` with what arrived and
+  left, `auth.service.requirement.approved`, `auth.assignment.revoked` and `auth.permission.changed`.
+  On a store still at schema version 1 it logs once and takes nothing.
+- `CatalogBusTests` stand an anchor and two nodes on real ports. The two nodes run the reactor at two
+  versions, which add up to one catalog. An offline node keeps its actions, and a removed one loses only
+  those nobody else declares. An uninstall takes its grants and no other install's, and a node cannot
+  speak for another node's instances.
+
 ### Added — the access model and its evaluator (2.2.0, access 1.0.0-dev.1, users 2.0.0-dev.1, journal 1.1.0-dev.1)
 
 The first phase of `kgsm-docs/plans/permissions.md`. Nothing enforces it yet: every surface still

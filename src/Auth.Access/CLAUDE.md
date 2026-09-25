@@ -30,5 +30,9 @@ extend them before the code.
 - **Owner is held by people, at cluster scope, and only an Owner grants, revokes or acts on it.**
   `everyone` is never assigned. Service accounts hold no `everyone` and no self actions, and their
   requirements grant only while approved and still declared.
+- **The catalog is a union, and the order reports arrive in never changes it.** `CatalogUnion` records
+  every member and version declaring an action, and takes the wording from the highest version, then
+  the member id that sorts first. A member's report carries a sequence because the bus does not order
+  delivery.
 - **Names are compared through `AuthorityRules.NameKey`** — trimmed, lower-case — everywhere a role or
   permission name is checked for uniqueness, including the store's `name_key` column.

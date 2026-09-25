@@ -2,11 +2,13 @@ using Microsoft.Extensions.Caching.Memory;
 
 using TheKrystalShip.KGSM.Auth;
 using TheKrystalShip.KGSM.Auth.Anchor;
+using TheKrystalShip.KGSM.Auth.Cluster;
 using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Extensions;
 using TheKrystalShip.KGSM.Cluster.Membership;
+using TheKrystalShip.KGSM.Cluster.Messaging;
 using TheKrystalShip.KGSM.Dns.Member;
 using TheKrystalShip.KGSM.ComponentSurface;
 using TheKrystalShip.KGSM.ComponentSurface.Http;
@@ -171,6 +173,28 @@ builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<Cluster
 builder.Services.AddComponentSurface(new ComponentSurfaceOptions(
     options.ConfigDescriptorPath, options.ConfigOverridePath));
 builder.Services.AddHostedService<ClusterMembershipWorker>();
+
+// Who may do what: every member's report of the actions it performs arrives here, over the bus from
+// another member or straight from this one, and a removed member's report is forgotten. The anchor's
+// own manifest sits in the actions directory beside its descriptor, under the same name — one place
+// the name is spelled.
+builder.Services.AddSingleton<AnchorAuthority>();
+builder.Services.AddSingleton<AuthorityIntake>();
+builder.Services.AddSingleton<IAuthorityIntake>(sp => sp.GetRequiredService<AuthorityIntake>());
+builder.Services.AddSingleton<IClusterMessageHandler, CatalogDeclaredHandler>();
+builder.Services.AddSingleton<IClusterMessageHandler, InstanceUninstalledHandler>();
+builder.Services.AddHostedService<MemberDepartureWorker>();
+builder.Services.AddSingleton(new AuthorityReporterOptions
+{
+    ManifestFiles =
+    [
+        Path.Combine(
+            Path.GetDirectoryName(options.ConfigDescriptorPath) ?? ".", "actions",
+            Path.GetFileName(options.ConfigDescriptorPath)),
+    ],
+});
+builder.Services.AddSingleton<AuthorityReporter>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AuthorityReporter>());
 
 builder.Services.AddSingleton(_ => new SqliteSessionRegistry(options.SessionStorePath));
 builder.Services.AddSingleton<ISessionRegistry>(sp => sp.GetRequiredService<SqliteSessionRegistry>());

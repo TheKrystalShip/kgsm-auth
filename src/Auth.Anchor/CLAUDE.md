@@ -136,6 +136,15 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   defaults, a run resolves the descriptor the deployed daemon carries, names the live unit and
   follows its journal — and passes only on a host where the thing under test is already installed,
   which is measuring the host.
+- **The catalog is kept here, from every member's report.** `AuthorityIntake` is the one place a
+  report or an uninstall lands — over the bus from another member, or directly from this anchor's own
+  reporter — and the one place what it changed is journaled, attributed to the member it came from as
+  `system:<member>`. A node speaks only for its own instances: an uninstall is matched on the sender's
+  member id and the nonce, never on a node the message names.
+- **A member's report is forgotten only when the roster marks it left.** That is what removing a member
+  does. A member that crashed is marked dead and reaped within minutes, and treating that as removal
+  would strip a node down for maintenance of every grant it carries. `MemberDepartureWorker` reads the
+  roster; nothing else forgets a report.
 - **`kgsm-auth-anchor owner grant <username>` is the Owner recovery path, and it is a mode of this
   binary rather than a tool beside it.** It reads the daemon's own settings, so it opens the store and
   writes the journal the daemon does, and is run as the anchor's service account. It bypasses the

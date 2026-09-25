@@ -1,6 +1,7 @@
 using System.Data;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 using Microsoft.Data.Sqlite;
 
@@ -19,7 +20,8 @@ public enum AuthorityChangeKind
     AssignmentRevoked,
     RequirementApproved,
     RequirementRevoked,
-    CatalogChanged,
+    CatalogActionAdded,
+    CatalogActionRemoved,
     AccountDisabled,
     AccountDeleted,
 }
@@ -576,40 +578,208 @@ public sealed class SqliteAuthorityStore
     public Task<AuthorityWrite> ReplaceCatalogAsync(IReadOnlyCollection<CatalogAction> actions, DateTimeOffset now, CancellationToken ct = default) =>
         WriteAsync(expectedVersion: null, now, ct, (w, s) =>
         {
-            HashSet<string> declared = actions.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-
-            foreach (Permission permission in s.Permissions.Values)
-            {
-                string[] dead = [.. permission.Actions.Where(a => !declared.Contains(a))];
-                if (dead.Length == 0)
-                    continue;
-
-                foreach (string action in dead)
-                {
-                    w.Execute("DELETE FROM permission_actions WHERE permission_id = $id AND action = $a;",
-                        ("$id", permission.PermissionId), ("$a", action));
-                }
-
-                w.Execute("UPDATE permissions SET version = $v, updated_utc = $now WHERE permission_id = $id;",
-                    ("$id", permission.PermissionId));
-                w.Changed(AuthorityChangeKind.PermissionChanged, permission.PermissionId, permission.Name);
-            }
-
-            w.Execute("DELETE FROM catalog_actions;");
-            foreach (CatalogAction action in actions)
-            {
-                w.Execute(
-                    """
-                    INSERT INTO catalog_actions (action, title, effect, scope_kind, self, version)
-                    VALUES ($a, $title, $effect, $scope, $self, $v);
-                    """,
-                    ("$a", action.Id), ("$title", action.Title), ("$effect", ActionEffects.ToWire(action.Effect)),
-                    ("$scope", ScopeKinds.ToWire(action.Scope)), ("$self", action.Self ? 1 : 0));
-            }
-
-            w.Changed(AuthorityChangeKind.CatalogChanged, "catalog");
+            ReplaceCatalog(w, s, actions);
             return null;
         });
+
+    /// <summary>
+    /// Make the catalog <paramref name="actions"/>, writing nothing when it already is.
+    /// </summary>
+    /// <remarks>
+    /// Each action that arrives or leaves is reported on its own. One that leaves is taken out of every
+    /// permission holding it, and each such permission is reported changed.
+    /// </remarks>
+    private static void ReplaceCatalog(Writer w, AuthoritySnapshot s, IReadOnlyCollection<CatalogAction> actions)
+    {
+        Dictionary<string, CatalogAction> next = actions.ToDictionary(a => a.Id, StringComparer.Ordinal);
+
+        bool same = next.Count == s.Catalog.Count
+                    && next.All(a => s.Catalog.TryGetValue(a.Key, out CatalogAction? held) && held == a.Value);
+        if (same)
+            return;
+
+        foreach (Permission permission in s.Permissions.Values)
+        {
+            string[] dead = [.. permission.Actions.Where(a => !next.ContainsKey(a))];
+            if (dead.Length == 0)
+                continue;
+
+            foreach (string action in dead)
+            {
+                w.Execute("DELETE FROM permission_actions WHERE permission_id = $id AND action = $a;",
+                    ("$id", permission.PermissionId), ("$a", action));
+            }
+
+            w.Execute("UPDATE permissions SET version = $v, updated_utc = $now WHERE permission_id = $id;",
+                ("$id", permission.PermissionId));
+            w.Changed(AuthorityChangeKind.PermissionChanged, permission.PermissionId, permission.Name);
+        }
+
+        w.Execute("DELETE FROM catalog_actions;");
+        foreach (CatalogAction action in next.Values.OrderBy(a => a.Id, StringComparer.Ordinal))
+        {
+            w.Execute(
+                """
+                INSERT INTO catalog_actions (action, title, effect, scope_kind, self, version)
+                VALUES ($a, $title, $effect, $scope, $self, $v);
+                """,
+                ("$a", action.Id), ("$title", action.Title), ("$effect", ActionEffects.ToWire(action.Effect)),
+                ("$scope", ScopeKinds.ToWire(action.Scope)), ("$self", action.Self ? 1 : 0));
+        }
+
+        foreach (string arrived in next.Keys.Where(id => !s.Catalog.ContainsKey(id)).Order(StringComparer.Ordinal))
+            w.Changed(AuthorityChangeKind.CatalogActionAdded, arrived);
+
+        foreach (string left in s.Catalog.Keys.Where(id => !next.ContainsKey(id)).Order(StringComparer.Ordinal))
+            w.Changed(AuthorityChangeKind.CatalogActionRemoved, left);
+    }
+
+    // ── members' reports ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Record what <paramref name="member"/> reports it is responsible for, and bring the catalog and
+    /// that member's service accounts in line with it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The report replaces the member's previous one. The catalog becomes the union of every stored
+    /// report; each component requiring something gets its service account and its requirements; a
+    /// component the member no longer reports has its service account forgotten.
+    /// </para>
+    /// <para>
+    /// A report identical to the last one writes nothing and leaves the authority version alone, so the
+    /// periodic re-report every member sends costs the cluster nothing.
+    /// </para>
+    /// </remarks>
+    public Task<AuthorityWrite> RecordMemberReportAsync(
+        string member, MemberCatalogReport report, DateTimeOffset now, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(member);
+        ArgumentNullException.ThrowIfNull(report);
+
+        return WriteAsync(expectedVersion: null, now, ct, (w, s) =>
+        {
+            Dictionary<string, MemberCatalogReport> reports = ReadReports(w);
+
+            // Delivery is not ordered: a report read before the one held arrived late, and taking it
+            // would put back what the member has since stopped declaring.
+            if (reports.TryGetValue(member, out MemberCatalogReport? held) && held.Sequence > report.Sequence)
+                return null;
+
+            string json = JsonSerializer.Serialize(report, AccessJsonContext.Default.MemberCatalogReport);
+            w.Record(
+                """
+                INSERT INTO member_reports (member, report, received_utc) VALUES ($m, $r, $now)
+                ON CONFLICT(member) DO UPDATE SET report = excluded.report, received_utc = excluded.received_utc;
+                """,
+                ("$m", member), ("$r", json));
+
+            reports[member] = report;
+            ReplaceCatalog(w, s, [.. CatalogUnion.Of(reports).Select(e => e.Action)]);
+
+            HashSet<string> components = new(StringComparer.Ordinal);
+            foreach (ActionManifest manifest in report.Manifests)
+            {
+                components.Add(manifest.Component);
+                DeclareRequirements(w, s, new ServiceIdentity(manifest.Component, member), report.Anchor, Requirements(manifest));
+            }
+
+            foreach (AccessAccount account in s.Accounts.Values.Where(a =>
+                         a.Service is { } svc && svc.Member == member && !components.Contains(svc.Component)))
+            {
+                DeleteAccountRow(w, s, account.AccountId);
+            }
+
+            return null;
+        });
+    }
+
+    /// <summary>
+    /// Forget everything <paramref name="member"/> reported: it has been removed from the cluster.
+    /// </summary>
+    /// <remarks>
+    /// Every action only it declared leaves the catalog and every permission, and every service account
+    /// belonging to it is forgotten. A member that is merely offline keeps its report; only removal
+    /// comes here.
+    /// </remarks>
+    public Task<AuthorityWrite> ForgetMemberAsync(string member, DateTimeOffset now, CancellationToken ct = default) =>
+        WriteAsync(expectedVersion: null, now, ct, (w, s) =>
+        {
+            Dictionary<string, MemberCatalogReport> reports = ReadReports(w);
+            if (reports.Remove(member))
+                w.Record("DELETE FROM member_reports WHERE member = $m;", ("$m", member));
+
+            ReplaceCatalog(w, s, [.. CatalogUnion.Of(reports).Select(e => e.Action)]);
+
+            foreach (AccessAccount account in s.Accounts.Values.Where(a => a.Service?.Member == member))
+                DeleteAccountRow(w, s, account.AccountId);
+
+            return null;
+        });
+
+    /// <summary>
+    /// Drop every assignment naming one install of an instance on <paramref name="node"/>: the install
+    /// with <paramref name="nonce"/> is gone.
+    /// </summary>
+    /// <remarks>
+    /// Matched on the nonce, so a message arriving after the instance was installed again under the same
+    /// name takes nothing from the new install.
+    /// </remarks>
+    public Task<AuthorityWrite> RemoveInstanceAsync(string node, string nonce, DateTimeOffset now, CancellationToken ct = default) =>
+        WriteAsync(expectedVersion: null, now, ct, (w, s) =>
+        {
+            foreach (Assignment a in s.Assignments.Where(a =>
+                         a.Scope.Kind == ScopeKind.Instance && a.Scope.Node == node && a.Scope.Nonce == nonce))
+            {
+                w.Execute("DELETE FROM assignments WHERE assignment_id = $id;", ("$id", a.AssignmentId));
+                w.Changed(AuthorityChangeKind.AssignmentRevoked, a.AssignmentId, s.Roles.GetValueOrDefault(a.RoleId)?.Name,
+                    a.AccountId, a.RoleId, a.Scope.ToString());
+            }
+
+            return null;
+        });
+
+    /// <summary>The members whose reports the catalog is built from.</summary>
+    public async Task<IReadOnlyList<string>> ReportingMembersAsync(CancellationToken ct = default)
+    {
+        await using SqliteConnection connection = await ConnectAsync(ct).ConfigureAwait(false);
+        List<string> members = [];
+        Read(connection, null, "SELECT member FROM member_reports ORDER BY member;", r => members.Add(r.GetString(0)));
+        return members;
+    }
+
+    /// <summary>The catalog, with every member and component version declaring each action.</summary>
+    public async Task<IReadOnlyList<CatalogEntry>> CatalogAsync(CancellationToken ct = default)
+    {
+        await using SqliteConnection connection = await ConnectAsync(ct).ConfigureAwait(false);
+        return CatalogUnion.Of(ReadReports(connection, null));
+    }
+
+    private static Dictionary<string, MemberCatalogReport> ReadReports(Writer w) => w.Query(ReadReports);
+
+    /// <summary>Every stored report. One that no longer parses is left out, as if never reported.</summary>
+    private static Dictionary<string, MemberCatalogReport> ReadReports(SqliteConnection connection, SqliteTransaction? transaction)
+    {
+        Dictionary<string, MemberCatalogReport> reports = new(StringComparer.Ordinal);
+        Read(connection, transaction, "SELECT member, report FROM member_reports;", r =>
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize(r.GetString(1), AccessJsonContext.Default.MemberCatalogReport) is { } report)
+                    reports[r.GetString(0)] = report;
+            }
+            catch (JsonException)
+            {
+            }
+        });
+
+        return reports;
+    }
+
+    private static IReadOnlyCollection<DeclaredRequirement> Requirements(ActionManifest manifest) =>
+        [.. (manifest.Requires ?? [])
+            .Where(r => ActionIds.IsValid(r.Action))
+            .Select(r => new DeclaredRequirement(r.Action, ScopeKinds.Parse(r.Scope), r.Why))];
 
     /// <summary>
     /// Record what a component on a member now requires, creating its service account the first time
@@ -628,63 +798,74 @@ public sealed class SqliteAuthorityStore
     public Task<AuthorityWrite> DeclareRequirementsAsync(
         ServiceIdentity service, bool anchor, IReadOnlyCollection<DeclaredRequirement> requires, DateTimeOffset now,
         CancellationToken ct = default) =>
-        WriteAsync(expectedVersion: null, now, ct, (w, s) =>
+        WriteAsync(expectedVersion: null, now, ct, (w, s) => DeclareRequirements(w, s, service, anchor, requires));
+
+    /// <summary>
+    /// The body of <see cref="DeclareRequirementsAsync"/>: writes only what differs from what is held.
+    /// Returns the service account's id, or <see langword="null"/> when there is none and nothing was
+    /// required.
+    /// </summary>
+    private static string? DeclareRequirements(
+        Writer w, AuthoritySnapshot s, ServiceIdentity service, bool anchor, IReadOnlyCollection<DeclaredRequirement> requires)
+    {
+        string? accountId = ServiceAccountId(s, service);
+        if (accountId is null)
         {
-            string? accountId = ServiceAccountId(s, service);
-            if (accountId is null)
+            if (requires.Count == 0)
+                return null;
+
+            accountId = CreateServiceAccount(w, service);
+        }
+
+        Dictionary<string, ServiceRequirement> held = s.RequirementsOf(accountId).ToDictionary(r => r.Action, StringComparer.Ordinal);
+        HashSet<string> listed = requires.Select(r => r.Action).ToHashSet(StringComparer.Ordinal);
+
+        foreach (ServiceRequirement stale in held.Values.Where(r => r.Declared && !listed.Contains(r.Action)))
+        {
+            w.Execute("UPDATE service_requirements SET declared = 0, version = $v, updated_utc = $now WHERE user_id = $id AND action = $a;",
+                ("$id", accountId), ("$a", stale.Action));
+        }
+
+        AccessScope memberScope = service.MemberScope(anchor);
+        foreach (DeclaredRequirement requirement in requires)
+        {
+            if (!ActionIds.IsValid(requirement.Action))
+                continue;
+
+            if (held.TryGetValue(requirement.Action, out ServiceRequirement? existing))
             {
-                if (requires.Count == 0)
-                    return null;
-
-                accountId = CreateServiceAccount(w, service);
-            }
-
-            Dictionary<string, ServiceRequirement> held = s.RequirementsOf(accountId).ToDictionary(r => r.Action, StringComparer.Ordinal);
-            HashSet<string> listed = requires.Select(r => r.Action).ToHashSet(StringComparer.Ordinal);
-
-            foreach (ServiceRequirement stale in held.Values.Where(r => r.Declared && !listed.Contains(r.Action)))
-            {
-                w.Execute("UPDATE service_requirements SET declared = 0, version = $v, updated_utc = $now WHERE user_id = $id AND action = $a;",
-                    ("$id", accountId), ("$a", stale.Action));
-            }
-
-            AccessScope memberScope = service.MemberScope(anchor);
-            foreach (DeclaredRequirement requirement in requires)
-            {
-                if (!ActionIds.IsValid(requirement.Action))
+                if (existing.Declared && existing.ScopeKind == requirement.ScopeKind && existing.Why == requirement.Why)
                     continue;
 
-                if (held.ContainsKey(requirement.Action))
-                {
-                    w.Execute(
-                        """
-                        UPDATE service_requirements
-                        SET declared = 1, scope_kind = $kind, why = $why, version = $v, updated_utc = $now
-                        WHERE user_id = $id AND action = $a;
-                        """,
-                        ("$id", accountId), ("$a", requirement.Action), ("$kind", ScopeKinds.ToWire(requirement.ScopeKind)),
-                        ("$why", (object?)requirement.Why ?? DBNull.Value));
-                    continue;
-                }
-
-                bool waits = ActionIds.IsAuth(requirement.Action);
                 w.Execute(
                     """
-                    INSERT INTO service_requirements
-                        (user_id, action, scope_kind, why, state, grant_scope, decided_by, declared, version, updated_utc)
-                    VALUES ($id, $a, $kind, $why, $state, $grant, NULL, 1, $v, $now);
+                    UPDATE service_requirements
+                    SET declared = 1, scope_kind = $kind, why = $why, version = $v, updated_utc = $now
+                    WHERE user_id = $id AND action = $a;
                     """,
                     ("$id", accountId), ("$a", requirement.Action), ("$kind", ScopeKinds.ToWire(requirement.ScopeKind)),
-                    ("$why", (object?)requirement.Why ?? DBNull.Value),
-                    ("$state", RequirementStates.ToWire(waits ? RequirementState.Waiting : RequirementState.Approved)),
-                    ("$grant", waits ? DBNull.Value : memberScope.ToString()));
-
-                if (!waits)
-                    w.Changed(AuthorityChangeKind.RequirementApproved, requirement.Action, accountId: accountId, scope: memberScope.ToString());
+                    ("$why", (object?)requirement.Why ?? DBNull.Value));
+                continue;
             }
 
-            return accountId;
-        });
+            bool waits = ActionIds.IsAuth(requirement.Action);
+            w.Execute(
+                """
+                INSERT INTO service_requirements
+                    (user_id, action, scope_kind, why, state, grant_scope, decided_by, declared, version, updated_utc)
+                VALUES ($id, $a, $kind, $why, $state, $grant, NULL, 1, $v, $now);
+                """,
+                ("$id", accountId), ("$a", requirement.Action), ("$kind", ScopeKinds.ToWire(requirement.ScopeKind)),
+                ("$why", (object?)requirement.Why ?? DBNull.Value),
+                ("$state", RequirementStates.ToWire(waits ? RequirementState.Waiting : RequirementState.Approved)),
+                ("$grant", waits ? DBNull.Value : memberScope.ToString()));
+
+            if (!waits)
+                w.Changed(AuthorityChangeKind.RequirementApproved, requirement.Action, accountId: accountId, scope: memberScope.ToString());
+        }
+
+        return accountId;
+    }
 
     /// <summary>
     /// Forget a component's service account on a member entirely: its roles, its requirements and
@@ -749,7 +930,14 @@ public sealed class SqliteAuthorityStore
 
         string? created = apply(writer, snapshot);
         if (!writer.Wrote)
+        {
+            // Bookkeeping alone — a member's report stored again unchanged — commits and leaves the
+            // authority where it was.
+            if (writer.Recorded)
+                await transaction.CommitAsync(ct).ConfigureAwait(false);
+
             return new AuthorityWrite(current, [], created);
+        }
 
         Execute(connection, transaction, "UPDATE authority_meta SET value = $value WHERE key = $key;",
             ("$key", AuthoritySchema.AuthorityVersionKey),
@@ -773,12 +961,28 @@ public sealed class SqliteAuthorityStore
         /// </summary>
         public bool Wrote { get; private set; }
 
+        /// <summary>Whether bookkeeping was written that is not itself a change to who may do what.</summary>
+        public bool Recorded { get; private set; }
+
         /// <summary>Run a statement, with <c>$v</c> bound to the new version and <c>$now</c> to the time.</summary>
         public void Execute(string sql, params (string Name, object Value)[] parameters)
         {
             SqliteAuthorityStore.Execute(connection, transaction, sql, [.. parameters, ("$v", Version), ("$now", now)]);
             Wrote = true;
         }
+
+        /// <summary>
+        /// Run a statement that records bookkeeping rather than authority — a member's stored report. It
+        /// commits with the write and does not, alone, advance the version.
+        /// </summary>
+        public void Record(string sql, params (string Name, object Value)[] parameters)
+        {
+            SqliteAuthorityStore.Execute(connection, transaction, sql, [.. parameters, ("$now", now)]);
+            Recorded = true;
+        }
+
+        /// <summary>Read inside this write's transaction.</summary>
+        public T Query<T>(Func<SqliteConnection, SqliteTransaction, T> read) => read(connection, transaction);
 
         public void Changed(
             AuthorityChangeKind kind, string subject, string? name = null, string? accountId = null,

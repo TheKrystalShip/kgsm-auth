@@ -95,6 +95,14 @@ The account store: one file per host, the only production `IAuthorityProvider`. 
   service accounts and their declared requirements, and Owner granted from the host's shell.
 - **A service account's username is `<component>@<member>`**, which `Usernames` never accepts from a
   person, so no person can register a service's name.
+- **Bookkeeping is not authority.** A member's stored report is written with `Writer.Record`, which
+  commits without advancing the authority version; only a change to who may do what (`Writer.Execute`)
+  advances it. Every member re-reports on an interval, and a version that moved on each of those would
+  have every replica re-apply a catalog that did not change. A report identical in effect to the last
+  one writes no authority row at all, and a report older than the one held (by its sequence) is ignored.
+- **The catalog is the union of stored reports, recomputed on every report and every removal.** A
+  member that is merely offline keeps its report; only `ForgetMemberAsync` — the member removed from the
+  cluster — drops one.
 - **A requirement a person decided stays as they left it.** Only one the account has never held is
   approved automatically; one the manifest stops listing is kept with `declared = 0` and grants nothing
   until listed again.
