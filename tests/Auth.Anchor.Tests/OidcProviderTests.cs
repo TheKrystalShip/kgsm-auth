@@ -958,6 +958,66 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
     }
 
     [Fact]
+    public async Task A_surface_served_at_several_names_is_a_client_at_each_its_row_carries()
+    {
+        var registry = anchor.Service<ClientRegistry>();
+        string member = "anchor-" + Guid.NewGuid().ToString("N")[..6];
+        string primary = $"https://{member}.anchors.test";
+        string alias = $"https://{member}.test";
+        string stale = $"https://{member}-old.test";
+
+        // The row keeps an address the member was once reached at and no longer serves; the member names
+        // the two it serves now, and one its row has never carried.
+        MemberRow row = MemberRow.New(member, "anchor") with
+        {
+            Candidates = MemberCandidates.Encode([
+                new MemberCandidate(primary, Client: true),
+                new MemberCandidate(stale, Client: true),
+                new MemberCandidate(alias, Client: true),
+            ]),
+            Published = PublishedFacts.Encode(new Dictionary<string, string>
+            {
+                [ClusterClientAnnouncement.FactKey] = new ClusterClientAnnouncement("Assistant", ["/"], ["/"])
+                    .At([primary + "/", alias, "https://evil.test"]).ToJson(),
+            }),
+        };
+
+        Assert.True(await registry.SyncMembersAsync([row], DateTimeOffset.UtcNow, CancellationToken.None));
+
+        Assert.Equal([$"{primary}/"], registry.Find(ClusterClientAnnouncement.ClientIdFor(primary)!)!.RedirectUris);
+        Assert.Equal([$"{alias}/"], registry.Find(ClusterClientAnnouncement.ClientIdFor(alias)!)!.RedirectUris);
+        Assert.Null(registry.Find(ClusterClientAnnouncement.ClientIdFor(stale)!));
+        Assert.Null(registry.Find("evil.test"));
+        Assert.False(registry.IsClientOrigin("https://evil.test"));
+
+        // Naming none of the addresses its row carries registers the row's browser address alone.
+        MemberRow unnamed = row with
+        {
+            Published = PublishedFacts.Encode(new Dictionary<string, string>
+            {
+                [ClusterClientAnnouncement.FactKey] = new ClusterClientAnnouncement("Assistant", ["/"], ["/"])
+                    .At(["https://evil.test"]).ToJson(),
+            }),
+        };
+        Assert.True(await registry.SyncMembersAsync([unnamed], DateTimeOffset.UtcNow, CancellationToken.None));
+        Assert.NotNull(registry.Find(ClusterClientAnnouncement.ClientIdFor(primary)!));
+        Assert.Null(registry.Find(ClusterClientAnnouncement.ClientIdFor(alias)!));
+
+        await registry.SyncMembersAsync([], DateTimeOffset.UtcNow, CancellationToken.None);
+    }
+
+    [Fact]
+    public void An_announcement_without_addresses_reads_and_writes_as_it_always_has()
+    {
+        string json = ClusterClientAnnouncement.ControlPanel.ToJson();
+        Assert.DoesNotContain("addresses", json);
+
+        ClusterClientAnnouncement at = ClusterClientAnnouncement.ControlPanel.At(["https://b.test/x", "https://a.test", "nope"]);
+        Assert.Equal(["https://a.test", "https://b.test"], at.Addresses);
+        Assert.Equal(at.Addresses, ClusterClientAnnouncement.Read(at.ToJson())!.Addresses);
+    }
+
+    [Fact]
     public async Task Where_every_client_lives_is_stated_for_the_members_to_admit()
     {
         await RegisterClientsAsync();

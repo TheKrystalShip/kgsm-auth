@@ -9,23 +9,48 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Paths, never URLs.</b> The provider joins each one to the browser address the member's own roster
-/// row carries, so a member can only ever announce somewhere on the address the cluster already hands out
+/// <b>Paths, never URLs.</b> The provider joins each one to a browser address the member's own roster
+/// row carries, so a member can only ever announce somewhere on an address the cluster already hands out
 /// for it. A member announcing full URLs could name any origin on the internet as a place codes are sent.
 /// </para>
 /// <para>
-/// The client id is <see cref="ClientIdFor"/> the member's browser address. One member serves at most
-/// one surface; a second is a second member or a client an administrator registers.
+/// <b>Which of those addresses, the member says.</b> A roster row keeps every address a member was ever
+/// reached at, including names since taken away, so a surface is registered at the addresses in
+/// <see cref="Addresses"/> that the row also carries — the names it serves now — and, when it names none
+/// of them, at the row's browser address alone.
+/// </para>
+/// <para>
+/// The client id is <see cref="ClientIdFor"/> each such address. One member serves at most one surface,
+/// reachable at each of its names; a second surface is a second member or a client an administrator
+/// registers.
 /// </para>
 /// </remarks>
 /// <param name="Name">What a person is shown on the sign-in page: whose sign-in they are completing.</param>
 /// <param name="RedirectPaths">Where on the member's address a code may be sent, each beginning with <c>/</c>.</param>
 /// <param name="PostLogoutRedirectPaths">Where on it a signed-out browser may be returned.</param>
+/// <param name="Addresses">
+/// The browser addresses the surface is served at, as origins. Null or empty means the row's browser
+/// address alone.
+/// </param>
 public sealed record ClusterClientAnnouncement(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("redirectPaths")] IReadOnlyList<string> RedirectPaths,
-    [property: JsonPropertyName("postLogoutRedirectPaths")] IReadOnlyList<string> PostLogoutRedirectPaths)
+    [property: JsonPropertyName("postLogoutRedirectPaths")] IReadOnlyList<string> PostLogoutRedirectPaths,
+    [property: JsonPropertyName("addresses"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? Addresses = null)
 {
+    /// <summary>
+    /// This announcement served at <paramref name="addresses"/>: each reduced to its origin, unusable ones
+    /// dropped, de-duplicated and sorted so the same set always publishes the same fact.
+    /// </summary>
+    public ClusterClientAnnouncement At(IEnumerable<string> addresses)
+    {
+        string[] origins = [.. addresses
+            .Select(ClusterClientOrigins.Normalize).OfType<string>()
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+        return this with { Addresses = origins.Length == 0 ? null : origins };
+    }
+
     /// <summary>
     /// The published fact a member states its surface under. Read by the sign-in provider off every
     /// member's row, which is the opposite direction from <see cref="ClusterAuthFacts"/>.

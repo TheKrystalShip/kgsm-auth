@@ -193,34 +193,39 @@ internal sealed partial class ClientRegistry
     /// Make the members' clients what the roster currently announces.
     /// </summary>
     /// <remarks>
-    /// Each announcement's paths are joined to the browser address the member's own roster row carries,
-    /// so a member announces only somewhere on the address the cluster hands out for it, and the client
-    /// id is the one a surface loaded from that address derives. A member with no such address announces
-    /// nothing reachable, and is skipped rather than registered at a guess.
+    /// Each announcement's paths are joined to every address it names that the member's own roster row
+    /// carries as a browser address — or, naming none of them, to the row's browser address — so a member
+    /// announces only somewhere the cluster hands out for it, and each client id is the one a surface
+    /// loaded from that address derives. A member with no such address announces nothing reachable, and
+    /// is skipped rather than registered at a guess.
     /// </remarks>
     /// <returns>Whether the set changed.</returns>
     public async Task<bool> SyncMembersAsync(IReadOnlyList<MemberRow> roster, DateTimeOffset now, CancellationToken ct)
     {
         var announced = new List<RegisteredClient>();
+        var taken = new HashSet<string>(StringComparer.Ordinal);
         foreach (MemberRow row in roster)
         {
             if (ClusterClientAnnouncement.Read(row.Read(ClusterClientAnnouncement.FactKey)) is not { } announcement)
                 continue;
 
-            string address = MemberCandidates.ClientUrl(MemberCandidates.Decode(row.Candidates)).TrimEnd('/');
-            if (address.Length == 0 || Problem(address) is not null
-                || ClusterClientAnnouncement.ClientIdFor(address) is not { } id || !ClientIdShape().IsMatch(id))
-                continue;
-
-            string[] redirects = [.. Join(address, announcement.RedirectPaths)];
-            if (redirects.Length == 0)
-                continue;
-
             string name = string.IsNullOrWhiteSpace(announcement.Name) ? row.MemberId : announcement.Name.Trim();
-            announced.Add(new RegisteredClient(
-                id, name.Length > 80 ? name[..80] : name, redirects,
-                [.. Join(address, announcement.PostLogoutRedirectPaths)],
-                ClientSources.Member, row.MemberId, now));
+            foreach (string address in ServedAt(announcement, MemberCandidates.Decode(row.Candidates)))
+            {
+                if (Problem(address) is not null
+                    || ClusterClientAnnouncement.ClientIdFor(address) is not { } id || !ClientIdShape().IsMatch(id)
+                    || !taken.Add(id))
+                    continue;
+
+                string[] redirects = [.. Join(address, announcement.RedirectPaths)];
+                if (redirects.Length == 0)
+                    continue;
+
+                announced.Add(new RegisteredClient(
+                    id, name.Length > 80 ? name[..80] : name, redirects,
+                    [.. Join(address, announcement.PostLogoutRedirectPaths)],
+                    ClientSources.Member, row.MemberId, now));
+            }
         }
 
         if (!await _store.ReplaceMemberClientsAsync(announced, ct).ConfigureAwait(false))
@@ -228,6 +233,30 @@ internal sealed partial class ClientRegistry
 
         await ReloadAsync(ct).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>
+    /// The addresses a member's surface is registered at: those its announcement names that its row also
+    /// carries as browser addresses, in the row's order, or the row's browser address alone when it names
+    /// none of them. Empty when the row carries no browser address.
+    /// </summary>
+    internal static IReadOnlyList<string> ServedAt(
+        ClusterClientAnnouncement announcement, IReadOnlyList<MemberCandidate> candidates)
+    {
+        var named = new HashSet<string>(
+            (announcement.Addresses ?? []).Select(ClusterClientOrigins.Normalize).OfType<string>(),
+            StringComparer.Ordinal);
+
+        string[] served = [.. candidates
+            .Where(c => c.Client)
+            .Select(c => c.Url.TrimEnd('/'))
+            .Where(url => ClusterClientOrigins.Normalize(url) is { } origin && named.Contains(origin))
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
+        if (served.Length > 0)
+            return served;
+
+        string primary = MemberCandidates.ClientUrl(candidates).TrimEnd('/');
+        return primary.Length == 0 ? [] : [primary];
     }
 
     private static IEnumerable<string> Join(string address, IReadOnlyList<string>? paths)

@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a surface is a client at every name it is served under (2.1.0, cluster 1.0.0-dev.9)
+
+- **`ClusterClientAnnouncement.Addresses`** (`addresses`, omitted when null) names the origins a
+  member's surface is served at, and `At(addresses)` builds it normalized and sorted. The provider
+  registers one client per named address that the member's roster row also carries as a browser
+  address, each with its own client id; naming none of them registers the row's browser address alone,
+  which is what an announcement without the field has always meant. An address a row keeps from a name
+  the member no longer serves is never registered unless the member names it.
+- The anchor takes `TheKrystalShip.KGSM.Dns 0.2.0-dev.15`, so an administrator's alias of the `auth`
+  capability is served and certified beside `auth.anchors.`.
+
 ### Changed — the packages match the roles (2.0.1, auth 4.0.0-dev.2, users 1.4.0-dev.7, cluster 1.0.0-dev.8, testing 1.0.0-dev.1)
 
 No behaviour changes: the wire, the issuer and the key are untouched, and a session held before the
