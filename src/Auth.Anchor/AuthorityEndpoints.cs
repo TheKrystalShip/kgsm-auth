@@ -9,7 +9,9 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="AccountId">The account the session's identity belongs to.</param>
 /// <param name="SessionId">The session the bearer belongs to.</param>
 /// <param name="Actor">The actor string the journal names them by.</param>
-internal readonly record struct AccessCaller(CallerRefusal Refusal, string? AccountId, string? SessionId, string? Actor);
+/// <param name="Identity">The identity the session proved.</param>
+internal readonly record struct AccessCaller(
+    CallerRefusal Refusal, string? AccountId, string? SessionId, string? Actor, KgsmIdentity? Identity = null);
 
 /// <summary>
 /// Resolves the caller behind a request against the authority store: the session, then the account its
@@ -40,9 +42,9 @@ internal sealed class AuthorityCaller(SessionReader sessions, AnchorAuthority au
 
         AuthoritySnapshot snapshot = await authority.Source!.CurrentAsync(ct).ConfigureAwait(false);
         if (snapshot.Accounts.TryGetValue(accountId, out AccessAccount? account) && account.Status == AccountStatus.Disabled)
-            return new AccessCaller(CallerRefusal.AccountDisabled, accountId, sessionId, identity.ActorString);
+            return new AccessCaller(CallerRefusal.AccountDisabled, accountId, sessionId, identity.ActorString, identity);
 
-        return new AccessCaller(CallerRefusal.None, accountId, sessionId, identity.ActorString);
+        return new AccessCaller(CallerRefusal.None, accountId, sessionId, identity.ActorString, identity);
     }
 }
 
@@ -180,50 +182,19 @@ internal static class AuthorityEndpoints
 
     /// <summary>
     /// Whether the caller holds any <c>auth:*</c> action anywhere: cluster-wide, or at a scope one of
-    /// their roles is assigned at — which is where <c>auth:roles.assign</c> can be held alone.
+    /// their roles is assigned at — which is where <c>auth:roles.assign</c> can be held alone. A usable
+    /// Owner holds every action whether or not the catalog lists it yet.
     /// </summary>
     internal static bool Administers(AccessEvaluator evaluator, string accountId) =>
-        evaluator.Snapshot.AssignmentsOf(accountId).Select(a => a.Scope).Append(AccessScope.Cluster)
+        evaluator.Allows(accountId, AuthActions.RolesEdit, AccessScope.Cluster).Allowed
+        || evaluator.Snapshot.AssignmentsOf(accountId).Select(a => a.Scope).Append(AccessScope.Cluster)
             .Any(scope => evaluator.EffectiveActions(accountId, scope).Any(ActionIds.IsAuth));
 
-    private static async Task<AccessCaller?> RequireCallerAsync(HttpContext ctx)
-    {
-        AnchorAuthority authority = ctx.RequestServices.GetRequiredService<AnchorAuthority>();
-        if (authority.Store is null)
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
-                authority.UnavailableReason ?? "The account store holds no authority.");
-            return null;
-        }
-
-        AccessCaller caller;
-        try
-        {
-            caller = await ctx.RequestServices.GetRequiredService<AuthorityCaller>().ResolveAsync(ctx.Request, ctx.RequestAborted);
-        }
-        catch (Exception e) when (e is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
-        {
-            await Endpoints.Unavailable(ctx);
-            return null;
-        }
-
-        switch (caller.Refusal)
-        {
-            case CallerRefusal.Unauthenticated:
-                await Endpoints.Refuse(ctx, StatusCodes.Status401Unauthorized, "unauthenticated", "Sign in to continue.");
-                return null;
-            case CallerRefusal.SessionEnded:
-                await Endpoints.Refuse(ctx, StatusCodes.Status401Unauthorized, "session_ended", "That session has ended. Sign in again.");
-                return null;
-            case CallerRefusal.AccountDisabled:
-                await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "account_disabled", "This account has been switched off.");
-                return null;
-        }
-
-        // A pending account is a caller who holds nothing: it reads its own empty access, and is refused
-        // everything else by the evaluator like anybody else holding nothing.
-        return caller;
-    }
+    /// <remarks>
+    /// A pending account is a caller who holds nothing: it reads its own empty access, and is refused
+    /// everything else by the evaluator like anybody else holding nothing.
+    /// </remarks>
+    private static Task<AccessCaller?> RequireCallerAsync(HttpContext ctx) => Endpoints.RequireAccessCallerAsync(ctx);
 
     private static async Task<bool> RecentlyProvedAsync(HttpContext ctx, string sessionId)
     {
@@ -244,7 +215,7 @@ internal static class AuthorityEndpoints
             AuthorityWireJson.Default.StaleAuthorityEnvelope);
     }
 
-    private static Task RefuseAsync(HttpContext ctx, AuthorityRefusal refusal)
+    internal static Task RefuseAsync(HttpContext ctx, AuthorityRefusal refusal)
     {
         int status = refusal.Code switch
         {

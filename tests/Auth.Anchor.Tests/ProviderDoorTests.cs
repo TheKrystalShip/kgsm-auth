@@ -273,11 +273,11 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
     public async Task An_account_reached_through_a_provider_is_the_same_account_as_ever()
     {
         // The property the whole door exists to have: a provider identity resolves to the account
-        // that already carries it, with the tier it already has. Nobody is migrated, nothing is
+        // that already carries it, with everything it already holds. Nobody is migrated, nothing is
         // matched on a username, and a person who has been using this cluster keeps being the same
         // person when they arrive through a different door.
         var identity = new KgsmIdentity("discord", "9001", "haru", "Haru", null, []);
-        KgsmUser seeded = await anchor.SeedAsync("haru-provider", "unused-password", KgsmTier.Operator);
+        KgsmUser seeded = await anchor.SeedAsync("haru-provider", "unused-password", KgsmTier.Admin);
 
         await anchor.Store.AddCredentialAsync(new UserCredential(
             UserIds.NewCredentialId(), seeded.UserId, CredentialKind.Identity,
@@ -289,7 +289,7 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
 
         Assert.Equal(LinkOutcome.Existing, link.Outcome);
         Assert.Equal(seeded.UserId, link.User!.UserId);
-        Assert.Equal(KgsmTier.Operator, link.User.Tier);
+        Assert.True((await anchor.Store.LoadAsync()).IsOwner(link.User.UserId));
     }
 }
 
@@ -326,11 +326,11 @@ public sealed class RegisterTests(AnchorFixture anchor)
 
         KgsmUser? stored = await anchor.Store.FindByUsernameAsync(name);
         Assert.NotNull(stored);
-        Assert.Equal(KgsmTier.None, stored.Tier);
         Assert.Equal(UserStatus.Pending, stored.Status);
+        Assert.Empty((await anchor.Store.LoadAsync()).AssignmentsOf(stored.UserId));
 
-        // Derived, not granted: nobody chose this tier, and expiry reads that difference to tell an
-        // account that arrived on its own from one an admin made.
+        // Arrived, not admitted: nobody made it, and expiry reads that difference to tell an account
+        // that arrived on its own from one an admin made.
         Assert.Equal(TierSource.Derived, stored.TierSource);
     }
 

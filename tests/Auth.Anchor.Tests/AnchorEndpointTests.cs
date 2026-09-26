@@ -59,7 +59,9 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
             });
 
         Assert.True(result.IsValid);
-        Assert.Equal(KgsmTier.Operator, SessionClaims.ReadTier(result.ClaimsIdentity!));
+
+        // A session proves who, never what: no claim about access rides on it.
+        Assert.Null(result.ClaimsIdentity!.FindFirst(KgsmAuthClaims.Tier));
 
         // The audience is the cluster, which is what makes one sign-in valid on every member of it.
         Assert.Contains(AnchorFixture.ClusterId, new JsonWebToken(session.Access).Audiences);
@@ -85,13 +87,13 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
         (KgsmUser user, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "live");
         Assert.Equal(HttpStatusCode.OK, (await GetAsync("/auth/cluster/users", session.Access)).StatusCode);
 
-        // Demoted after the token was minted. The bearer still carries "admin".
-        await anchor.Store.UpdateAsync(user with { Tier = KgsmTier.Viewer, Updated = DateTimeOffset.UtcNow });
+        // Owner taken away after the session was minted — by the bootstrap administrator, so the
+        // cluster still has an Owner.
+        Access.AuthoritySnapshot s = await anchor.Store.LoadAsync();
+        string ownership = s.AssignmentsOf(user.UserId).Single(a => a.RoleId == Access.BuiltInRoles.OwnerId).AssignmentId;
+        await anchor.Store.ApplyAsync(user.UserId, new Access.Revoke(ownership), await anchor.Store.VersionAsync(), DateTimeOffset.UtcNow);
 
-        // The authority cache's TTL is the staleness bound, so wait it out rather than assuming it is
-        // not there.
-        await Task.Delay(TimeSpan.FromSeconds(6));
-
+        // The very next request: no cache stands between a revocation and its effect, and no session ended.
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsync("/auth/cluster/users", session.Access)).StatusCode);
     }
 
@@ -131,7 +133,8 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
 
         JsonElement served = page.GetProperty("data").EnumerateArray()
             .Single(u => u.GetProperty("id").GetString() == admin.UserId);
-        Assert.Equal("admin", served.GetProperty("tier").GetString());
+        Assert.Equal("admitted", served.GetProperty("origin").GetString());
+        Assert.False(served.TryGetProperty("tier", out _));
         Assert.True(served.GetProperty("hasPassword").GetBoolean());
 
         // A password hash has no representation on this surface, in any field.
@@ -226,87 +229,70 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     public async Task A_change_takes_a_version_and_every_change_takes_a_higher_one()
     {
         string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer);
+        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer, UserStatus.Pending);
 
-        JsonElement first = await (await PatchAsync(bearer, subject.UserId, new { tier = "operator" }))
+        JsonElement first = await (await PatchAsync(bearer, subject.UserId, new { status = "active" }))
             .Content.ReadFromJsonAsync<JsonElement>();
-        JsonElement second = await (await PatchAsync(bearer, subject.UserId, new { tier = "viewer" }))
+        JsonElement second = await (await PatchAsync(bearer, subject.UserId, new { status = "disabled" }))
             .Content.ReadFromJsonAsync<JsonElement>();
 
         // The version is the whole guarantee: a member that has not applied the second yet will
         // refuse the first if it arrives afterwards.
         Assert.True(second.GetProperty("version").GetInt64() > first.GetProperty("version").GetInt64());
-        Assert.Equal("viewer", second.GetProperty("account").GetProperty("tier").GetString());
+        Assert.Equal("disabled", second.GetProperty("account").GetProperty("status").GetString());
     }
 
     [Fact]
-    public async Task An_absent_field_is_left_alone()
+    public async Task Approving_an_arrival_admits_it()
     {
         string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(
-            Unique("partial-"), "a password", KgsmTier.Operator, UserStatus.Pending);
+        KgsmUser subject = await anchor.SeedAsync(Unique("arrival-"), "a password", KgsmTier.Viewer, UserStatus.Pending);
+        await anchor.Store.UpdateAsync(subject with { TierSource = TierSource.Derived });
 
-        JsonElement changed = await (await PatchAsync(bearer, subject.UserId, new { status = "active" }))
-            .Content.ReadFromJsonAsync<JsonElement>();
+        JsonElement account = (await (await PatchAsync(bearer, subject.UserId, new { status = "active" }))
+            .Content.ReadFromJsonAsync<JsonElement>()).GetProperty("account");
 
-        // Changing a status must not require restating a tier, or a caller that omits one silently
-        // reverts whatever somebody else just set.
-        JsonElement account = changed.GetProperty("account");
+        // Approved by somebody, so never expired as an arrival nobody looked at.
         Assert.Equal("active", account.GetProperty("status").GetString());
-        Assert.Equal("operator", account.GetProperty("tier").GetString());
+        Assert.Equal("admitted", account.GetProperty("origin").GetString());
     }
 
     [Fact]
-    public async Task A_tier_nobody_recognises_is_refused_rather_than_read_as_none()
+    public async Task A_status_nobody_recognises_is_refused()
     {
         string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(Unique("typo-"), "a password", KgsmTier.Operator);
+        KgsmUser subject = await anchor.SeedAsync(Unique("typo-"), "a password", KgsmTier.Viewer);
 
-        HttpResponseMessage response = await PatchAsync(bearer, subject.UserId, new { tier = "opreator" });
+        HttpResponseMessage response = await PatchAsync(bearer, subject.UserId, new { status = "actve" });
 
-        // Everywhere else an unreadable tier grants nothing, which is the safe reading of a value
-        // somebody else wrote. Here it is what the caller asked for, and reading a typo as "none"
-        // would demote the person the admin meant to promote.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         JsonElement body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("invalid_tier", body.GetProperty("error").GetProperty("code").GetString());
-        Assert.Equal(KgsmTier.Operator, (await anchor.Store.FindByIdAsync(subject.UserId))!.Tier);
+        Assert.Equal("invalid_status", body.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(UserStatus.Active, (await anchor.Store.FindByIdAsync(subject.UserId))!.Status);
     }
 
     [Fact]
-    public async Task None_is_a_tier_somebody_can_actually_ask_for()
+    public async Task The_cluster_s_last_active_Owner_cannot_be_switched_off()
     {
-        string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(Unique("revoked-"), "a password", KgsmTier.Admin);
+        (KgsmUser only, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "only-owner");
 
-        HttpResponseMessage response = await PatchAsync(bearer, subject.UserId, new { tier = "none" });
-
-        // Refusing everything that parses to None would make withdrawing authority impossible.
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(KgsmTier.None, (await anchor.Store.FindByIdAsync(subject.UserId))!.Tier);
-    }
-
-    [Fact]
-    public async Task An_admin_cannot_remove_the_cluster_s_last_administrator()
-    {
-        (KgsmUser only, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "only-admin");
-
-        // Every other admin in the shared store stands down first, so this really is the last one.
+        // Every other Owner in the shared store is switched off first, so this really is the last one.
+        Access.AuthoritySnapshot s = await anchor.Store.LoadAsync();
         var others = (await anchor.Store.ListAsync())
-            .Where(u => u.UserId != only.UserId && u.EffectiveTier == KgsmTier.Admin).ToList();
+            .Where(u => u.UserId != only.UserId && u.Status == UserStatus.Active && s.IsOwner(u.UserId)).ToList();
         foreach (KgsmUser other in others)
-            await anchor.Store.UpdateAsync(other with { Tier = KgsmTier.Viewer });
+            await anchor.Store.UpdateAsync(other with { Status = UserStatus.Disabled });
 
         try
         {
-            HttpResponseMessage refused = await PatchAsync(session.Access, only.UserId, new { tier = "viewer" });
+            HttpResponseMessage refused = await PatchAsync(session.Access, only.UserId, new { status = "disabled" });
 
-            // One account store for the whole cluster means this is not "no admin on this machine" —
-            // it is nobody, anywhere, able to undo it through any surface.
-            Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+            // One account store for the whole cluster means this is not "no Owner on this machine" — it
+            // is nobody, anywhere, able to undo it through any surface.
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
             JsonElement body = await refused.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal("last_admin", body.GetProperty("error").GetProperty("code").GetString());
-            Assert.Equal(KgsmTier.Admin, (await anchor.Store.FindByIdAsync(only.UserId))!.Tier);
+            Assert.Equal("last_owner", body.GetProperty("error").GetProperty("code").GetString());
+            Assert.Equal(UserStatus.Active, (await anchor.Store.FindByIdAsync(only.UserId))!.Status);
         }
         finally
         {
@@ -316,13 +302,16 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     }
 
     [Fact]
-    public async Task Writing_is_admin_only()
+    public async Task Approving_takes_the_approve_action()
     {
         (_, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Operator, "nosy-writer");
-        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer);
+        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer, UserStatus.Pending);
 
-        Assert.Equal(HttpStatusCode.Forbidden,
-            (await PatchAsync(session.Access, subject.UserId, new { tier = "admin" })).StatusCode);
+        HttpResponseMessage response = await PatchAsync(session.Access, subject.UserId, new { status = "active" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("not_permitted",
+            (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -330,6 +319,6 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     {
         string bearer = await AdminBearerAsync();
         Assert.Equal(HttpStatusCode.NotFound,
-            (await PatchAsync(bearer, "usr_nothing", new { tier = "viewer" })).StatusCode);
+            (await PatchAsync(bearer, "usr_nothing", new { status = "active" })).StatusCode);
     }
 }

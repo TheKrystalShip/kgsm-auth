@@ -49,7 +49,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     // ── An account arriving ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task An_admin_creates_an_account_with_a_tier_it_already_holds()
+    public async Task An_admin_creates_an_admitted_account_holding_nothing_yet()
     {
         string admin = Unique("creator-");
         await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
@@ -58,17 +58,19 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
         string subject = Unique("created-");
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, "/auth/cluster/users", bearer,
-            new { username = subject, tier = "operator", password = Long });
+            new { username = subject, password = Long });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         JsonElement account = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("operator", account.GetProperty("tier").GetString());
 
-        // An admin choosing a tier IS the deliberate grant, which is what expiry reads to tell an
-        // approved account from one that arrived on its own and was never looked at.
-        Assert.Equal("granted", account.GetProperty("tierSource").GetString());
+        // Made by somebody, which is what expiry reads to tell an admitted account from one that
+        // arrived on its own and was never looked at.
+        Assert.Equal("admitted", account.GetProperty("origin").GetString());
         Assert.True(account.GetProperty("hasPassword").GetBoolean());
+
+        // It holds only everyone: assigning it roles is the next, separate act.
+        Assert.Empty((await anchor.Store.LoadAsync()).AssignmentsOf(account.GetProperty("id").GetString()!));
 
         Assert.Equal(HttpStatusCode.OK, (await SignInRawAsync(subject, Long)).StatusCode);
 
@@ -77,8 +79,8 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
             e => e.GetProperty("Data").GetProperty("Username").GetString() == subject)
             .GetProperty("Data");
 
-        Assert.Equal("operator", data.GetProperty("ToTier").GetString());
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("FromTier").ValueKind);
+        Assert.Equal("active", data.GetProperty("ToStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("FromStatus").ValueKind);
     }
 
     [Fact]
@@ -91,9 +93,9 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
         string subject = Unique("awaited-");
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, "/auth/cluster/users", bearer,
-            new { username = subject, tier = "viewer" });
+            new { username = subject });
 
-        // No password, deliberately. The account exists and holds a tier before its owner has ever
+        // No password, deliberately. The account exists and is approved before its owner has ever
         // signed in, which is the whole point of an admin creating one.
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.False((await response.Content.ReadFromJsonAsync<JsonElement>())
@@ -109,7 +111,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
 
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, "/auth/cluster/users", bearer,
-            new { username = Unique("stillborn-"), tier = "viewer", status = "disabled" });
+            new { username = Unique("stillborn-"), status = "disabled" });
 
         // A shape with no use: an admin wanting that creates it and disables it, and the trail then
         // says both things happened rather than one thing that reads like neither.
@@ -125,7 +127,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
 
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, "/auth/cluster/users", bearer,
-            new { username = Unique("weak-"), tier = "viewer", password = "short" });
+            new { username = Unique("weak-"), password = "short" });
 
         // Or the door with the least scrutiny becomes the one that admits the weakest password on
         // the cluster.
@@ -133,7 +135,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     }
 
     [Fact]
-    public async Task Creating_an_account_needs_admin()
+    public async Task Creating_an_account_takes_the_create_action()
     {
         string viewer = Unique("presumptuous-");
         await anchor.SeedAsync(viewer, Long, KgsmTier.Viewer);
@@ -141,7 +143,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
 
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, "/auth/cluster/users", bearer,
-            new { username = Unique("uninvited-"), tier = "admin" });
+            new { username = Unique("uninvited-") });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -243,41 +245,63 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
             e => e.GetProperty("Data").GetProperty("Username").GetString() == subject)
             .GetProperty("Data");
 
-        // The line outlives its subject, which is the point of a trail. What the account HELD is on
-        // it, because "an operator was deleted" and "a viewer was deleted" are different facts and
-        // the account is no longer there to be asked.
-        Assert.Equal("operator", data.GetProperty("FromTier").GetString());
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("ToTier").ValueKind);
+        // The line outlives its subject, which is the point of a trail, and names who removed it.
+        Assert.Equal(user.UserId, data.GetProperty("UserId").GetString());
+        Assert.StartsWith("local:", Assert.Single(
+            anchor.Journal(AuthEvents.UserDeleted),
+            e => e.GetProperty("Data").GetProperty("Username").GetString() == subject).GetProperty("Actor").GetString());
     }
 
     [Fact]
-    public async Task The_only_administrator_cannot_be_deleted()
+    public async Task Deleting_an_account_journals_every_assignment_that_went_with_it()
     {
-        // Every other account this suite seeds is disposable; this one has to be the last admin, so
-        // it is asserted against the store rather than assumed.
+        string admin = Unique("remover-");
+        KgsmUser owner = await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        string bearer = await BearerAsync(admin, Long);
+
+        KgsmUser user = await anchor.SeedAsync(Unique("assigned-"), Long, KgsmTier.Operator);
+        string role = (await anchor.Store.ApplyAsync(owner.UserId, new Access.CreateRole(Unique("Role-")),
+            await anchor.Store.VersionAsync(), DateTimeOffset.UtcNow)).CreatedId!;
+        string assignment = (await anchor.Store.ApplyAsync(owner.UserId, new Access.Assign(user.UserId, role, Access.AccessScope.Cluster),
+            await anchor.Store.VersionAsync(), DateTimeOffset.UtcNow)).CreatedId!;
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await SendAsync(HttpMethod.Delete, $"/auth/cluster/users/{user.UserId}", bearer)).StatusCode);
+
+        Assert.Contains(anchor.Journal(AuthEvents.AssignmentRevoked),
+            e => e.GetProperty("Data").GetProperty("AssignmentId").GetString() == assignment);
+    }
+
+    [Fact]
+    public async Task The_last_active_Owner_cannot_be_deleted()
+    {
         string admin = Unique("sole-");
         KgsmUser self = await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
         string bearer = await BearerAsync(admin, Long);
 
-        IReadOnlyList<KgsmUser> admins =
-            [.. (await anchor.Store.ListAsync()).Where(u => u.EffectiveTier == KgsmTier.Admin)];
+        // Every other Owner in the shared store is switched off first, so this really is the last one.
+        Access.AuthoritySnapshot s = await anchor.Store.LoadAsync();
+        var others = (await anchor.Store.ListAsync())
+            .Where(u => u.UserId != self.UserId && u.Status == UserStatus.Active && s.IsOwner(u.UserId)).ToList();
+        foreach (KgsmUser other in others)
+            await anchor.Store.UpdateAsync(other with { Status = UserStatus.Disabled });
 
-        if (admins.Count > 1)
+        try
         {
-            // Another admin exists, so deletion is allowed and this asserts the other half of the
-            // rule: the refusal is about the LAST one, not about administrators.
-            Assert.Equal(HttpStatusCode.NoContent,
-                (await SendAsync(HttpMethod.Delete, $"/auth/cluster/users/{self.UserId}", bearer))
-                    .StatusCode);
-            return;
+            HttpResponseMessage response =
+                await SendAsync(HttpMethod.Delete, $"/auth/cluster/users/{self.UserId}", bearer);
+
+            // An account store nobody can administer cannot be repaired through any surface.
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal("last_owner",
+                (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetProperty("code").GetString());
+            Assert.NotNull(await anchor.Store.FindByIdAsync(self.UserId));
         }
-
-        HttpResponseMessage response =
-            await SendAsync(HttpMethod.Delete, $"/auth/cluster/users/{self.UserId}", bearer);
-
-        // An account store nobody can administer cannot be repaired through any surface.
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.NotNull(await anchor.Store.FindByIdAsync(self.UserId));
+        finally
+        {
+            foreach (KgsmUser other in others)
+                await anchor.Store.UpdateAsync(other);
+        }
     }
 
     [Fact]

@@ -55,12 +55,13 @@ public sealed class AnchorSnapshotTests(AnchorFixture anchor)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         string json = await response.Content.ReadAsStringAsync();
-        AccountSnapshot? snapshot = JsonSerializer.Deserialize(
-            json, AccountReplicationJson.Default.AccountSnapshot);
+        AuthorityReplicaSnapshot? snapshot = JsonSerializer.Deserialize(
+            json, AuthorityReplicationJson.Default.AuthorityReplicaSnapshot);
 
         Assert.NotNull(snapshot);
-        AccountChange mine = snapshot.Accounts.Single(a => a.Account.UserId == user.UserId);
-        Assert.Equal("operator", mine.Account.Tier);
+        AccountRecord mine = snapshot.Accounts.Single(a => a.UserId == user.UserId);
+        Assert.Equal("person", mine.Kind);
+        Assert.Equal("admitted", mine.Origin);
 
         // Every account is published at a version a replica can act on: zero is what a replica holds
         // for "never heard of", so nothing at zero could ever be newer than what it has.
@@ -70,9 +71,8 @@ public sealed class AnchorSnapshotTests(AnchorFixture anchor)
         // lacks it cannot say who it has just verified — the account arrives, the signature checks,
         // and nothing joins the two. The password's HASH does not travel, which is the property:
         // a replica says what somebody may do and cannot let anybody in.
-        Assert.Contains($"local:{user.UserId}", mine.Account.Identities.Select(i => i.Handle));
-        Assert.Contains(
-            mine.Account.Identities, i => i.Handle.StartsWith("discord:", StringComparison.Ordinal));
+        Assert.Contains($"local:{user.UserId}", mine.Identities.Select(i => i.Handle));
+        Assert.Contains(mine.Identities, i => i.Handle.StartsWith("discord:", StringComparison.Ordinal));
         Assert.DoesNotContain("AQAAAA", json);
         Assert.DoesNotContain("secret", json, StringComparison.OrdinalIgnoreCase);
     }

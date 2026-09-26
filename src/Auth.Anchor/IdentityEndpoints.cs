@@ -130,10 +130,7 @@ internal static class IdentityEndpoints
 
             // Every member holds the handles an account can be proved by, so one that is not told
             // would refuse a session this identity establishes.
-            await ctx.RequestServices.GetRequiredService<IAccountVersions>()
-                .NextAsync(account.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);
-            await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-                .DrainAsync(ctx.RequestAborted);
+            await Endpoints.AnnounceAsync(ctx);
 
             await ctx.RequestServices.GetRequiredService<AnchorJournal>().IdentityAsync(
                 AuthEvents.IdentityLinked, account.UserId, account.Username,

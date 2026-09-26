@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the anchor runs on the access model (3.0.0, users 2.0.0-dev.4, journal 1.1.0-dev.3)
+
+- **The anchor opens its account store at schema version 2, and brings a version 1 file there on
+  start.** The start that upgrades it ends every session and records one `auth.session.revoked` with
+  the new scope `upgrade`; the store's `admin` accounts are its Owners and everybody else holds only
+  `everyone`.
+- **`SqliteAuthorityStore` implements `IUserStore`** for person accounts, so the password, provider,
+  registration and linking doors read the version 2 store unchanged. Every account write is versioned
+  and owed to the cluster through the authority's own outbox; the per-account counter and the account
+  broadcast are gone from the anchor.
+- **Every route is gated by an action.** Approving (and returning to awaiting approval) is
+  `auth:accounts.approve`, switching an account off or on and ending its sessions is
+  `auth:accounts.disable`, creating one or setting its password is `auth:accounts.create`, deleting one
+  is `auth:accounts.delete`, the provider's clients and this anchor's own surface are
+  `auth:config.read`/`auth:config.write`/`auth:journal.read`, and the account list is read by anybody
+  administering any of it. Every one is held to a recent sign-in. Disabling and deleting go through the
+  administration rules, which hold the last active Owner.
+- **Sessions are minted with no tier**, and the wire carries none: an account in the list or on the
+  account page has an `origin` (`arrived` or `admitted`) and a status. `PATCH` on an account takes a
+  status only. The first account an empty store gets is granted Owner.
+
 ### Added — a member answering `/me/access` (cluster 1.0.0-dev.12 to 1.0.0-dev.14)
 
 - **`MemberAccess`** resolves the person behind a session a member has already verified — the

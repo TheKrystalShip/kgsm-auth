@@ -80,6 +80,11 @@ The account store: one file per host, the only production `IAuthorityProvider`. 
   permissions, roles, assignments, service accounts, requirements, the catalog, member reports and the
   authority version. Each refuses the other's file. `UserStoreUpgrade.ToVersion2` is the only way from
   one to the other.
+- **At version 2 the account store is `SqliteAuthorityStore` too.** It implements `IUserStore` for
+  person accounts, so sign-in, provisioning and linking read it unchanged: a `KgsmUser` from it holds
+  `KgsmTier.None`, and its `TierSource` is the account's origin. Every account write goes through the
+  authority's write path — versioned, owed to the cluster — and a failed sign-in or a touched credential
+  is bookkeeping that moves no version.
 - **The upgrade is the one destructive change this file takes, and it copies the file first.** It drops
   `tier` and `tier_source` after assigning Owner to every `admin` and taking `origin` from the
   provenance, in one transaction, and writes an owner-only `VACUUM INTO` copy beside the file before

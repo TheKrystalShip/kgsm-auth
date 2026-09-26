@@ -8,14 +8,15 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Admin, for the reason every account surface here is: the values name where the account store and
-/// the signing key live, and the journal carries usernames, addresses and the shape of every failure
-/// this daemon has had.
+/// Each route is the standard surface's own action — <c>auth:config.read</c>, <c>auth:config.write</c>,
+/// <c>auth:journal.read</c> — and, being <c>auth:*</c>, held to a recent sign-in: the values name where
+/// the account store and the signing key live, and the journal carries usernames, addresses and the
+/// shape of every failure this daemon has had.
 /// </para>
 /// <para>
 /// Authority first. A member that is not the one holding <c>auth</c> answers <c>503</c> and names the
 /// holder, so a client routes to the member that can answer rather than retrying against one that
-/// never will — and it does so before a tier is resolved, because resolving one needs the authority
+/// never will — and it does so before the caller is evaluated, because evaluating needs the authority
 /// this member does not have.
 /// </para>
 /// <para>
@@ -35,9 +36,22 @@ internal sealed class OwnSurfaceFilter : IEndpointFilter
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return Results.Empty;
 
-        if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is null)
+        if (await Endpoints.RequireCaller(ctx, ActionFor(ctx.Request)) is null)
             return Results.Empty;
 
         return await next(context);
+    }
+
+    /// <summary>
+    /// The standard surface action a request to this anchor's own surface is: its journal, a change to
+    /// its configuration, or reading the rest.
+    /// </summary>
+    internal static string ActionFor(HttpRequest request)
+    {
+        string path = request.Path.Value ?? "";
+        string name = path.Contains("/logs", StringComparison.Ordinal) ? "journal.read"
+            : HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method) ? "config.read"
+            : "config.write";
+        return Access.ActionIds.Format(Access.ActionIds.AuthComponent, name);
     }
 }

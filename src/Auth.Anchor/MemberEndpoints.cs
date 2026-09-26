@@ -25,8 +25,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 internal static class MemberEndpoints
 {
     /// <summary>
-    /// Every account this anchor holds, each with the version it is at — and, from a store at schema
-    /// version 2, everything that decides access with them, confirmed current as of this answer.
+    /// Every account this anchor holds and everything that decides what they may do, each record at the
+    /// version it was last written at, confirmed current as of this answer.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -48,45 +48,22 @@ internal static class MemberEndpoints
         if (await ClusterRequest.AuthenticateAsync(ctx) is null)
             return;
 
-        // A store at schema version 2 holds the authority, and its snapshot carries the accounts with it.
-        if (ctx.RequestServices.GetService<AnchorAuthority>()?.Store is { } authority)
+        AnchorAuthority authority = ctx.RequestServices.GetRequiredService<AnchorAuthority>();
+        if (authority.Store is not { } store)
         {
-            AuthorityReplicaSnapshot snapshot = await authority.ExportAsync(
-                ctx.RequestServices.GetRequiredService<AnchorOptions>().StalenessBound, DateTimeOffset.UtcNow,
-                ctx.RequestAborted);
-
-            ctx.Response.StatusCode = StatusCodes.Status200OK;
-            ctx.Response.ContentType = "application/json; charset=utf-8";
-            await JsonSerializer.SerializeAsync(
-                ctx.Response.Body, snapshot, AuthorityReplicationJson.Default.AuthorityReplicaSnapshot, ctx.RequestAborted);
+            await Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
+                authority.UnavailableReason ?? "The account store holds no authority.");
             return;
         }
 
-        var store = ctx.RequestServices.GetRequiredService<IUserStore>();
-        var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();
-
-        IReadOnlyList<KgsmUser> users = await store.ListAsync(ctx.RequestAborted);
-        IReadOnlyDictionary<string, long> held = await versions.AllAsync(ctx.RequestAborted);
-
-        var accounts = new List<AccountChange>(users.Count);
-        foreach (KgsmUser user in users)
-        {
-            IReadOnlyList<UserCredential> credentials =
-                await store.ListCredentialsAsync(user.UserId, ctx.RequestAborted);
-
-            // An account nobody has changed since this anchor started counting has no version row.
-            // It is published at 1 rather than 0, because 0 is the value a replica holds for "never
-            // heard of" and a change at 0 could never be newer than anything.
-            long version = held.TryGetValue(user.UserId, out long v) ? v : 1;
-
-            accounts.Add(new AccountChange(ReplicatedAccount.From(user, credentials), version));
-        }
+        AuthorityReplicaSnapshot snapshot = await store.ExportAsync(
+            ctx.RequestServices.GetRequiredService<AnchorOptions>().StalenessBound, DateTimeOffset.UtcNow,
+            ctx.RequestAborted);
 
         ctx.Response.StatusCode = StatusCodes.Status200OK;
         ctx.Response.ContentType = "application/json; charset=utf-8";
         await JsonSerializer.SerializeAsync(
-            ctx.Response.Body, new AccountSnapshot(accounts),
-            AccountReplicationJson.Default.AccountSnapshot, ctx.RequestAborted);
+            ctx.Response.Body, snapshot, AuthorityReplicationJson.Default.AuthorityReplicaSnapshot, ctx.RequestAborted);
     }
 
     private static Task Refuse(HttpContext ctx, int status, string code, string message)

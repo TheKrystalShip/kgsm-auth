@@ -127,4 +127,10 @@ public static class SessionRevokeScopes
     /// there.
     /// </remarks>
     public const string Withdrawn = "withdrawn";
+
+    /// <summary>
+    /// Every session there was, ended when the account store was brought to schema version 2: no token
+    /// minted under the tiers outlives them.
+    /// </summary>
+    public const string Upgrade = "upgrade";
 }

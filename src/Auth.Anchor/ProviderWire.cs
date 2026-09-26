@@ -140,7 +140,6 @@ internal sealed record AuthorizeContextAccount(string Username, string DisplayNa
 /// <param name="UserId">The account.</param>
 /// <param name="Username">What it signs in as.</param>
 /// <param name="DisplayName">What it is shown as.</param>
-/// <param name="Tier">What it may do, as the store resolves it now.</param>
 /// <param name="Status">Active, pending or disabled.</param>
 /// <param name="Identities">The provider accounts attached to it.</param>
 /// <param name="HasPassword">Whether the account holds a password, which decides how it re-proves itself.</param>
@@ -155,7 +154,6 @@ internal sealed record AccountView(
     string UserId,
     string Username,
     string DisplayName,
-    string Tier,
     string Status,
     bool HasPassword,
     IReadOnlyList<AccountIdentity> Identities,

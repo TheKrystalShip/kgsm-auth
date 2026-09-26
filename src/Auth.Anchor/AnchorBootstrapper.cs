@@ -1,3 +1,4 @@
+using TheKrystalShip.KGSM.Auth.Journal;
 using TheKrystalShip.KGSM.Auth.Users;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor;
@@ -27,10 +28,16 @@ internal sealed class AnchorBootstrapper(
     IUserStore store,
     LocalSignInService signIn,
     AnchorOptions options,
+    AnchorAuthority authority,
+    AnchorJournal journal,
+    SqliteSessionRegistry sessions,
+    UpgradeReport upgrade,
     ILogger<AnchorBootstrapper> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken ct)
     {
+        await EndSessionsAfterUpgradeAsync(ct).ConfigureAwait(false);
+
         string? password;
         try
         {
@@ -49,6 +56,16 @@ internal sealed class AnchorBootstrapper(
         if (password is null)
             return;
 
+        // What the first account may do is an assignment: Owner, which only this host can give when there
+        // is no Owner to give it.
+        if (authority.Store is { } authorityStore)
+        {
+            string actor = KgsmActor.Format(KgsmActorProvider.System, options.MemberId);
+            AuthorityWrite granted = await authorityStore.GrantOwnerLocallyAsync(FirstAdmin.DefaultUsername, actor, DateTimeOffset.UtcNow, ct)
+                .ConfigureAwait(false);
+            await AuthorityJournaling.JournalAsync(journal, granted, actor, origin: null, member: null, ct).ConfigureAwait(false);
+        }
+
         string path = options.InitialAdminPasswordPath;
         if (FirstAdmin.TryWritePasswordFile(path, FirstAdmin.DefaultUsername, password, out Exception? error))
         {
@@ -65,6 +82,27 @@ internal sealed class AnchorBootstrapper(
             "the first administrator's password could not be written to {Path}. It is '{Password}' for "
             + "the account '{Username}', and is not recoverable once this line is gone.",
             path, password, FirstAdmin.DefaultUsername);
+    }
+
+    /// <summary>
+    /// The start that brought the store to schema version 2 ends every session there is, once, so no
+    /// token minted under the tiers outlives them. Passwords and identity links are untouched; everybody
+    /// signs in again.
+    /// </summary>
+    private async Task EndSessionsAfterUpgradeAsync(CancellationToken ct)
+    {
+        if (!upgrade.Upgraded)
+            return;
+
+        int ended = await sessions.RevokeEverythingAsync(ct).ConfigureAwait(false);
+        logger.LogWarning(
+            "the account store was brought to schema version 2 (a copy of the old file is at {Backup}); {Owners} "
+            + "became Owner and every other account holds only everyone. {Count} session(s) were ended.",
+            upgrade.Backup, string.Join(", ", upgrade.Owners), ended);
+
+        await journal.SessionRevokedAsync(
+            SessionRevokeScopes.Upgrade, userId: "", username: "", sid: null, count: ended,
+            actor: KgsmActor.Format(KgsmActorProvider.System, options.MemberId), origin: null, ct).ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;

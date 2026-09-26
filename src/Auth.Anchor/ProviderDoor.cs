@@ -137,12 +137,11 @@ internal sealed class ProviderCatalog(
 /// completing a sign-in at a configured provider provisions exactly the same unapproved account. This
 /// adds a door to a room rather than a room. It is off unless a cluster says otherwise, bounded by
 /// the same <see cref="PendingPolicy"/> that bounds the provider door, and the account it creates
-/// holds <b>nothing</b> until an administrator grants something.
+/// holds <b>nothing</b>, awaiting approval, until an administrator approves it.
 /// </para>
 /// <para>
-/// A caller names a username, a password and optionally a display name, and nothing else. A tier or a
-/// status on the wire is a field somebody will try to set, so neither is on it: both are decided here
-/// and the tier is always <see cref="KgsmTier.None"/>.
+/// A caller names a username, a password and optionally a display name, and nothing else. A status on
+/// the wire is a field somebody will try to set, so it is not on it: the account is pending and arrived.
 /// </para>
 /// <para>
 /// The provider's registration page is the door (<see cref="OidcEndpoints.Register"/>); it answers with
@@ -234,8 +233,7 @@ internal static class Registration
             username,
             string.IsNullOrWhiteSpace(body.DisplayName) ? username : body.DisplayName.Trim(),
             KgsmTier.None,
-            // Nobody chose this tier — it is where an unapproved account starts. Granted is what an
-            // admin's deliberate pick records, and the difference is what expiry reads.
+            // It arrived by itself, which is what expiry reads to remove it if nobody approves it.
             TierSource.Derived,
             UserStatus.Pending,
             now,
@@ -263,13 +261,10 @@ internal static class Registration
         await ctx.RequestServices.GetRequiredService<LocalSignInService>()
             .SetPasswordAsync(account.UserId, body.Password!, now, ctx.RequestAborted);
 
-        // Every member is told, at a version, the way any other account change is. Without this the
-        // account exists on the anchor alone until something else makes a member take a snapshot —
-        // so a person could sign in and be a stranger everywhere they went.
-        var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();
-        long version = await versions.NextAsync(account.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);
-        await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-            .DrainAsync(ctx.RequestAborted);
+        // Every member is told the way any other account change is. Without this the account exists on
+        // the anchor alone until the broadcast's timer — so a person could sign in and be a stranger
+        // everywhere they went.
+        await Endpoints.AnnounceAsync(ctx);
 
         logger.LogInformation("'{Username}' registered and is awaiting approval", username);
 
@@ -284,7 +279,6 @@ internal static class Registration
             AuthEvents.UserProvisioned,
             account.UserId,
             account.Username,
-            toTier: KgsmTiers.ToWire(account.Tier),
             toStatus: UserStatuses.ToWire(account.Status),
             actor: account.AsIdentity().ActorString,
             origin: AnchorJournal.OriginUi,
@@ -479,7 +473,6 @@ internal static class ProviderEndpoints
             return;
         }
 
-        KgsmTier tier = account.EffectiveTier;
         DateTimeOffset now = DateTimeOffset.UtcNow;
         var journal = ctx.RequestServices.GetRequiredService<AnchorJournal>();
 
@@ -493,7 +486,6 @@ internal static class ProviderEndpoints
                 AuthEvents.UserProvisioned,
                 account.UserId,
                 account.Username,
-                toTier: KgsmTiers.ToWire(account.Tier),
                 toStatus: UserStatuses.ToWire(account.Status),
                 actor: verified.ActorString,
                 origin: AnchorJournal.OriginUi,
@@ -510,8 +502,7 @@ internal static class ProviderEndpoints
                 ct: ctx.RequestAborted);
         }
 
-        logger.LogInformation(
-            "{Handle} signed in with {Provider} at {Tier}", verified.Handle, provider, KgsmTiers.ToWire(tier));
+        logger.LogInformation("{Handle} signed in with {Provider}", verified.Handle, provider);
 
         // The sign-in proves this browser's provider session, and the request it was started for is
         // answered from there — a code for the client, never a session.

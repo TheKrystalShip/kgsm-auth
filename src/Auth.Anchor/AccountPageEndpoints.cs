@@ -129,7 +129,6 @@ internal static class AccountPageEndpoints
             UserId: user.UserId,
             Username: user.Username,
             DisplayName: user.DisplayName,
-            Tier: KgsmTiers.ToWire(user.EffectiveTier),
             Status: UserStatuses.ToWire(user.Status),
             HasPassword: credentials.Any(c => c.Kind == CredentialKind.Password),
             Identities: [.. credentials.Where(c => c.Kind == CredentialKind.Identity).Select(c => new AccountIdentity(
@@ -279,7 +278,7 @@ internal static class AccountPageEndpoints
         DateTimeOffset now = DateTimeOffset.UtcNow;
         await ctx.RequestServices.GetRequiredService<LocalSignInService>()
             .SetPasswordAsync(user.UserId, body!.Password!, now, ctx.RequestAborted);
-        await AccountEndpoints.AnnounceAsync(ctx, user, now);
+        await Endpoints.AnnounceAsync(ctx);
 
         await ctx.RequestServices.GetRequiredService<AnchorJournal>().AccountAsync(
             AuthEvents.UserPasswordChanged, user.UserId, user.Username,

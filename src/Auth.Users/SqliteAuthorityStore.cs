@@ -1060,6 +1060,29 @@ public sealed partial class SqliteAuthorityStore
             Recorded = true;
         }
 
+        /// <summary>
+        /// Run a statement as <see cref="Execute"/> does and say how many rows it changed. One that changed
+        /// none advances nothing.
+        /// </summary>
+        public int ExecuteCount(string sql, params (string Name, object Value)[] parameters)
+        {
+            using SqliteCommand command = Command(connection, transaction, sql, [.. parameters, ("$v", Version), ("$now", now)]);
+            int changed = command.ExecuteNonQuery();
+            if (changed > 0)
+                Wrote = true;
+            return changed;
+        }
+
+        /// <summary>Run bookkeeping as <see cref="Record"/> does and say how many rows it changed.</summary>
+        public int RecordCount(string sql, params (string Name, object Value)[] parameters)
+        {
+            using SqliteCommand command = Command(connection, transaction, sql, [.. parameters, ("$now", now)]);
+            int changed = command.ExecuteNonQuery();
+            if (changed > 0)
+                Recorded = true;
+            return changed;
+        }
+
         /// <summary>Read inside this write's transaction.</summary>
         public T Query<T>(Func<SqliteConnection, SqliteTransaction, T> read) => read(connection, transaction);
 

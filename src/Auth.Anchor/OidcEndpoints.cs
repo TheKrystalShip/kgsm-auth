@@ -653,7 +653,7 @@ internal static class OidcEndpoints
         }
 
         var idTokens = ctx.RequestServices.GetRequiredService<IdTokens>();
-        await Endpoints.MintSessionFor(ctx, identity, standing.Tier, user, now, (access, refresh) =>
+        await Endpoints.MintSessionFor(ctx, identity, user, now, (access, refresh) =>
             Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new TokenResponse(
                 AccessToken: access.Token,
                 TokenType: "Bearer",
@@ -832,10 +832,15 @@ internal static class OidcEndpoints
 
     // ── Clients ───────────────────────────────────────────────────────────────
 
+    // The provider's clients are this anchor's own configuration: read and changed under the standard
+    // surface's actions.
+    private static readonly string ConfigRead = Access.ActionIds.Format(Access.ActionIds.AuthComponent, "config.read");
+    private static readonly string ConfigWrite = Access.ActionIds.Format(Access.ActionIds.AuthComponent, "config.write");
+
     /// <summary><c>GET /auth/cluster/clients</c>: every client, announced or registered.</summary>
     internal static async Task ListClients(HttpContext ctx)
     {
-        if (!await Endpoints.RequireAuthorityAsync(ctx) || await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is null)
+        if (!await Endpoints.RequireAuthorityAsync(ctx) || await Endpoints.RequireCaller(ctx, ConfigRead) is null)
             return;
 
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
@@ -850,7 +855,7 @@ internal static class OidcEndpoints
     {
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
-        if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is not { } caller)
+        if (await Endpoints.RequireCaller(ctx, ConfigWrite) is not { } caller)
             return;
 
         if (await Endpoints.ReadBodyAsync(ctx, AnchorJsonContext.Default.ClientRegistration) is not { } body)
@@ -888,7 +893,7 @@ internal static class OidcEndpoints
     {
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
-        if (await Endpoints.RequireCaller(ctx, KgsmTier.Admin) is not { } caller)
+        if (await Endpoints.RequireCaller(ctx, ConfigWrite) is not { } caller)
             return;
 
         string clientId = (string?)ctx.Request.RouteValues["clientId"] ?? "";

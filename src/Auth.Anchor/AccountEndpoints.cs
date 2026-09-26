@@ -1,3 +1,4 @@
+using TheKrystalShip.KGSM.Auth.Access;
 using TheKrystalShip.KGSM.Auth.Journal;
 using TheKrystalShip.KGSM.Auth.Users;
 
@@ -28,15 +29,16 @@ internal static class AccountEndpoints
     /// Create an account, as an administrator.
     /// </summary>
     /// <remarks>
-    /// The counterpart to registration and the door an admin needs: somebody who will never register
-    /// themselves, or who arrives through a provider and should already hold a tier when they do.
+    /// The counterpart to registration: somebody who will never register themselves, or who arrives
+    /// through a provider and should already be approved when they do. <c>auth:accounts.create</c>. The
+    /// account holds only <c>everyone</c>; assigning it roles is the next, separate act.
     /// </remarks>
     internal static async Task CreateAccount(HttpContext ctx)
     {
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
 
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.Admin);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthActions.AccountsCreate);
         if (maybe is not { } caller)
             return;
 
@@ -48,17 +50,6 @@ internal static class AccountEndpoints
             await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_username",
                 $"A username is {Usernames.MinLength}-{Usernames.MaxLength} characters of letters, "
                 + "digits, '.', '_' or '-', beginning with a letter or a digit.");
-            return;
-        }
-
-        // Parsed strictly, not fail-closed. Everywhere else an unreadable tier means "grants
-        // nothing", which is the safe reading of a value somebody else wrote; here it is what the
-        // caller is asking for, and silently creating at none instead of refusing a typo would make
-        // an admin think they had granted something.
-        if (!Endpoints.TryReadTier(body.Tier ?? KgsmTiers.None, out KgsmTier tier))
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "invalid_tier",
-                $"'{body.Tier}' is not a tier. Use admin, operator, viewer or none.");
             return;
         }
 
@@ -89,9 +80,9 @@ internal static class AccountEndpoints
             UserIds.NewUserId(),
             username,
             string.IsNullOrWhiteSpace(body.DisplayName) ? username : body.DisplayName.Trim(),
-            tier,
-            // An admin choosing a tier IS the deliberate grant this records, which is what expiry
-            // reads to tell an approved account from one that arrived on its own.
+            KgsmTier.None,
+            // Made by somebody, which is what expiry reads to tell an admitted account from one that
+            // arrived on its own.
             TierSource.Granted,
             status,
             now,
@@ -124,13 +115,12 @@ internal static class AccountEndpoints
                 .SetPasswordAsync(account.UserId, body.Password, now, ctx.RequestAborted);
         }
 
-        await AnnounceAsync(ctx, account, now);
+        await Endpoints.AnnounceAsync(ctx);
 
         // No "from": the account did not exist a moment ago, and a from/to pair would invent a
         // previous state to have moved out of.
         await ctx.RequestServices.GetRequiredService<AnchorJournal>().AccountAsync(
             AuthEvents.UserProvisioned, account.UserId, account.Username,
-            toTier: KgsmTiers.ToWire(tier),
             toStatus: UserStatuses.ToWire(status),
             actor: ActorOf(caller),
             origin: AnchorJournal.OriginUi,
@@ -141,7 +131,7 @@ internal static class AccountEndpoints
             .ListCredentialsAsync(account.UserId, ctx.RequestAborted);
 
         await Endpoints.WriteJson(ctx, StatusCodes.Status201Created,
-            Endpoints.ToRecord(account, credentials), AnchorJsonContext.Default.AccountRecord);
+            Endpoints.ToRecord(account, credentials), AnchorJsonContext.Default.AccountEntry);
     }
 
     // ── Somebody else's password ──────────────────────────────────────────────
@@ -159,7 +149,8 @@ internal static class AccountEndpoints
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
 
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.Admin);
+        // Setting somebody's credential by hand is making their account by hand.
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthActions.AccountsCreate);
         if (maybe is not { } caller)
             return;
 
@@ -186,7 +177,7 @@ internal static class AccountEndpoints
         await ctx.RequestServices.GetRequiredService<LocalSignInService>()
             .SetPasswordAsync(user.UserId, body.Password!, now, ctx.RequestAborted);
 
-        await AnnounceAsync(ctx, user, now);
+        await Endpoints.AnnounceAsync(ctx);
 
         await ctx.RequestServices.GetRequiredService<AnchorJournal>().AccountAsync(
             AuthEvents.UserPasswordChanged, user.UserId, user.Username,
@@ -205,14 +196,16 @@ internal static class AccountEndpoints
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The removal travels as a versioned tombstone rather than as an absence, because a member that
-    /// was down would otherwise learn nothing and go on holding the account — and would hand it back
-    /// the next time it took a snapshot from anywhere. A member that never saw the account records
-    /// the version anyway, so a late arrival cannot resurrect it.
+    /// <c>auth:accounts.delete</c>, decided by the administration rules: the last active Owner is
+    /// refused, only an Owner deletes an Owner, and a service account is never deleted by hand. Every
+    /// assignment the account held goes with it, each journaled on its own.
     /// </para>
     /// <para>
-    /// The last administrator is refused, for the same reason a self-demotion is: an account store
-    /// with nobody able to administer it cannot be repaired through any surface.
+    /// The removal travels as a versioned tombstone rather than as an absence, because a member that
+    /// was down would otherwise learn nothing and go on holding the account — and would hand it back
+    /// the next time it took a snapshot. Nothing announces the sessions: a member resolves every request
+    /// against its replica, and an account that is not there is nobody, everywhere, as soon as the
+    /// removal lands.
     /// </para>
     /// </remarks>
     internal static async Task DeleteAccount(HttpContext ctx)
@@ -220,52 +213,38 @@ internal static class AccountEndpoints
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
 
-        Caller? maybe = await Endpoints.RequireCaller(ctx, KgsmTier.Admin);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthActions.AccountsDelete);
         if (maybe is not { } caller)
             return;
 
         if (await SubjectAsync(ctx) is not { } user)
             return;
 
-        var store = ctx.RequestServices.GetRequiredService<IUserStore>();
-
-        if (user.EffectiveTier == KgsmTier.Admin
-            && !await Endpoints.AnotherAdminExistsAsync(store, user.UserId, ctx.RequestAborted))
+        SqliteAuthorityStore authority = ctx.RequestServices.GetRequiredService<AnchorAuthority>().Store!;
+        AuthorityWrite write;
+        try
         {
-            await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "last_admin",
-                "This is the only administrator the cluster has. Promote somebody else first.");
+            write = await authority.ApplyAsync(caller.User!.UserId, new Access.DeleteAccount(user.UserId),
+                await authority.VersionAsync(ctx.RequestAborted), DateTimeOffset.UtcNow, ctx.RequestAborted);
+        }
+        catch (AuthorityRefusedException e)
+        {
+            await AuthorityEndpoints.RefuseAsync(ctx, e.Refusal);
+            return;
+        }
+        catch (StaleAuthorityException)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status409Conflict, "stale_authority", "Access changed meanwhile; try again.");
             return;
         }
 
-        if (!await store.DeleteAsync(user.UserId, ctx.RequestAborted))
-        {
-            await Endpoints.Refuse(ctx, StatusCodes.Status404NotFound, "no_such_account",
-                "No account has that id.");
-            return;
-        }
-
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        long version = await ctx.RequestServices.GetRequiredService<IAccountVersions>()
-            .NextAsync(user.UserId, now, AccountAnnouncementKind.Removed, ctx.RequestAborted);
-
-        await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-            .DrainAsync(ctx.RequestAborted);
-
-        // Nothing announces the sessions. A member resolves authority against its replica on every
-        // request, and an account that is not there answers "no account" — so the removal above ends
-        // every session this person holds, everywhere, as soon as it lands. A second announcement
-        // would be a second mechanism for one fact, free to disagree with it.
+        await Endpoints.AnnounceAsync(ctx);
 
         // Written after the deletion, naming an account that no longer exists. That is the point of a
         // trail: the row outlives its subject, and an account removed with no record of who removed
         // it is the removal nobody can review.
-        await ctx.RequestServices.GetRequiredService<AnchorJournal>().AccountAsync(
-            AuthEvents.UserDeleted, user.UserId, user.Username,
-            fromTier: KgsmTiers.ToWire(user.Tier),
-            fromStatus: UserStatuses.ToWire(user.Status),
-            actor: ActorOf(caller),
-            origin: AnchorJournal.OriginUi,
-            ct: ctx.RequestAborted);
+        await AuthorityJournaling.JournalAsync(ctx.RequestServices.GetRequiredService<AnchorJournal>(), write,
+            ActorOf(caller), AnchorJournal.OriginUi, member: null, ctx.RequestAborted);
 
         ctx.Response.StatusCode = StatusCodes.Status204NoContent;
     }
@@ -315,7 +294,7 @@ internal static class AccountEndpoints
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        await AnnounceAsync(ctx, user, now);
+        await Endpoints.AnnounceAsync(ctx);
 
         if (detaching is { } gone)
         {
@@ -354,24 +333,5 @@ internal static class AccountEndpoints
         return user;
     }
 
-    /// <summary>
-    /// Tell every member the account's current state, at a new version.
-    /// </summary>
-    /// <remarks>
-    /// A credential change moves what replicates — a member holds the handles an account can be proved
-    /// by, so one that is not told goes on resolving a session against a way in that no longer exists.
-    /// </remarks>
-    internal static async Task AnnounceAsync(HttpContext ctx, KgsmUser user, DateTimeOffset now)
-    {
-        await ctx.RequestServices.GetRequiredService<IAccountVersions>()
-            .NextAsync(user.UserId, now, AccountAnnouncementKind.Changed, ctx.RequestAborted);
-
-        await ctx.RequestServices.GetRequiredService<AccountBroadcast>()
-            .DrainAsync(ctx.RequestAborted);
-    }
-
-    /// <summary>The administrator who acted, as an audit trail names one.</summary>
-    private static string ActorOf(Caller caller) =>
-        caller.Identity?.ActorString
-        ?? (caller.User is { } self ? self.AsIdentity().ActorString : string.Empty);
+    private static string ActorOf(Caller caller) => Endpoints.ActorOf(caller);
 }

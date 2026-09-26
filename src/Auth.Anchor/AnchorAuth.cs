@@ -28,39 +28,28 @@ internal enum CallerRefusal
 /// <summary>The caller behind a request, or why there is not one.</summary>
 /// <param name="Refusal">Why this is not a caller, or <see cref="CallerRefusal.None"/>.</param>
 /// <param name="User">The account, resolved from the store on this request.</param>
-/// <param name="Tier">What they may do, resolved on this request rather than read off the token.</param>
 /// <param name="SessionId">The session the bearer belongs to.</param>
 /// <param name="Identity">
 /// The identity the caller signed in with, as the token carries it. Kept beside the account because
 /// it says which door they came through, which the account alone cannot — somebody with a password
 /// and a Discord identity attached is one account and two ways in.
 /// </param>
+/// <remarks>What the caller may do is never here: it is evaluated, per action, against the authority.</remarks>
 internal readonly record struct Caller(
     CallerRefusal Refusal,
     KgsmUser? User,
-    KgsmTier Tier,
     string? SessionId,
     KgsmIdentity? Identity = null)
 {
     /// <summary>Whether there is a caller at all.</summary>
     public bool IsAuthenticated => Refusal == CallerRefusal.None && User is not null;
-
-    /// <summary>
-    /// Whether the caller holds at least <paramref name="required"/>. The tiers are ordered, so an
-    /// admin satisfies an operator requirement and an operator satisfies a viewer one.
-    /// </summary>
-    public bool Holds(KgsmTier required) => IsAuthenticated && Tier >= required;
 }
 
 /// <summary>
-/// Resolves the caller behind a request: the signature, then the session, then the account.
+/// Resolves the account behind a request: the signature, then the session, then the account and
+/// whether it is switched off.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>Authority is read from the store on every request, never from the token.</b> The tier claim a
-/// bearer carries is what was true when it was minted; a demotion has to take effect at the next
-/// request rather than at the token's expiry, so the claim is overwritten by what the store says now.
-/// </para>
 /// <para>
 /// The three checks are separate because they fail for different reasons and a caller acts
 /// differently on each: a bad signature is an unauthenticated stranger, an ended session is somebody
@@ -76,21 +65,21 @@ internal sealed class AnchorAuth(SessionReader sessions, UserStoreAuthority auth
             await sessions.ReadAsync(request, ct).ConfigureAwait(false);
 
         if (refusal != CallerRefusal.None || identity is null)
-            return new Caller(refusal, null, KgsmTier.None, sessionId);
+            return new Caller(refusal, null, sessionId);
 
         AuthorityAnswer answer = await authority.ResolveAsync(identity, ct).ConfigureAwait(false);
 
         return answer.Outcome switch
         {
             AuthorityOutcome.Disabled =>
-                new Caller(CallerRefusal.AccountDisabled, answer.User, KgsmTier.None, sessionId, identity),
+                new Caller(CallerRefusal.AccountDisabled, answer.User, sessionId, identity),
 
             // An account that has been deleted since the session was minted is a stranger holding a
             // token, which is exactly an unauthenticated caller.
             AuthorityOutcome.NoAccount =>
-                new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, sessionId),
+                new Caller(CallerRefusal.Unauthenticated, null, sessionId),
 
-            _ => new Caller(CallerRefusal.None, answer.User, answer.Tier, sessionId, identity),
+            _ => new Caller(CallerRefusal.None, answer.User, sessionId, identity),
         };
     }
 }

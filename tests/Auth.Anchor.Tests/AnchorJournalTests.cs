@@ -70,7 +70,9 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         // is the readable half, and the two being different strings is the point of both.
         Assert.Equal($"local:{user.UserId}", Text(data, "Identity"));
         Assert.Equal("local", Text(data, "Provider"));
-        Assert.Equal("operator", Text(data, "Tier"));
+
+        // A session proves who, never what: no tier is minted, so none is recorded.
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("Tier").ValueKind);
 
         // The sid pairs a sign-in with its sign-out. A row that could not be paired would leave a
         // reader unable to say how long anybody was signed in for.
@@ -173,9 +175,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
 
         // A provision has no "from": the account did not exist a moment ago, and a from/to pair here
         // would invent a previous state to have moved out of.
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("FromTier").ValueKind);
         Assert.Equal(JsonValueKind.Null, data.GetProperty("FromStatus").ValueKind);
-        Assert.Equal("none", Text(data, "ToTier"));
 
         // Pending is what a Control Panel raises an approval request from. A provisioning that landed
         // anywhere else is not somebody waiting on an administrator.
@@ -203,7 +203,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     // ── Authority moving ──────────────────────────────────────────────────────
 
     [Fact]
-    public async Task A_tier_change_and_a_status_change_are_two_lines()
+    public async Task An_approval_is_recorded_with_who_approved_it()
     {
         string admin = Unique("mover-");
         await anchor.SeedAsync(admin, "correct horse battery", KgsmTier.Admin);
@@ -213,20 +213,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         KgsmUser user = await anchor.SeedAsync(
             subject, "correct horse battery", KgsmTier.None, UserStatus.Pending);
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Patch, $"/auth/cluster/users/{user.UserId}")
-        {
-            Content = JsonContent.Create(new { tier = "operator", status = "active" }, options: Wire),
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-
-        Assert.Equal(HttpStatusCode.OK, (await anchor.Client.SendAsync(request)).StatusCode);
-
-        // Two facts changed, so two lines. An access review reads for a tier change OR for an
-        // approval; one combined line would make both queries a text search over a sentence.
-        JsonElement tier = Line(AuthEvents.UserTierChanged, subject).GetProperty("Data");
-        Assert.Equal("none", Text(tier, "FromTier"));
-        Assert.Equal("operator", Text(tier, "ToTier"));
+        Assert.Equal(HttpStatusCode.OK, (await PatchAsync(bearer, user.UserId, new { status = "active" })).StatusCode);
 
         JsonElement approved = Line(AuthEvents.UserApproved, subject).GetProperty("Data");
         Assert.Equal("pending", Text(approved, "FromStatus"));
@@ -234,8 +221,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
 
         // The admin who acted is the actor; the account acted upon is in the payload. "Who did this"
         // and "to whom" never have to be told apart by reading a sentence.
-        Assert.Equal($"local:{admin}",
-            Line(AuthEvents.UserTierChanged, subject).GetProperty("Actor").GetString());
+        Assert.Equal($"local:{admin}", Line(AuthEvents.UserApproved, subject).GetProperty("Actor").GetString());
     }
 
     [Fact]
@@ -248,20 +234,22 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         string subject = Unique("unchanged-");
         KgsmUser user = await anchor.SeedAsync(subject, "correct horse battery", KgsmTier.Viewer);
 
-        using var request = new HttpRequestMessage(
-            HttpMethod.Patch, $"/auth/cluster/users/{user.UserId}")
+        Assert.Equal(HttpStatusCode.OK, (await PatchAsync(bearer, user.UserId, new { status = "active" })).StatusCode);
+
+        // A line per request rather than per change would fill an access review with rows saying nothing.
+        Assert.DoesNotContain(
+            anchor.Journal(AuthEvents.UserApproved),
+            e => Text(e.GetProperty("Data"), "Username") == subject);
+    }
+
+    private async Task<HttpResponseMessage> PatchAsync(string bearer, string userId, object body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/auth/cluster/users/{userId}")
         {
-            Content = JsonContent.Create(new { tier = "viewer" }, options: Wire),
+            Content = JsonContent.Create(body, options: Wire),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-
-        Assert.Equal(HttpStatusCode.OK, (await anchor.Client.SendAsync(request)).StatusCode);
-
-        // The write happened and the version moved; nothing about the account's authority did. A line
-        // per request rather than per change would fill an access review with rows saying nothing.
-        Assert.DoesNotContain(
-            anchor.Journal(AuthEvents.UserTierChanged),
-            e => Text(e.GetProperty("Data"), "Username") == subject);
+        return await anchor.Client.SendAsync(request);
     }
 
     // ── A run of guesses ──────────────────────────────────────────────────────

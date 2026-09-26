@@ -73,7 +73,7 @@ internal static class DiscoveryEndpoints
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
 
-        if (await Endpoints.RequireCaller(ctx, KgsmTier.None) is null)
+        if (await Endpoints.RequireCaller(ctx, action: null) is null)
             return;
 
         AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();

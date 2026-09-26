@@ -33,8 +33,8 @@ anything else.
 **The access model that replaces the tiers is `Auth.Access`** — actions declared by components,
 permissions, ranked roles, assignments scoped to the cluster, a node or an instance, and service
 accounts — with its authority `kgsm-docs/plans/permissions.md`. The account store holds it at schema
-version 2 (`SqliteAuthorityStore`), and `UserStoreUpgrade` brings a version 1 file there. Every surface
-enforces the tiers until that plan's cutover.
+version 2 (`SqliteAuthorityStore`), and `UserStoreUpgrade` brings a version 1 file there. The anchor
+runs on it; every other surface enforces the tiers from its version 1 replica until that plan's cutover.
 
 **Each package's locked decisions live in a `CLAUDE.md` beside it**: `src/Auth.Access/`,
 `src/Auth.Users/`, `src/Auth.Journal/`, `src/Auth.Cluster/`, `src/Auth.Anchor/` (the daemon, the Discord

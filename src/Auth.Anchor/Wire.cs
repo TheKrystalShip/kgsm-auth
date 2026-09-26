@@ -80,18 +80,18 @@ internal sealed record PasswordSetRequest(string? Password);
 /// <remarks>
 /// A password is optional: an account can be made for somebody who will only ever arrive through a
 /// provider. One that <em>is</em> set answers to the same floor as every other, or the door with the
-/// least scrutiny becomes the one that admits the weakest password on the cluster.
+/// least scrutiny becomes the one that admits the weakest password on the cluster. The account holds
+/// only <c>everyone</c>; assigning it roles is the next, separate act.
 /// </remarks>
 /// <param name="Username">The name it is keyed by for people, not for the store.</param>
 /// <param name="DisplayName">What to show, defaulting to the username.</param>
-/// <param name="Tier">What it may do. An admin choosing one is the deliberate grant this records.</param>
 /// <param name="Password">Optional.</param>
 /// <param name="Status">
 /// <c>active</c> or <c>pending</c>. Creating one already disabled is a shape with no use — an admin
 /// wanting that creates it and disables it, and the trail then says both things happened.
 /// </param>
 internal sealed record CreateAccountRequest(
-    string? Username, string? DisplayName, string? Tier, string? Password, string? Status);
+    string? Username, string? DisplayName, string? Password, string? Status);
 
 /// <summary>One live session, as a person reviewing their own devices sees it.</summary>
 /// <param name="Sid">The session id.</param>
@@ -153,26 +153,25 @@ internal sealed record ReauthResult(DateTimeOffset ExpiresAt);
 /// <param name="Url">The provider's authorize URL, with the one-time ticket cookie set alongside it.</param>
 internal sealed record LinkStartResponse(string Url);
 
-/// <summary>An account, as an admin sees it. Never carries a secret in any form.</summary>
+/// <summary>An account, as an administrator sees it. Never carries a secret in any form.</summary>
+/// <remarks>What the account may do is its assignments, which the authority lists.</remarks>
 /// <param name="Id">The opaque <c>usr_…</c> id, stable across a rename.</param>
-/// <param name="TierSource">
-/// <c>granted</c> or <c>derived</c> — what an access review reads to tell a deliberate grant from one
-/// nobody has looked at since it was seeded.
+/// <param name="Origin">
+/// <c>arrived</c> for an account that made itself, which expires if nobody approves it; <c>admitted</c>
+/// for one somebody made or approved.
 /// </param>
 /// <param name="Username">The login name. Renameable, never a key.</param>
 /// <param name="DisplayName">What a person is shown.</param>
-/// <param name="Tier">What this account may do.</param>
 /// <param name="Status">Whether it may be used at all.</param>
 /// <param name="HasPassword">Whether a password can sign this account in at all.</param>
 /// <param name="Identities">Linked external identities, as <c>provider:subject</c> handles.</param>
 /// <param name="Created">When the account was made.</param>
 /// <param name="Updated">When any field above last changed.</param>
-internal sealed record AccountRecord(
+internal sealed record AccountEntry(
     string Id,
     string Username,
     string DisplayName,
-    string Tier,
-    string TierSource,
+    string Origin,
     string Status,
     bool HasPassword,
     IReadOnlyList<string> Identities,
@@ -180,28 +179,21 @@ internal sealed record AccountRecord(
     DateTimeOffset Updated);
 
 /// <summary>The account list. A page shape with no paging, because the store's own list has none.</summary>
-internal sealed record AccountsPage(IReadOnlyList<AccountRecord> Data);
+internal sealed record AccountsPage(IReadOnlyList<AccountEntry> Data);
+
+/// <summary>An administrator's change to an account's standing: approve it, switch it off or on.</summary>
+/// <param name="Status">The standing to set: <c>active</c>, <c>pending</c> or <c>disabled</c>.</param>
+internal sealed record AccountPatchRequest(string? Status);
 
 /// <summary>
-/// An admin's change to an account: its tier, its status, or both.
-/// </summary>
-/// <remarks>
-/// Both fields are optional and an absent one is left alone, so changing a tier does not require
-/// restating a status and cannot silently revert one somebody else just set.
-/// </remarks>
-/// <param name="Tier">The tier to grant, or null to leave it.</param>
-/// <param name="Status">The standing to set, or null to leave it.</param>
-internal sealed record AccountPatchRequest(string? Tier, string? Status);
-
-/// <summary>
-/// An account after a change, and the version the cluster will order that change by.
+/// An account after a change, and the authority version the cluster will order that change by.
 /// </summary>
 /// <remarks>
 /// The version is returned rather than left implicit because it is the whole guarantee: a caller that
 /// sees it knows the change is the newest statement about this account, and every member that has not
 /// applied it yet will refuse anything older.
 /// </remarks>
-internal sealed record AccountChanged(AccountRecord Account, long Version);
+internal sealed record AccountChanged(AccountEntry Account, long Version);
 
 /// <summary>
 /// One session is over, told to every other member.
@@ -238,7 +230,7 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(CreateAccountRequest))]
 [JsonSerializable(typeof(AnchorIdentity))]
 [JsonSerializable(typeof(ClusterRoster))]
-[JsonSerializable(typeof(AccountRecord))]
+[JsonSerializable(typeof(AccountEntry))]
 [JsonSerializable(typeof(SessionsPage))]
 [JsonSerializable(typeof(RevokeRequest))]
 [JsonSerializable(typeof(RevokeResult))]

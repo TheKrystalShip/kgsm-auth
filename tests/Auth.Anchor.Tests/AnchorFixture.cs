@@ -34,7 +34,7 @@ public sealed class AnchorFixture : IDisposable
     public string Root { get; }
 
     /// <summary>The account store, open for a test to seed directly through the library.</summary>
-    public SqliteUserStore Store { get; }
+    public SqliteAuthorityStore Store { get; }
 
     /// <summary>The password hasher the daemon itself uses, so a seeded password is a real one.</summary>
     public IUserPasswordHasher Hasher { get; } = new IdentityPasswordHasher();
@@ -117,7 +117,7 @@ public sealed class AnchorFixture : IDisposable
         File.WriteAllText(founded, ClusterFounding.Fingerprint(ClusterSecret) + "\n");
         Environment.SetEnvironmentVariable("Cluster__FoundedPath", founded);
 
-        Store = new SqliteUserStore(new UserStoreOptions { Path = Path.Combine(Root, "users.db") });
+        Store = new SqliteAuthorityStore(new UserStoreOptions { Path = Path.Combine(Root, "users.db") });
 
         _factory = new WebApplicationFactory<Program>();
         Client = _factory.CreateClient();
@@ -176,19 +176,25 @@ public sealed class AnchorFixture : IDisposable
         }
     }
 
-    /// <summary>An account with a password, as an admin would have created it.</summary>
+    /// <summary>
+    /// An account with a password, as an admin would have created it. <see cref="KgsmTier.Admin"/> is an
+    /// Owner; any other tier holds nothing but <c>everyone</c>.
+    /// </summary>
     public async Task<KgsmUser> SeedAsync(
         string username, string password, KgsmTier tier, UserStatus status = UserStatus.Active)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         var user = new KgsmUser(
-            UserIds.NewUserId(), username, username, tier, TierSource.Granted, status, now, now);
+            UserIds.NewUserId(), username, username, KgsmTier.None, TierSource.Granted, status, now, now);
 
         await Store.CreateAsync(user);
         await Store.AddCredentialAsync(new UserCredential(
             UserIds.NewCredentialId(), user.UserId, CredentialKind.Password,
             UserCredentials.LocalHandle(user.UserId), Hasher.Hash(password),
             Label: null, Created: now, LastUsed: null));
+
+        if (tier == KgsmTier.Admin)
+            await Store.GrantOwnerLocallyAsync(username, "local:test", now);
 
         return user;
     }
@@ -239,8 +245,8 @@ public sealed class AnchorFixture : IDisposable
             ProviderCookies.Hash(cookie), ClusterId, now, now.AddDays(1), device);
 
         string sid = Endpoints.NewSessionId();
-        var access = tokens.MintAccess(identity, user.EffectiveTier, sid);
-        var refresh = tokens.MintRefresh(identity, user.EffectiveTier, sid);
+        var access = tokens.MintAccess(identity, tier: null, sid);
+        var refresh = tokens.MintRefresh(identity, tier: null, sid);
         await registry.CreateAsync(
             new SessionRegistration(
                 sid, identity.Handle, ClusterId, now, refresh.ExpiresAt, device, refresh.Jti),

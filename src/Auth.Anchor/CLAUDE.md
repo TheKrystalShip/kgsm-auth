@@ -19,9 +19,17 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   leave every member checking against something nothing signs with. A file that exists and cannot be
   read stops the daemon; it is never a reason to generate. It is created with mode `0600` rather than
   chmod'd after — the gap between write and chmod is exactly what the mode exists to close.
-- **Authority is read from the store on every request, never off the token.** The tier claim is what
-  was true at mint time. The same read happens on refresh, and a withdrawn account has its session
-  revoked there rather than left to run out its bearer's lifetime.
+- **The anchor runs on the account store at schema version 2, and brings a version 1 file there on
+  start.** `UserStoreUpgrade.ToVersion2` runs before anything opens the file; the start that upgraded
+  it ends every session (`auth.session.revoked`, scope `upgrade`), so no token minted under the tiers
+  outlives them. `SqliteAuthorityStore` is both the authority and the `IUserStore` every door reads.
+- **A token proves who, never what.** Sessions are minted with no tier. Every route decides its caller
+  by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and, for
+  `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
+  withdrawn account has its session revoked rather than left to run out its bearer's lifetime.
+- **Disabling or deleting an account goes through the administration rules.** Those are what keep the
+  last active Owner and let only an Owner act on another; approving and re-enabling are gated by their
+  own actions. The first account an empty store gets is granted Owner.
 - **A store that cannot be read is `503`, never `403`.** "We could not find out what this person may
   do" is a different fact from "they may do nothing", and reporting the first as the second locks out
   an admin mid-incident. It is the same rule `Auth.Users` states for the store itself.
@@ -68,7 +76,7 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   second mint site is a second place to forget the line, and forgetting is silent: the person is signed
   in and nothing says so.
 - **One line per fact that changed, never one per request**, and only when the action actually
-  happened. A patch moving both a tier and a status writes two lines; one moving neither writes none;
+  happened. A patch that changes an account's status writes its line; one that changes nothing writes none;
   a sign-out for a session that had already ended writes none. An access review reads for one fact at
   a time, and a line per request fills it with rows saying nothing.
 
