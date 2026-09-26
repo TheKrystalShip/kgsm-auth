@@ -55,6 +55,9 @@ public enum MemberActingRefusal
 
     /// <summary>The account exists here and is disabled.</summary>
     AccountDisabled,
+
+    /// <summary>The handle names a service account belonging to a member other than the caller.</summary>
+    ServiceNotTheCallers,
 }
 
 /// <summary>

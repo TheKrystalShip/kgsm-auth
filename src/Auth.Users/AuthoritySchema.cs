@@ -17,8 +17,10 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// transaction.
 /// </para>
 /// <para>
-/// Every authority row carries the authority version it was written at, which is what orders a change
-/// against a later one when the rows are replicated.
+/// Every authority row, and every account, carries the authority version it was written at, which is
+/// what orders a change against a later one when the rows are replicated. The anchor's
+/// <c>authority_outbox</c> holds what it owes the cluster; a replica's <c>authority_tombstones</c>
+/// holds the version each removed record was removed at.
 /// </para>
 /// </remarks>
 public static class AuthoritySchema
@@ -27,7 +29,26 @@ public static class AuthoritySchema
     public const int Version = 2;
 
     /// <summary>The key the authority version is filed under in <c>authority_meta</c>.</summary>
+    /// <remarks>On the anchor, the version of the last write. On a replica, the highest version applied.</remarks>
     public const string AuthorityVersionKey = "authority_version";
+
+    /// <summary>
+    /// The key of a counter every change to what this file holds advances, the anchor's writes and a
+    /// replica's applied changes alike: what a cached snapshot is compared against.
+    /// </summary>
+    public const string GenerationKey = "generation";
+
+    /// <summary>The version the catalog was last replaced at.</summary>
+    public const string CatalogVersionKey = "catalog_version";
+
+    /// <summary>On a replica: when it was last confirmed current, as a UTC timestamp.</summary>
+    public const string ConfirmedKey = "confirmed_utc";
+
+    /// <summary>On a replica: how long it stays current after a confirmation, in seconds.</summary>
+    public const string BoundKey = "bound_seconds";
+
+    /// <summary>On a replica: the lowest evaluation contract the cluster accepts.</summary>
+    public const string MinimumContractKey = "minimum_contract";
 
     /// <summary>The accounts, credentials and lockouts at version 2.</summary>
     public const string CreateAccounts = """
@@ -45,7 +66,8 @@ public static class AuthoritySchema
             kind         TEXT NOT NULL,
             status       TEXT NOT NULL,
             created_utc  TEXT NOT NULL,
-            updated_utc  TEXT NOT NULL
+            updated_utc  TEXT NOT NULL,
+            version      INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS credentials (
@@ -169,6 +191,17 @@ public static class AuthoritySchema
             report       TEXT NOT NULL,
             received_utc TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS authority_outbox (
+            record  TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            removed INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS authority_tombstones (
+            record  TEXT PRIMARY KEY,
+            version INTEGER NOT NULL
+        );
         """;
 
     /// <summary>
@@ -181,6 +214,8 @@ public static class AuthoritySchema
                ($everyone_id, $everyone_name, $everyone_key, 'everyone', $everyone_rank, 1, $now);
 
         INSERT OR IGNORE INTO authority_meta (key, value) VALUES ('authority_version', '1');
+        INSERT OR IGNORE INTO authority_meta (key, value) VALUES ('generation', '1');
+        INSERT OR IGNORE INTO authority_meta (key, value) VALUES ('catalog_version', '1');
         """;
 }
 

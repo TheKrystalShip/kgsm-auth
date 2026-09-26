@@ -43,6 +43,12 @@ internal sealed class AnchorSettings
 
         /// <summary>A sweep faster than a minute is a busy loop over rows nothing is reading.</summary>
         public const int SessionCleanupMinutes = 1;
+
+        /// <summary>A heartbeat more often than this is a message per member for nothing new.</summary>
+        public const int AuthorityHeartbeatSeconds = 10;
+
+        /// <summary>A bound shorter than a minute turns one late heartbeat into a read-only cluster.</summary>
+        public const int StalenessBoundSeconds = 60;
     }
 
     /// <summary>Whether somebody with no account may make one.</summary>
@@ -74,6 +80,21 @@ internal sealed class AnchorSettings
     [ConfigField("reauthWindowMinutes", "Re-authentication window", Group = "sessions",
         Risk = ConfigRisk.Safe, Min = 1, Unit = "minutes")]
     public int? ReauthWindowMinutes { get; set; }
+
+    /// <summary>How often every member is told the authority's current version.</summary>
+    /// <panel>How often this anchor tells every member which version of roles and permissions is
+    /// current. Each one it applies keeps that member able to do more than read.</panel>
+    [ConfigField("authorityHeartbeatSeconds", "Access heartbeat", Group = "access", Risk = ConfigRisk.Safe,
+        Min = Floors.AuthorityHeartbeatSeconds, Unit = "seconds")]
+    public int? AuthorityHeartbeatSeconds { get; set; }
+
+    /// <summary>How long a member stays current without hearing the heartbeat.</summary>
+    /// <panel>How long a member keeps serving changes after it last heard from this anchor. Past it, the
+    /// member serves reads only — to everyone, owners included — until it hears again, so a member cut
+    /// off from this anchor never acts on roles that may since have been taken away.</panel>
+    [ConfigField("stalenessBoundSeconds", "Staleness bound", Group = "access", Risk = ConfigRisk.Safe,
+        Min = Floors.StalenessBoundSeconds, Unit = "seconds")]
+    public int? StalenessBoundSeconds { get; set; }
 
     /// <summary>Where Kestrel listens. TCP, because a browser signs in here directly.</summary>
     /// <panel>The address a person's browser reaches this anchor at. Sign-in happens here directly,

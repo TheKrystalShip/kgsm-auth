@@ -20,7 +20,21 @@ internal sealed class AnchorAuthority(AnchorOptions options, ILogger<AnchorAutho
 {
     private readonly Lock _gate = new();
     private SqliteAuthorityStore? _store;
+    private AuthoritySource? _source;
     private string? _unavailable;
+
+    /// <summary>The snapshot this anchor evaluates its own actions against, cached per change.</summary>
+    public AuthoritySource? Source
+    {
+        get
+        {
+            if (Store is not { } store)
+                return null;
+
+            lock (_gate)
+                return _source ??= new AuthoritySource(store, AuthorityStanding.Anchor);
+        }
+    }
 
     /// <summary>Why there is no store, when there is none.</summary>
     public string? UnavailableReason => _unavailable;
@@ -61,6 +75,7 @@ internal sealed class AnchorAuthority(AnchorOptions options, ILogger<AnchorAutho
 internal sealed class AuthorityIntake(
     AnchorAuthority authority,
     AnchorJournal journal,
+    AuthorityBroadcast broadcast,
     ILogger<AuthorityIntake> logger) : IAuthorityIntake
 {
     /// <inheritdoc />
@@ -73,7 +88,7 @@ internal sealed class AuthorityIntake(
         }
 
         AuthorityWrite write = await store.RecordMemberReportAsync(member, report, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
-        await JournalAsync(member, write, ct).ConfigureAwait(false);
+        await SettleAsync(member, write, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -86,7 +101,7 @@ internal sealed class AuthorityIntake(
         }
 
         AuthorityWrite write = await store.RemoveInstanceAsync(member, report.Nonce, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
-        await JournalAsync(member, write, ct).ConfigureAwait(false);
+        await SettleAsync(member, write, ct).ConfigureAwait(false);
     }
 
     /// <summary>A removed member: forget everything it reported.</summary>
@@ -96,7 +111,14 @@ internal sealed class AuthorityIntake(
             return;
 
         AuthorityWrite write = await store.ForgetMemberAsync(member, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
+        await SettleAsync(member, write, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Journal a write, then tell the cluster what it changed.</summary>
+    private async Task SettleAsync(string member, AuthorityWrite write, CancellationToken ct)
+    {
         await JournalAsync(member, write, ct).ConfigureAwait(false);
+        await broadcast.DrainAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>

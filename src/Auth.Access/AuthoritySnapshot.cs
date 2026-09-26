@@ -68,6 +68,34 @@ public sealed class AuthoritySnapshot
             StringComparer.Ordinal);
     }
 
+    private AuthoritySnapshot(AuthoritySnapshot from, AuthorityFreshness freshness, int minimumContractVersion)
+    {
+        Version = from.Version;
+        Freshness = freshness;
+        MinimumContractVersion = minimumContractVersion;
+        Accounts = from.Accounts;
+        Catalog = from.Catalog;
+        Permissions = from.Permissions;
+        Roles = from.Roles;
+        Assignments = from.Assignments;
+        Requirements = from.Requirements;
+        _assignmentsByAccount = from._assignmentsByAccount;
+        _requirementsByAccount = from._requirementsByAccount;
+        _roleActions = from._roleActions;
+    }
+
+    /// <summary>
+    /// The same authority, confirmed at a different moment or held to a different contract.
+    /// </summary>
+    /// <remarks>
+    /// A replica is confirmed current on every heartbeat while what it holds changes far less often, so
+    /// a new freshness shares every index with this snapshot rather than building them again.
+    /// </remarks>
+    public AuthoritySnapshot With(AuthorityFreshness freshness, int minimumContractVersion) =>
+        freshness == Freshness && minimumContractVersion == MinimumContractVersion
+            ? this
+            : new AuthoritySnapshot(this, freshness, minimumContractVersion);
+
     /// <summary>The authority version this snapshot was read at.</summary>
     public long Version { get; }
 

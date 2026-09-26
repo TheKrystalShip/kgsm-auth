@@ -120,10 +120,16 @@ public static class AuthorityIds
 /// their declared requirements, and Owner granted from the host's shell — bypass the rules, and are
 /// never reachable from a request.
 /// </para>
+/// <para>
+/// <b>Every write owes the cluster what it changed, in the same transaction.</b> Each record a write
+/// stamped with the new version, and each one it removed, is filed in <c>authority_outbox</c> before the
+/// write commits, so a change can never exist without its announcement being owed.
+/// </para>
 /// </remarks>
-public sealed class SqliteAuthorityStore
+public sealed partial class SqliteAuthorityStore
 {
     private readonly string _connectionString;
+    private readonly string _replicaConnectionString;
     private readonly TimeSpan _busyTimeout;
 
     /// <summary>
@@ -142,6 +148,14 @@ public sealed class SqliteAuthorityStore
             ForeignKeys = true,
             Pooling = true,
             DefaultTimeout = (int)Math.Ceiling(options.BusyTimeout.TotalSeconds),
+        }.ToString();
+
+        // Unpooled, so a connection with foreign keys off never returns to a pool the anchor's own
+        // writes draw from.
+        _replicaConnectionString = new SqliteConnectionStringBuilder(_connectionString)
+        {
+            ForeignKeys = false,
+            Pooling = false,
         }.ToString();
 
         string? directory = Path.GetDirectoryName(Path.GetFullPath(options.Path));
@@ -482,7 +496,7 @@ public sealed class SqliteAuthorityStore
                 return null;
 
             case DisableAccount e:
-                w.Execute("UPDATE users SET status = $status, updated_utc = $now WHERE user_id = $id;",
+                w.Execute("UPDATE users SET status = $status, version = $v, updated_utc = $now WHERE user_id = $id;",
                     ("$id", e.AccountId), ("$status", UserStatuses.Disabled));
                 w.Changed(AuthorityChangeKind.AccountDisabled, e.AccountId, s.Accounts[e.AccountId].Name, e.AccountId);
                 return null;
@@ -616,6 +630,7 @@ public sealed class SqliteAuthorityStore
         }
 
         w.Execute("DELETE FROM catalog_actions;");
+        w.Execute("UPDATE authority_meta SET value = $v WHERE key = $key;", ("$key", AuthoritySchema.CatalogVersionKey));
         foreach (CatalogAction action in next.Values.OrderBy(a => a.Id, StringComparer.Ordinal))
         {
             w.Execute(
@@ -893,8 +908,8 @@ public sealed class SqliteAuthorityStore
         string id = UserIds.NewUserId();
         w.Execute(
             """
-            INSERT INTO users (user_id, username, username_key, display_name, origin, kind, status, created_utc, updated_utc)
-            VALUES ($id, $name, $key, $display, $origin, $kind, $status, $now, $now);
+            INSERT INTO users (user_id, username, username_key, display_name, origin, kind, status, created_utc, updated_utc, version)
+            VALUES ($id, $name, $key, $display, $origin, $kind, $status, $now, $now, $v);
             """,
             ("$id", id), ("$name", service.Name), ("$key", Usernames.Key(service.Name)), ("$display", service.Actor),
             ("$origin", AccountWire.Admitted), ("$kind", AccountWire.Service), ("$status", UserStatuses.Active));
@@ -943,9 +958,73 @@ public sealed class SqliteAuthorityStore
             ("$key", AuthoritySchema.AuthorityVersionKey),
             ("$value", writer.Version.ToString(CultureInfo.InvariantCulture)));
 
+        Owe(connection, transaction, writer);
+        AdvanceGeneration(connection, transaction);
+
         await transaction.CommitAsync(ct).ConfigureAwait(false);
         return new AuthorityWrite(writer.Version, writer.Changes, created);
     }
+
+    /// <summary>
+    /// File every record this write changed in the outbox: each one stamped with its version, and each
+    /// one it reported removed. A record removed and changed in one write is owed as removed.
+    /// </summary>
+    private static void Owe(SqliteConnection connection, SqliteTransaction transaction, Writer writer)
+    {
+        Dictionary<string, bool> owed = new(StringComparer.Ordinal);
+
+        void Stamped(string sql, Func<string, AuthorityRecordKey> key) =>
+            Read(connection, transaction, sql, r => owed.TryAdd(key(r.GetString(0)).ToString(), false), ("$v", writer.Version));
+
+        Stamped("SELECT role_id FROM roles WHERE version = $v;", AuthorityRecordKey.Role);
+        Stamped("SELECT permission_id FROM permissions WHERE version = $v;", AuthorityRecordKey.Permission);
+        Stamped("SELECT assignment_id FROM assignments WHERE version = $v;", AuthorityRecordKey.Assignment);
+        Stamped("SELECT user_id FROM users WHERE version = $v;", AuthorityRecordKey.Account);
+        Stamped("SELECT DISTINCT user_id FROM service_requirements WHERE version = $v;", AuthorityRecordKey.Account);
+
+        if (ReadMetaLong(connection, transaction, AuthoritySchema.CatalogVersionKey) == writer.Version)
+            owed.TryAdd(AuthorityRecordKey.Catalog.ToString(), false);
+
+        foreach (AuthorityChange change in writer.Changes)
+        {
+            AuthorityRecordKey? removed = change.Kind switch
+            {
+                AuthorityChangeKind.RoleRemoved => AuthorityRecordKey.Role(change.Subject),
+                AuthorityChangeKind.PermissionRemoved => AuthorityRecordKey.Permission(change.Subject),
+                AuthorityChangeKind.AssignmentRevoked => AuthorityRecordKey.Assignment(change.Subject),
+                AuthorityChangeKind.AccountDeleted => AuthorityRecordKey.Account(change.Subject),
+                _ => null,
+            };
+
+            if (removed is { } key)
+                owed[key.ToString()] = true;
+        }
+
+        foreach ((string record, bool removed) in owed)
+        {
+            Execute(connection, transaction,
+                """
+                INSERT INTO authority_outbox (record, version, removed) VALUES ($r, $v, $removed)
+                ON CONFLICT(record) DO UPDATE SET version = excluded.version, removed = excluded.removed;
+                """,
+                ("$r", record), ("$v", writer.Version), ("$removed", removed ? 1 : 0));
+        }
+    }
+
+    /// <summary>Advance the counter a cached snapshot is compared against.</summary>
+    private static void AdvanceGeneration(SqliteConnection connection, SqliteTransaction transaction) =>
+        Execute(connection, transaction,
+            """
+            INSERT INTO authority_meta (key, value) VALUES ($key, '1')
+            ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT);
+            """,
+            ("$key", AuthoritySchema.GenerationKey));
+
+    private static long ReadMetaLong(SqliteConnection connection, SqliteTransaction? transaction, string key) =>
+        Scalar(connection, transaction, "SELECT value FROM authority_meta WHERE key = $key;", ("$key", key)) is string value
+        && long.TryParse(value, CultureInfo.InvariantCulture, out long parsed)
+            ? parsed
+            : 0;
 
     /// <summary>One write in progress: its connection, the version it writes at, and what it changed.</summary>
     private sealed class Writer(SqliteConnection connection, SqliteTransaction transaction, long version, string now)
@@ -1028,9 +1107,11 @@ public sealed class SqliteAuthorityStore
         Execute(connection, null, FormattableString.Invariant(
             $"PRAGMA busy_timeout={(int)_busyTimeout.TotalMilliseconds};"));
 
-    private static void Read(SqliteConnection connection, SqliteTransaction? transaction, string sql, Action<SqliteDataReader> row)
+    private static void Read(
+        SqliteConnection connection, SqliteTransaction? transaction, string sql, Action<SqliteDataReader> row,
+        params (string Name, object Value)[] parameters)
     {
-        using SqliteCommand command = Command(connection, transaction, sql);
+        using SqliteCommand command = Command(connection, transaction, sql, parameters);
         using SqliteDataReader reader = command.ExecuteReader();
         while (reader.Read())
             row(reader);

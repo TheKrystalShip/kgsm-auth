@@ -22,6 +22,7 @@ using TheKrystalShip.KGSM.ComponentConfig;
 [assembly: ConfigGroup("storage", "Storage", 2)]
 [assembly: ConfigGroup("sessions", "Sessions", 3)]
 [assembly: ConfigGroup("general", "General", 4)]
+[assembly: ConfigGroup("access", "Access", 5)]
 
 // Where this daemon's own configuration comes from, lowest precedence first — the same order
 // Program.cs resolves them in. The settings file is the base the other two override one key of.

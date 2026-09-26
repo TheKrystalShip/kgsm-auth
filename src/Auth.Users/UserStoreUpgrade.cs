@@ -98,6 +98,12 @@ public static class UserStoreUpgrade
         Execute(connection, transaction,
             "UPDATE users SET origin = CASE lower(trim(tier_source)) WHEN 'granted' THEN 'admitted' ELSE 'arrived' END;");
         Execute(connection, transaction, "ALTER TABLE users ADD COLUMN kind TEXT NOT NULL DEFAULT 'person';");
+        Execute(connection, transaction, "ALTER TABLE users ADD COLUMN version INTEGER NOT NULL DEFAULT 1;");
+
+        // Version 1 orders each account on its own counter and owes the cluster from its own table;
+        // version 2 orders everything on the authority version, so both go with the tiers.
+        Execute(connection, transaction, "DROP TABLE IF EXISTS account_announcements;");
+        Execute(connection, transaction, "DROP TABLE IF EXISTS account_versions;");
 
         Execute(connection, transaction, AuthoritySchema.CreateAuthority);
         SqliteAuthorityStore.SeedBuiltIns(connection, transaction, stamp);

@@ -38,6 +38,22 @@ public class SessionTokenServiceTests
     }
 
     [Fact]
+    public async Task ATokenMintedWithNoTier_CarriesNoAuthorityClaim_AndStillProvesWhoAndWhichSession()
+    {
+        SessionTokenService svc = Service();
+        MintedToken refresh = svc.MintRefresh(Identity, tier: null, "sid_1");
+
+        var parsed = new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(refresh.Token);
+        Assert.DoesNotContain(parsed.Claims, c => c.Type == KgsmAuthClaims.Tier);
+
+        RefreshClaims? claims = await svc.ReadRefreshAsync(refresh.Token);
+        Assert.NotNull(claims);
+        Assert.Equal("discord:198772043", claims.Identity.Handle);
+        Assert.Equal("sid_1", claims.SessionId);
+        Assert.Equal(KgsmTier.None, claims.Tier);
+    }
+
+    [Fact]
     public async Task AnAccessTokenIsNotAcceptedAsARefreshToken()
     {
         // Otherwise a stolen 15-minute bearer buys a 30-day one, and the short lifetime that bounds

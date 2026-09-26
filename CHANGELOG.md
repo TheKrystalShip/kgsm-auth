@@ -7,6 +7,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the authority, replicated to every member (2.4.0, access 1.0.0-dev.3, users 2.0.0-dev.3, cluster 1.0.0-dev.11, testing 1.0.0-dev.2)
+
+The third phase of `kgsm-docs/plans/permissions.md`: the anchor is the one writer of who may do what,
+and every member evaluates from its own copy of it, current within a bound the anchor sets.
+
+- **Every authority write owes the cluster what it changed, in the same transaction.**
+  `SqliteAuthorityStore` files each record a write stamped with the new version, and each one it
+  removed, in `authority_outbox`; accounts now carry the authority version they were written at.
+  `PendingAnnouncementsAsync`, `Read*RecordAsync` and `ExportAsync` are what the anchor sends from.
+- **A replica applies each record on its own version, in any order** (`ApplyAsync`, `RemoveAsync`).
+  A removal leaves a tombstone, so a late `role.changed` cannot bring back a removed role; a replica
+  applies with foreign keys off, so an assignment that arrives before its role grants nothing until
+  the role lands; a name or handle still held by a record in flight defers the change, and the bus
+  delivers it again. `ApplySnapshotAsync` takes the whole state, removing what the anchor no longer
+  holds and keeping what arrived after the snapshot was cut. The wire shapes are in
+  `AuthorityReplication.cs`: `account`, `role`, `permission` and `assignment` `.changed`/`.removed`,
+  `catalog.changed` and `authority.current`.
+- **The staleness bound.** `ConfirmAsync` applies the anchor's heartbeat: it carries the bound and the
+  minimum evaluation contract, and confirms a replica current as of when it was sent — only when the
+  replica already holds that version. `ReplicaStateAsync` reads the freshness back.
+- **`AuthoritySource`** is the snapshot every evaluation reads, cached per store generation (which every
+  write and every applied change advances) with no time-to-live; a new confirmation is laid over the
+  cached snapshot through `AuthoritySnapshot.With` rather than reloading it.
+- **`Auth.Cluster`**: `AddAuthorityReplica()` registers a handler per authority message — each drops
+  anything not from the holder of the accounts — and `AuthoritySnapshotWorker`, which takes the whole
+  state from the holder on joining and again whenever the replica has gone stale.
+  `MemberActingAccountResolver` resolves a member-acting call against the replica: a person by their
+  handle, and a service account only from the member it belongs to (`ServiceNotTheCallers`).
+- **The anchor** drains the outbox after every write and on a timer (`AuthorityBroadcast`), sends
+  `authority.current` to every live member (`authorityHeartbeatSeconds`, 60, and
+  `stalenessBoundSeconds`, 300 and at least two heartbeats, in a new *Access* settings group), and
+  serves the authority snapshot at `/auth/cluster/snapshot` from a store at schema version 2.
+  `AnchorAccess` decides its own actions and requires a sign-in within the re-authentication window for
+  every `auth:*` action, read from the session's provider sign-in (`reauth_required`).
+- **A session token may carry no tier.** `MintAccess` and `MintRefresh` take a nullable tier and mint
+  no `tier` claim without one.
+- **The version 1 → 2 upgrade** adds the account version and drops the per-account version and
+  announcement tables.
+
 ### Added — the catalog, reported across the cluster (2.3.0, access 1.0.0-dev.2, users 2.0.0-dev.2, journal 1.1.0-dev.2, cluster 1.0.0-dev.10)
 
 The second phase of `kgsm-docs/plans/permissions.md`: every member tells the auth anchor which actions

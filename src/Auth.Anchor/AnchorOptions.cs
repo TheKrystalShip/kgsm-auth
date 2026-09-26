@@ -30,6 +30,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <param name="AllowSelfRegistration">Whether somebody with no account may make one.</param>
 /// <param name="ReauthWindow">How long a proved credential lets somebody change what proves them.</param>
 /// <param name="UiPath">Where the provider's pages are installed.</param>
+/// <param name="AuthorityHeartbeat">How often every member is sent <c>authority.current</c>.</param>
+/// <param name="StalenessBound">How long a member stays current without one.</param>
 internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
@@ -49,7 +51,9 @@ internal sealed record AnchorOptions(
     PendingPolicy Pending,
     bool AllowSelfRegistration,
     TimeSpan ReauthWindow,
-    string UiPath)
+    string UiPath,
+    TimeSpan AuthorityHeartbeat,
+    TimeSpan StalenessBound)
 {
     /// <summary>
     /// Where the bootstrap administrator's one-time password is left, on an anchor whose account store
@@ -86,6 +90,8 @@ internal sealed record AnchorOptions(
 
     public static AnchorOptions FromSettings(AnchorSettings s)
     {
+        int heartbeat = AtLeast(s.AuthorityHeartbeatSeconds ?? 60, AnchorSettings.Floors.AuthorityHeartbeatSeconds);
+
         return new AnchorOptions(
             MemberId: DeriveMemberId(s.MemberId),
             ListenAddress: Text(s.ListenAddress, "http://0.0.0.0:8098"),
@@ -116,7 +122,11 @@ internal sealed record AnchorOptions(
                 Cap: Math.Max(0, s.PendingCap ?? 25),
                 Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))),
             ReauthWindow: TimeSpan.FromMinutes(AtLeast(s.ReauthWindowMinutes ?? 5, 1)),
-            UiPath: Text(s.UiPath, "/usr/share/kgsm-web-auth"));
+            UiPath: Text(s.UiPath, "/usr/share/kgsm-web-auth"),
+            AuthorityHeartbeat: TimeSpan.FromSeconds(heartbeat),
+            // At least two heartbeats, so one that arrives late never leaves a member read-only.
+            StalenessBound: TimeSpan.FromSeconds(Math.Max(
+                AtLeast(s.StalenessBoundSeconds ?? 300, AnchorSettings.Floors.StalenessBoundSeconds), 2 * heartbeat)));
     }
 
     /// <summary>

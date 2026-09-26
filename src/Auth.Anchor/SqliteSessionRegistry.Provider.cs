@@ -274,6 +274,34 @@ internal sealed partial class SqliteSessionRegistry
     internal Task<ProviderSessionRow?> FindProviderSessionAsync(string sessionId, CancellationToken ct = default) =>
         Task.FromResult(ReadProviderSession("session_id = $key", sessionId));
 
+    /// <summary>
+    /// When the browser sign-in a live session was minted under last proved a credential, or null when
+    /// the session is not live or no proof is recorded.
+    /// </summary>
+    /// <remarks>
+    /// A session is minted under a provider session, and the provider session records every time a
+    /// password is typed or a provider completes for it, so this is the one answer to "how recently did
+    /// the person holding this session prove who they are".
+    /// </remarks>
+    internal Task<DateTimeOffset?> CredentialAtAsync(string sessionId, CancellationToken ct = default)
+    {
+        using SqliteConnection connection = Open();
+        using SqliteCommand cmd = connection.CreateCommand();
+        cmd.CommandText =
+            """
+            SELECT p.credential_at
+              FROM sessions s
+              JOIN sessions p ON p.session_id = s.provider_session
+             WHERE s.session_id = $sid AND s.revoked = 0 AND s.expires > $now
+               AND p.kind = $kind AND p.revoked = 0;
+            """;
+        cmd.Parameters.AddWithValue("$sid", sessionId);
+        cmd.Parameters.AddWithValue("$kind", ProviderKind);
+        cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+
+        return Task.FromResult(cmd.ExecuteScalar() is string at ? Parse(at) : (DateTimeOffset?)null);
+    }
+
     private ProviderSessionRow? ReadProviderSession(string where, string key)
     {
         using SqliteConnection connection = Open();

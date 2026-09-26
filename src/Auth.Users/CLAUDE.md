@@ -103,6 +103,19 @@ The account store: one file per host, the only production `IAuthorityProvider`. 
 - **The catalog is the union of stored reports, recomputed on every report and every removal.** A
   member that is merely offline keeps its report; only `ForgetMemberAsync` — the member removed from the
   cluster — drops one.
+- **Every write owes the cluster what it changed, in the same transaction.** `WriteAsync` files each
+  record stamped with the write's version, and each one it reported removed, in `authority_outbox`
+  before it commits. A new write path needs nothing more than stamping `version = $v` on what it
+  touches; a row it changes without stamping is a change no replica ever hears about.
+- **A replica applies each record whole, on its own version, in any order.** The version held for a
+  record is its row's or its tombstone's, whichever is higher, and anything not newer is dropped. A
+  replica writes with foreign keys off, on an unpooled connection, because the bus does not order
+  delivery: a record naming one not yet here grants nothing until it arrives. A unique name or handle
+  still held by another record defers the change for the bus to deliver again, never resolves it.
+- **A replica is current only as its last confirmation says.** A heartbeat confirms only a replica
+  holding its version, as of when it was sent; a snapshot confirms as of when it was taken. The
+  generation, advanced by every write and every applied change, is what `AuthoritySource` caches
+  against — there is no time-to-live.
 - **A requirement a person decided stays as they left it.** Only one the account has never held is
   approved automatically; one the manifest stops listing is kept with `declared = 0` and grants nothing
   until listed again.

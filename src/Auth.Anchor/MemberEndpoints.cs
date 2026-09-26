@@ -25,7 +25,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 internal static class MemberEndpoints
 {
     /// <summary>
-    /// Every account this anchor holds, each with the version it is at.
+    /// Every account this anchor holds, each with the version it is at — and, from a store at schema
+    /// version 2, everything that decides access with them, confirmed current as of this answer.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -46,6 +47,20 @@ internal static class MemberEndpoints
         // only the roster says it is still welcome. A null answer has already written the refusal.
         if (await ClusterRequest.AuthenticateAsync(ctx) is null)
             return;
+
+        // A store at schema version 2 holds the authority, and its snapshot carries the accounts with it.
+        if (ctx.RequestServices.GetService<AnchorAuthority>()?.Store is { } authority)
+        {
+            AuthorityReplicaSnapshot snapshot = await authority.ExportAsync(
+                ctx.RequestServices.GetRequiredService<AnchorOptions>().StalenessBound, DateTimeOffset.UtcNow,
+                ctx.RequestAborted);
+
+            ctx.Response.StatusCode = StatusCodes.Status200OK;
+            ctx.Response.ContentType = "application/json; charset=utf-8";
+            await JsonSerializer.SerializeAsync(
+                ctx.Response.Body, snapshot, AuthorityReplicationJson.Default.AuthorityReplicaSnapshot, ctx.RequestAborted);
+            return;
+        }
 
         var store = ctx.RequestServices.GetRequiredService<IUserStore>();
         var versions = ctx.RequestServices.GetRequiredService<IAccountVersions>();

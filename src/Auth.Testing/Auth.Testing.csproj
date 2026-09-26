@@ -9,7 +9,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Testing</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0-dev.1</Version>
+    <Version>1.0.0-dev.2</Version>
     <Description>
       The auth anchor's session minter, for tests: a test project that has to present a signed-in
       caller to a member mints the session exactly as the anchor does, and verifies it through the

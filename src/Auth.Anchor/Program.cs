@@ -196,8 +196,16 @@ builder.Services.AddSingleton(new AuthorityReporterOptions
 builder.Services.AddSingleton<AuthorityReporter>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AuthorityReporter>());
 
+// What changed about who may do what reaches every member, drained from the store's outbox the moment
+// a write lands and on a timer after; every live member hears the version and the staleness bound on
+// the heartbeat.
+builder.Services.AddSingleton<AuthorityBroadcast>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHostedService<AuthorityBroadcastWorker>();
+
 builder.Services.AddSingleton(_ => new SqliteSessionRegistry(options.SessionStorePath));
 builder.Services.AddSingleton<ISessionRegistry>(sp => sp.GetRequiredService<SqliteSessionRegistry>());
+builder.Services.AddSingleton<AnchorAccess>();
 
 // The OpenID Connect provider: the clients it answers, the browsers signed in at it, and the id_token
 // beside every session it mints. Its rows live beside the sessions, because a browser's sign-in here is a

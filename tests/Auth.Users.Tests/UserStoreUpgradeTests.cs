@@ -124,6 +124,24 @@ public class UserStoreUpgradeTests
     }
 
     [Fact]
+    public async Task EveryAccountStartsAtTheFirstAuthorityVersion_AndThePerAccountCountersGo()
+    {
+        (TempStore store, Dictionary<string, KgsmUser> _) = await VersionOneAsync();
+        using TempStore owned = store;
+        _ = new SqliteAccountVersions(new UserStoreOptions { Path = store.Path_ });
+        Assert.Single(Rows(store.Path_, "SELECT name FROM sqlite_master WHERE name = 'account_versions';"));
+
+        UserStoreUpgrade.ToVersion2(store.Path_, At);
+
+        Assert.All(Rows(store.Path_, "SELECT version FROM users;"), r => Assert.Equal("1", r[0]));
+        string[] tables = [.. Rows(store.Path_, "SELECT name FROM sqlite_master WHERE type = 'table';").Select(r => r[0])];
+        Assert.DoesNotContain("account_versions", tables);
+        Assert.DoesNotContain("account_announcements", tables);
+        Assert.Contains("authority_outbox", tables);
+        Assert.Contains("authority_tombstones", tables);
+    }
+
+    [Fact]
     public async Task TheBuiltInRolesExistAndEveryoneStartsEmpty()
     {
         (TempStore store, _) = await VersionOneAsync();

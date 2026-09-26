@@ -145,6 +145,17 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   does. A member that crashed is marked dead and reaped within minutes, and treating that as removal
   would strip a node down for maintenance of every grant it carries. `MemberDepartureWorker` reads the
   roster; nothing else forgets a report.
+- **Every write reaches the cluster from the store's outbox, never from the write path.**
+  `AuthorityBroadcast` drains `authority_outbox` after each write and on a timer, sending each owed
+  record as it now stands, and clears a row only after the bus holds it. A write path that tries to
+  send its own change is a second copy of the outbox that a crash can separate from the write.
+- **The heartbeat goes only to members the roster shows alive.** `authority.current` carries the moment
+  it was sent, so one held in the outbox for a member that is down would confirm nothing on arrival; a
+  member that was down goes stale and takes a snapshot. The staleness bound is held to at least two
+  heartbeats, so one late heartbeat never leaves a member read-only.
+- **Every `auth:*` action needs a recent sign-in, and only after the evaluator allows it.**
+  `AnchorAccess` reads when the session's provider sign-in last proved a credential; nobody is sent to
+  type a password for something they would be refused anyway.
 - **`kgsm-auth-anchor owner grant <username>` is the Owner recovery path, and it is a mode of this
   binary rather than a tool beside it.** It reads the daemon's own settings, so it opens the store and
   writes the journal the daemon does, and is run as the anchor's service account. It bypasses the

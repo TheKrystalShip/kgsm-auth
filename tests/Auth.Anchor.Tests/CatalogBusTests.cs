@@ -1,18 +1,11 @@
 using System.Text.Json;
 
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 using TheKrystalShip.KGSM.Auth.Access;
 using TheKrystalShip.KGSM.Auth.Cluster;
 using TheKrystalShip.KGSM.Auth.Users;
-using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
-using TheKrystalShip.KGSM.Cluster.Messaging;
-using TheKrystalShip.KGSM.Extensions;
 
 namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 
@@ -26,197 +19,38 @@ namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 [Collection(AnchorCollection.Name)]
 public sealed class CatalogBusTests : IAsyncLifetime
 {
-    private const string Secret = "catalog-bus-secret";
-    private const string AnchorId = "auth-anchor";
-
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "kgsm-catalog-bus-" + Guid.NewGuid().ToString("N"));
-    private readonly string? _stateRoot = Environment.GetEnvironmentVariable(JournalServiceCollectionExtensions.StateRootVariable);
-    private readonly List<Member> _members = [];
-
-    private Member _anchor = null!;
-    private Member _walter = null!;
-    private Member _jessie = null!;
+    private BusCluster _cluster = null!;
+    private BusMember _anchor = null!;
+    private BusMember _walter = null!;
+    private BusMember _jessie = null!;
 
     public async Task InitializeAsync()
     {
-        Directory.CreateDirectory(_root);
-        Environment.SetEnvironmentVariable(JournalServiceCollectionExtensions.StateRootVariable, Path.Combine(_root, "state"));
-
-        _anchor = await StartAsync(AnchorId, MemberKind.Anchor);
-        _walter = await StartAsync("walter", MemberKind.Node);
-        _jessie = await StartAsync("jessie", MemberKind.Node);
-
-        foreach (Member node in new[] { _walter, _jessie })
-        {
-            MemberAddResult joined = await _anchor.Resolve<MemberHandshakeService>().AddMemberAsync(node.Url, null, default);
-            Assert.Equal(MemberAddOutcome.Added, joined.Outcome);
-        }
-
-        // Who holds the accounts is gossiped in a deployment; here each member is told directly, so
-        // nothing waits on a round.
-        foreach (Member member in _members)
-            await member.Resolve<ClusterStateStore>().TryClaimAsync(ClusterCapability.Auth, AnchorId, default);
+        _cluster = await BusCluster.StartAsync("walter", "jessie");
+        _anchor = _cluster.Anchor;
+        _walter = _cluster["walter"];
+        _jessie = _cluster["jessie"];
     }
 
-    public async Task DisposeAsync()
-    {
-        foreach (Member member in _members)
-            await member.DisposeAsync();
-
-        Environment.SetEnvironmentVariable(JournalServiceCollectionExtensions.StateRootVariable, _stateRoot);
-        SqliteConnection.ClearAllPools();
-        try
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-        catch (IOException)
-        {
-        }
-    }
-
-    // ── the members ───────────────────────────────────────────────────────────────────────────
-
-    private sealed class Member(WebApplication app, string id, string url, string manifests) : IAsyncDisposable
-    {
-        private bool _stopped;
-
-        public string Id { get; } = id;
-        public string Url { get; } = url;
-        public string Manifests { get; } = manifests;
-
-        public T Resolve<T>() where T : notnull => app.Services.GetRequiredService<T>();
-
-        public async ValueTask DisposeAsync()
-        {
-            if (_stopped)
-                return;
-
-            _stopped = true;
-            await app.StopAsync();
-            await app.DisposeAsync();
-        }
-    }
-
-    /// <summary>
-    /// One member on a real port. The anchor carries the store and the intake; a node carries a reporter
-    /// over a directory of manifests, the way <c>/var/lib/kgsm/leaves/actions</c> is.
-    /// </summary>
-    private async Task<Member> StartAsync(string id, string kind)
-    {
-        string dir = Path.Combine(_root, id);
-        string manifests = Path.Combine(dir, "actions");
-        Directory.CreateDirectory(manifests);
-
-        WebApplicationBuilder builder = WebApplication.CreateBuilder();
-        builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-
-        foreach (string client in new[]
-                 {
-                     GossipWorker.HttpClientName, MemberHandshakeService.HttpClientName,
-                     MemberLatencyPoller.HttpClientName, OutboxDrainer.HttpClientName,
-                 })
-        {
-            builder.Services.AddHttpClient(client).ConfigurePrimaryHttpMessageHandler(() => new LanResolvingHandler());
-        }
-
-        builder.Services.AddKgsmCluster(new ClusterOptions
-        {
-            MemberId = id,
-            Secret = Secret,
-            StorePath = Path.Combine(dir, "cluster.db"),
-            Kind = kind,
-            DrainMs = 100,
-            GossipMs = 3_600_000,
-            PollMs = 3_600_000,
-        });
-
-        if (kind == MemberKind.Node)
-            builder.Services.AddSingleton<IMemberCardSource>(sp => new NodeCardSource(sp));
-
-        builder.Services.AddSingleton(new AuthorityReporterOptions { ManifestDirectories = [manifests] });
-
-        if (kind == MemberKind.Anchor)
-        {
-            builder.Services.AddSingleton(AnchorOptions.FromSettings(new AnchorSettings { UserStorePath = Path.Combine(dir, "users.db") }));
-            builder.Services.AddKgsmJournal(AnchorJournal.ProducerId, typeof(AnchorJournal).Assembly);
-            builder.Services.AddSingleton<AnchorJournal>();
-            builder.Services.AddSingleton<AnchorAuthority>();
-            builder.Services.AddSingleton<AuthorityIntake>();
-            builder.Services.AddSingleton<IAuthorityIntake>(sp => sp.GetRequiredService<AuthorityIntake>());
-            builder.Services.AddSingleton<IClusterMessageHandler, CatalogDeclaredHandler>();
-            builder.Services.AddSingleton<IClusterMessageHandler, InstanceUninstalledHandler>();
-            builder.Services.AddSingleton<MemberDepartureWorker>();
-        }
-
-        builder.Services.AddSingleton<AuthorityReporter>();
-
-        WebApplication app = builder.Build();
-        app.MapClusterEndpoints();
-        await app.StartAsync();
-
-        string bound = app.Urls.First();
-        await app.Services.GetRequiredService<SelfIdentityStore>().RecordCandidateAsync(
-            $"http://{id}.lan:{new Uri(bound).Port}", client: true, SelfIdentityStore.OperatorProvenance, default);
-
-        Member member = new(app, id, bound, manifests);
-        _members.Add(member);
-        return member;
-    }
-
-    private sealed class NodeCardSource(IServiceProvider services) : IMemberCardSource
-    {
-        public async Task<MemberCard> BuildAsync(CancellationToken ct)
-        {
-            MemberCard card = await new SelfMemberCardSource(
-                services.GetRequiredService<ClusterOptions>(),
-                services.GetRequiredService<SelfIdentityStore>(),
-                services.GetRequiredService<SelfIncarnation>(),
-                services.GetRequiredService<SelfPublications>()).BuildAsync(ct);
-
-            return card with { Node = new NodeFacts("v1", "test-build", []) };
-        }
-    }
-
-    /// <summary>Members advertise <c>&lt;id&gt;.lan</c>; this sends the connection where they listen.</summary>
-    private sealed class LanResolvingHandler() : DelegatingHandler(new HttpClientHandler())
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            if (request.RequestUri is { Host: var host } uri && host.EndsWith(".lan", StringComparison.Ordinal))
-                request.RequestUri = new UriBuilder(uri) { Host = "127.0.0.1" }.Uri;
-
-            return base.SendAsync(request, ct);
-        }
-    }
+    public async Task DisposeAsync() => await _cluster.DisposeAsync();
 
     // ── helpers ───────────────────────────────────────────────────────────────────────────────
 
-    private SqliteAuthorityStore Store => _anchor.Resolve<AnchorAuthority>().Store!;
+    private SqliteAuthorityStore Store => _cluster.Store;
 
-    private static void Write(Member node, string file, string component, string? version, params (string Id, string Effect, string Scope)[] actions) =>
+    private static void Write(BusMember node, string file, string component, string? version, params (string Id, string Effect, string Scope)[] actions) =>
         File.WriteAllText(Path.Combine(node.Manifests, file), JsonSerializer.Serialize(
             new ActionManifest(1, component, version,
                 [.. actions.Select(a => new ManifestAction(a.Id, a.Id, a.Effect, a.Scope, null))],
                 component == "reactor" ? [new ManifestRequirement("kgsm:server.restart", "instance", "restart a crashed server")] : []),
             AccessJsonContext.Default.ActionManifest));
 
-    private static void Engine(Member node) =>
+    private static void Engine(BusMember node) =>
         Write(node, "kgsm.json", "kgsm", "3.18.0", ("server.start", "execute", "instance"), ("server.restart", "execute", "instance"));
 
     /// <summary>Wait for the anchor to see what the bus is carrying to it.</summary>
-    private static async Task EventuallyAsync(Func<Task<bool>> condition, string what)
-    {
-        for (int i = 0; i < 100; i++)
-        {
-            if (await condition())
-                return;
-
-            await Task.Delay(100);
-        }
-
-        Assert.Fail($"the anchor never saw {what}");
-    }
+    private static Task EventuallyAsync(Func<Task<bool>> condition, string what) =>
+        BusCluster.EventuallyAsync(condition, what);
 
     private async Task<string[]> CatalogIdsAsync() => [.. (await Store.CatalogAsync()).Select(e => e.Action.Id)];
 

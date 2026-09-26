@@ -49,6 +49,14 @@ implementation each.
   replaces the last one, so sending twice is always safe. A member that holds the accounts itself hands
   the report to its own `IAuthorityIntake` rather than across the bus to itself. A manifest that cannot
   be read is left out and logged: a component shipping no readable manifest declares nothing.
-- **Two seams, and the package owns neither:** `IReplicatedAccounts` is the member's own store and
-  `IClusterSessionDenyList` its own record of ended sessions. Opening a file and serving a route stay
-  the member's business.
+- **The authority is taken from the holder of the accounts and nobody else.** Every handler
+  `AddAuthorityReplica` registers drops a message from any other member, and throws only for a deferral
+  — a name another record holds until a message in flight moves it — which the sender's retry is what
+  resolves. `AuthoritySnapshotWorker` takes the whole state on joining and whenever the replica has gone
+  stale; the stream alone carries only changes.
+- **A member acts as a service account only when that account is its own.** `MemberActingAccountResolver`
+  accepts `svc:<component>@<member>` from `<member>` alone, and like every member-acting call it asserts
+  who, never what: the receiver evaluates the account from its own replica.
+- **Three seams, and the package owns none:** `IReplicatedAuthority` is the member's authority
+  replica, `IReplicatedAccounts` its own account store and `IClusterSessionDenyList` its own record of
+  ended sessions. Opening a file and serving a route stay the member's business.
