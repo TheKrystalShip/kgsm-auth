@@ -45,7 +45,7 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task Every_device_is_listed_with_the_calling_one_marked()
     {
-        KgsmUser admin = await anchor.SeedAsync(Unique("devices-"), Long, KgsmTier.Admin);
+        KgsmUser admin = await anchor.SeedAsync(Unique("devices-"), Long, owner: true);
         await anchor.SignInAsync(admin, "a phone");
         AnchorFixture.Session current = await anchor.SignInAsync(admin, "a laptop");
 
@@ -63,8 +63,8 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task A_session_reached_through_a_different_door_is_still_listed()
     {
-        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(KgsmTier.Admin, "lister");
-        KgsmUser user = await anchor.SeedAsync(Unique("bothdoors-"), Long, KgsmTier.Viewer);
+        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(owner: true, "lister");
+        KgsmUser user = await anchor.SeedAsync(Unique("bothdoors-"), Long, owner: false);
 
         string handle = "discord:" + Guid.NewGuid().ToString("N")[..12];
         await anchor.Store.AddCredentialAsync(new UserCredential(
@@ -87,8 +87,8 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task Listing_somebody_s_devices_needs_admin()
     {
-        (_, AnchorFixture.Session viewer) = await anchor.SignedInAsync(KgsmTier.Viewer, "curious");
-        KgsmUser other = await anchor.SeedAsync(Unique("other-"), Long, KgsmTier.Viewer);
+        (_, AnchorFixture.Session viewer) = await anchor.SignedInAsync(owner: false, "curious");
+        KgsmUser other = await anchor.SeedAsync(Unique("other-"), Long, owner: false);
 
         Assert.Equal(HttpStatusCode.Forbidden,
             (await SendAsync(HttpMethod.Get, $"/auth/cluster/users/{other.UserId}/sessions", viewer.Access)).StatusCode);
@@ -97,8 +97,8 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task An_admin_ends_somebody_elses_sessions_and_a_viewer_cannot()
     {
-        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(KgsmTier.Admin, "cuts");
-        KgsmUser user = await anchor.SeedAsync(Unique("cut-"), Long, KgsmTier.Viewer);
+        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(owner: true, "cuts");
+        KgsmUser user = await anchor.SeedAsync(Unique("cut-"), Long, owner: false);
         AnchorFixture.Session theirs = await anchor.SignInAsync(user, "a phone");
 
         Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(
@@ -118,8 +118,8 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task An_admin_ends_one_session_without_ending_the_rest()
     {
-        (KgsmUser adminUser, AnchorFixture.Session admin) = await anchor.SignedInAsync(KgsmTier.Admin, "surgeon");
-        KgsmUser user = await anchor.SeedAsync(Unique("patient-"), Long, KgsmTier.Viewer);
+        (KgsmUser adminUser, AnchorFixture.Session admin) = await anchor.SignedInAsync(owner: true, "surgeon");
+        KgsmUser user = await anchor.SeedAsync(Unique("patient-"), Long, owner: false);
         AnchorFixture.Session suspicious = await anchor.SignInAsync(user, "a phone");
         await anchor.SignInAsync(user, "a laptop");
 
@@ -148,9 +148,9 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task A_session_belonging_to_a_different_account_is_not_found_under_this_one()
     {
-        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(KgsmTier.Admin, "mistaken");
-        KgsmUser one = await anchor.SeedAsync(Unique("one-"), Long, KgsmTier.Viewer);
-        KgsmUser two = await anchor.SeedAsync(Unique("two-"), Long, KgsmTier.Viewer);
+        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(owner: true, "mistaken");
+        KgsmUser one = await anchor.SeedAsync(Unique("one-"), Long, owner: false);
+        KgsmUser two = await anchor.SeedAsync(Unique("two-"), Long, owner: false);
         AnchorFixture.Session belongsToTwo = await anchor.SignInAsync(two, "a phone");
 
         HttpResponseMessage response = await SendAsync(
@@ -165,9 +165,9 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task Ending_one_of_somebody_elses_sessions_needs_admin()
     {
-        (_, AnchorFixture.Session viewer) = await anchor.SignedInAsync(KgsmTier.Viewer, "meddler");
-        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(KgsmTier.Admin, "witness");
-        KgsmUser target = await anchor.SeedAsync(Unique("targeted-"), Long, KgsmTier.Viewer);
+        (_, AnchorFixture.Session viewer) = await anchor.SignedInAsync(owner: false, "meddler");
+        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(owner: true, "witness");
+        KgsmUser target = await anchor.SeedAsync(Unique("targeted-"), Long, owner: false);
         AnchorFixture.Session theirs = await anchor.SignInAsync(target, "a phone");
 
         Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(
@@ -180,8 +180,8 @@ public sealed class SessionSurfaceTests(AnchorFixture anchor)
     [Fact]
     public async Task An_admin_cutting_an_account_with_nothing_live_is_not_an_error()
     {
-        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(KgsmTier.Admin, "quiet");
-        KgsmUser idle = await anchor.SeedAsync(Unique("idle-"), Long, KgsmTier.Viewer);
+        (_, AnchorFixture.Session admin) = await anchor.SignedInAsync(owner: true, "quiet");
+        KgsmUser idle = await anchor.SeedAsync(Unique("idle-"), Long, owner: false);
 
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, $"/auth/cluster/users/{idle.UserId}/sessions/revoke-all", admin.Access);

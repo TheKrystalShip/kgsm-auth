@@ -22,8 +22,8 @@ public sealed class UnitLogTests(AnchorFixture anchor)
 
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
-    private async Task<string> BearerAsync(KgsmTier tier) =>
-        (await anchor.SignedInAsync(tier, "log")).Session.Access;
+    private async Task<string> BearerAsync(bool owner) =>
+        (await anchor.SignedInAsync(owner, "log")).Session.Access;
 
     private async Task<HttpResponseMessage> GetAsync(string path, string? bearer)
     {
@@ -52,7 +52,7 @@ public sealed class UnitLogTests(AnchorFixture anchor)
         // A daemon's log carries usernames, addresses and the shape of every failure it has had —
         // which is the account store described from the side, to somebody the store says may read
         // nothing about anybody else.
-        using HttpResponseMessage response = await GetAsync(path, await BearerAsync(KgsmTier.Viewer));
+        using HttpResponseMessage response = await GetAsync(path, await BearerAsync(owner: false));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -65,7 +65,7 @@ public sealed class UnitLogTests(AnchorFixture anchor)
         // No descriptor is installed under a test root, so neither half can name a unit to read. The
         // answer has to be a refusal with a code on it: an empty page and a stream that opens and
         // stays silent both render as an anchor that has never logged anything.
-        using HttpResponseMessage response = await GetAsync(path, await BearerAsync(KgsmTier.Admin));
+        using HttpResponseMessage response = await GetAsync(path, await BearerAsync(owner: true));
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
 

@@ -15,8 +15,8 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// This member's read-only copy of the cluster's authority, and whether it can be reached at all.
 /// </summary>
 /// <remarks>
-/// A seam for the same reason <see cref="IReplicatedAccounts"/> is one: where the file lives and what
-/// to do when it will not open are the member's business. Unavailable is a real answer and is
+/// A seam because where the file lives and what to do when it will not open are the member's
+/// business. Unavailable is a real answer and is
 /// reported, never worked around.
 /// </remarks>
 public interface IReplicatedAuthority

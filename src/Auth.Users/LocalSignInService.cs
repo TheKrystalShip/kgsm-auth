@@ -31,15 +31,15 @@ public enum LocalSignInOutcome
     Disabled = 2,
 
     /// <summary>
-    /// Authenticated. The tier may still be <see cref="KgsmTier.None"/> — an account awaiting
-    /// approval signs in and holds nothing, which is what lets a surface say so instead of denying.
+    /// Authenticated. The account may still be pending — it signs in and holds nothing, which is what
+    /// lets a surface say so instead of denying.
     /// </summary>
     Success = 3,
 }
 
 /// <summary>What a sign-in attempt produced.</summary>
 /// <param name="Outcome">How it ended.</param>
-/// <param name="Principal">The identity and tier, on <see cref="LocalSignInOutcome.Success"/>.</param>
+/// <param name="Identity">Who signed in, on <see cref="LocalSignInOutcome.Success"/>.</param>
 /// <param name="User">
 /// The account, whenever the attempt named a real one. Null only when the username matched nobody,
 /// which is deliberately indistinguishable from a wrong password to the caller of the outcome.
@@ -57,7 +57,7 @@ public enum LocalSignInOutcome
 /// </param>
 public sealed record LocalSignInResult(
     LocalSignInOutcome Outcome,
-    ResolvedPrincipal? Principal,
+    KgsmIdentity? Identity,
     KgsmUser? User,
     DateTimeOffset? RetryAfter,
     LoginLockout? Lockout = null,
@@ -79,15 +79,13 @@ public sealed record LocalSignInResult(
 /// for a redirect would mean inventing a code and a state that nothing issues.
 /// </para>
 /// <para>
-/// Authority still comes from <see cref="UserStoreAuthority"/> rather than being read off the record
-/// here, so a local sign-in and a later session validation cannot answer the same question
-/// differently.
+/// It answers who, never what: what the account may do is its roles, read wherever a request is
+/// decided.
 /// </para>
 /// </remarks>
 public sealed class LocalSignInService(
     IUserStore store,
     IUserPasswordHasher hasher,
-    UserStoreAuthority authority,
     LockoutPolicy? lockout = null)
 {
     /// <summary>
@@ -184,11 +182,7 @@ public sealed class LocalSignInService(
         await store.ClearLockoutAsync(user.UserId, ct).ConfigureAwait(false);
         await store.TouchCredentialAsync(credential.CredentialId, now, ct).ConfigureAwait(false);
 
-        KgsmIdentity identity = user.AsIdentity();
-        KgsmTier tier = await authority.ResolveTierAsync(identity, ct).ConfigureAwait(false);
-
-        return new LocalSignInResult(
-            LocalSignInOutcome.Success, new ResolvedPrincipal(identity, tier), user, null);
+        return new LocalSignInResult(LocalSignInOutcome.Success, user.AsIdentity(), user, null);
     }
 
     /// <summary>

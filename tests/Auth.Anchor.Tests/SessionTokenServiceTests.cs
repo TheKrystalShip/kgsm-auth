@@ -20,10 +20,10 @@ public class SessionTokenServiceTests
             signer ?? Signer);
 
     [Fact]
-    public async Task RefreshTokenRoundTripsIdentityTierAndSession()
+    public async Task RefreshTokenRoundTripsIdentityAndSession()
     {
         SessionTokenService svc = Service();
-        MintedToken refresh = svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1");
+        MintedToken refresh = svc.MintRefresh(Identity, "sid_1");
 
         RefreshClaims? claims = await svc.ReadRefreshAsync(refresh.Token);
 
@@ -32,25 +32,20 @@ public class SessionTokenServiceTests
         Assert.Equal("haru", claims.Identity.Username);
         Assert.Equal("Haru", claims.Identity.Display);
         Assert.Equal(["identify", "guilds"], claims.Identity.Scopes);
-        Assert.Equal(KgsmTier.Admin, claims.Tier);
         Assert.Equal("sid_1", claims.SessionId);
         Assert.Equal(refresh.Jti, claims.Jti);
     }
 
     [Fact]
-    public async Task ATokenMintedWithNoTier_CarriesNoAuthorityClaim_AndStillProvesWhoAndWhichSession()
+    public void ATokenCarriesNoClaimAboutWhatItsHolderMayDo()
     {
         SessionTokenService svc = Service();
-        MintedToken refresh = svc.MintRefresh(Identity, tier: null, "sid_1");
 
-        var parsed = new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(refresh.Token);
-        Assert.DoesNotContain(parsed.Claims, c => c.Type == KgsmAuthClaims.Tier);
-
-        RefreshClaims? claims = await svc.ReadRefreshAsync(refresh.Token);
-        Assert.NotNull(claims);
-        Assert.Equal("discord:198772043", claims.Identity.Handle);
-        Assert.Equal("sid_1", claims.SessionId);
-        Assert.Equal(KgsmTier.None, claims.Tier);
+        foreach (string token in new[] { svc.MintRefresh(Identity, "sid_1").Token, svc.MintAccess(Identity, "sid_1").Token })
+        {
+            var parsed = new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(token);
+            Assert.DoesNotContain(parsed.Claims, c => c.Type is "tier" or "role" or "roles" or "actions");
+        }
     }
 
     [Fact]
@@ -59,7 +54,7 @@ public class SessionTokenServiceTests
         // Otherwise a stolen 15-minute bearer buys a 30-day one, and the short lifetime that bounds
         // privilege stops bounding anything.
         SessionTokenService svc = Service();
-        MintedToken access = svc.MintAccess(Identity, KgsmTier.Admin, "sid_1");
+        MintedToken access = svc.MintAccess(Identity,"sid_1");
 
         Assert.Null(await svc.ReadRefreshAsync(access.Token));
     }
@@ -69,7 +64,7 @@ public class SessionTokenServiceTests
     {
         // A session is scoped to one cluster. Without the audience check, a token minted for one
         // cluster would be accepted by another holding the same key.
-        MintedToken other = Service(audience: "other-cluster").MintRefresh(Identity, KgsmTier.Admin, "sid_1");
+        MintedToken other = Service(audience: "other-cluster").MintRefresh(Identity,"sid_1");
 
         Assert.Null(await Service(audience: "cluster").ReadRefreshAsync(other.Token));
     }
@@ -79,7 +74,7 @@ public class SessionTokenServiceTests
     {
         SessionTokenService svc = Service(refreshLifetime: TimeSpan.FromSeconds(-60));
 
-        Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
+        Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(Identity,"sid_1").Token));
     }
 
     [Fact]
@@ -91,7 +86,7 @@ public class SessionTokenServiceTests
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         for (int i = 0; i < 50; i++)
-            Assert.True(seen.Add(svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Jti));
+            Assert.True(seen.Add(svc.MintRefresh(Identity,"sid_1").Jti));
     }
 
     [Fact]
@@ -102,8 +97,8 @@ public class SessionTokenServiceTests
         SessionTokenService svc = Service();
 
         Assert.NotEqual(
-            svc.MintAccess(Identity, KgsmTier.Admin, "sid_1").Jti,
-            svc.MintAccess(Identity, KgsmTier.Admin, "sid_1").Jti);
+            svc.MintAccess(Identity,"sid_1").Jti,
+            svc.MintAccess(Identity,"sid_1").Jti);
     }
 
     [Fact]
@@ -113,7 +108,7 @@ public class SessionTokenServiceTests
         // a token could outlive its own row, or the row outlive the token, with nothing to catch it.
         SessionTokenService svc = Service(refreshLifetime: TimeSpan.FromDays(7));
 
-        MintedToken refresh = svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1");
+        MintedToken refresh = svc.MintRefresh(Identity,"sid_1");
         TimeSpan life = refresh.ExpiresAt - DateTimeOffset.UtcNow;
 
         Assert.InRange(life, TimeSpan.FromDays(7) - TimeSpan.FromMinutes(1), TimeSpan.FromDays(7));
@@ -127,8 +122,8 @@ public class SessionTokenServiceTests
         SessionTokenService mine = Service(issuer: "https://auth.one.test");
         SessionTokenService theirs = Service(issuer: "https://auth.other.test");
 
-        Assert.Null(await mine.ReadRefreshAsync(theirs.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
-        Assert.NotNull(await mine.ReadRefreshAsync(mine.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token));
+        Assert.Null(await mine.ReadRefreshAsync(theirs.MintRefresh(Identity,"sid_1").Token));
+        Assert.NotNull(await mine.ReadRefreshAsync(mine.MintRefresh(Identity,"sid_1").Token));
     }
 
     // ── The identity a token carries is the provider's, not one provider ─────
@@ -142,7 +137,7 @@ public class SessionTokenServiceTests
         SessionTokenService svc = Service();
 
         RefreshClaims? claims = await svc.ReadRefreshAsync(
-            svc.MintRefresh(Identity, KgsmTier.Admin, "sid_1").Token);
+            svc.MintRefresh(Identity,"sid_1").Token);
 
         Assert.NotNull(claims);
         Assert.Equal("discord:198772043", claims.Identity.Handle);
@@ -158,13 +153,12 @@ public class SessionTokenServiceTests
         var github = new KgsmIdentity("github", "u_9931", "heisen", "Heisen", null, ["read:user"]);
 
         RefreshClaims? claims = await svc.ReadRefreshAsync(
-            svc.MintRefresh(github, KgsmTier.Operator, "sid_2").Token);
+            svc.MintRefresh(github, "sid_2").Token);
 
         Assert.NotNull(claims);
         Assert.Equal("github", claims.Identity.Provider);
         Assert.Equal("u_9931", claims.Identity.Subject);
         Assert.Equal("github:u_9931", claims.Identity.Handle);
-        Assert.Equal(KgsmTier.Operator, claims.Tier);
     }
 
     [Fact]
@@ -176,8 +170,8 @@ public class SessionTokenServiceTests
         var a = new KgsmIdentity("discord", "12345", "a", "A", null, []);
         var b = new KgsmIdentity("github", "12345", "b", "B", null, []);
 
-        RefreshClaims? ra = await svc.ReadRefreshAsync(svc.MintRefresh(a, KgsmTier.Viewer, "sid_a").Token);
-        RefreshClaims? rb = await svc.ReadRefreshAsync(svc.MintRefresh(b, KgsmTier.Viewer, "sid_b").Token);
+        RefreshClaims? ra = await svc.ReadRefreshAsync(svc.MintRefresh(a, "sid_a").Token);
+        RefreshClaims? rb = await svc.ReadRefreshAsync(svc.MintRefresh(b, "sid_b").Token);
 
         Assert.NotEqual(ra!.Identity.Handle, rb!.Identity.Handle);
     }
@@ -190,6 +184,6 @@ public class SessionTokenServiceTests
         SessionTokenService svc = Service();
         var unqualified = new KgsmIdentity("", "198772043", "haru", "Haru", null, []);
 
-        Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(unqualified, KgsmTier.Admin, "sid_1").Token));
+        Assert.Null(await svc.ReadRefreshAsync(svc.MintRefresh(unqualified, "sid_1").Token));
     }
 }

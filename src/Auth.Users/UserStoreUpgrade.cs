@@ -41,7 +41,7 @@ public sealed record UpgradeReport(int From, string? Backup, IReadOnlyList<strin
 /// </para>
 /// <para>
 /// A file already at version 2 is left alone, so running it on every start is safe; a file newer than
-/// version 2 is refused, for the same reason <see cref="SqliteUserStore"/> refuses one.
+/// version 2 is refused, for the same reason <see cref="SqliteAuthorityStore"/> refuses one.
 /// </para>
 /// </remarks>
 public static class UserStoreUpgrade
@@ -74,11 +74,11 @@ public static class UserStoreUpgrade
         if (from == AuthoritySchema.Version)
             return new UpgradeReport(from, null, []);
 
-        if (from != UserSchema.Version)
+        if (from != UserSchema.VersionOne)
         {
             throw new UserStoreSchemaException(
                 $"The account store at '{path}' is at schema version {from}; this build upgrades version " +
-                $"{UserSchema.Version} to {AuthoritySchema.Version} and nothing else.");
+                $"{UserSchema.VersionOne} to {AuthoritySchema.Version} and nothing else.");
         }
 
         string backup = Backup(connection, path, now);

@@ -11,7 +11,7 @@ public sealed class IdentityLinkServiceTests
         new(KgsmActorProvider.Discord, subject, username, display ?? username, AvatarUrl: null, Scopes: []);
 
     [Fact]
-    public async Task AnIdentityNobodyClaimsProvisionsAPendingAccountAtNoTier()
+    public async Task AnIdentityNobodyClaimsProvisionsAPendingAccountThatArrived()
     {
         using TempStore temp = new();
         IdentityLinkService linking = new(temp.Store);
@@ -21,10 +21,8 @@ public sealed class IdentityLinkServiceTests
 
         Assert.Equal(LinkOutcome.Provisioned, result.Outcome);
         Assert.Equal(UserStatus.Pending, result.User!.Status);
-        Assert.Equal(KgsmTier.None, result.User.Tier);
-        Assert.Equal(KgsmTier.None, result.User.EffectiveTier);
-        // Seeded, not chosen by anyone — which is what a drift report reads.
-        Assert.Equal(TierSource.Derived, result.User.TierSource);
+        // Nobody admitted it — which is what pending expiry reads.
+        Assert.Equal(AccountOrigin.Arrived, result.User.Origin);
     }
 
     [Fact]
@@ -137,7 +135,7 @@ public sealed class IdentityLinkServiceTests
     {
         using TempStore temp = new();
         IdentityLinkService linking = new(temp.Store);
-        LocalSignInService signIn = new(temp.Store, new IdentityPasswordHasher(), new UserStoreAuthority(temp.Store));
+        LocalSignInService signIn = new(temp.Store, new IdentityPasswordHasher());
 
         LinkResult arrival = await linking.ResolveOrProvisionAsync(
             Discord("1"), Make.Now, PendingPolicy.Default);
@@ -150,17 +148,17 @@ public sealed class IdentityLinkServiceTests
     }
 
     /// <summary>
-    /// An admin creating an account is deliberate work, and provenance is what says so: the tier
-    /// was granted rather than derived. It waits as long as it waits.
+    /// Somebody creating an account is deliberate work, and the origin is what says so: it was
+    /// admitted rather than arriving on its own. It waits as long as it waits.
     /// </summary>
     [Fact]
-    public async Task ExpiryNeverTakesAnAccountAnAdminMadeByHand()
+    public async Task ExpiryNeverTakesAnAccountSomebodyMadeByHand()
     {
         using TempStore temp = new();
         IdentityLinkService linking = new(temp.Store);
 
         LinkResult made = await linking.ProvisionAsync(
-            Discord("1"), KgsmTier.Viewer, TierSource.Granted, UserStatus.Pending, Make.Now);
+            Discord("1"), AccountOrigin.Admitted, UserStatus.Pending, Make.Now);
 
         int removed = await linking.ExpirePendingAsync(PendingPolicy.Default, Make.Now.AddDays(90));
 
@@ -186,28 +184,28 @@ public sealed class IdentityLinkServiceTests
     }
 
     [Fact]
-    public async Task SeedingProvisionsAnActiveAccountAtTheTierItIsGiven()
+    public async Task SeedingProvisionsAnActiveAccountTheIdentityThenProves()
     {
         using TempStore temp = new();
         IdentityLinkService linking = new(temp.Store);
 
         LinkResult result = await linking.ProvisionAsync(
-            Discord(), KgsmTier.Operator, TierSource.Derived, UserStatus.Active, Make.Now);
+            Discord(), AccountOrigin.Admitted, UserStatus.Active, Make.Now);
 
         Assert.Equal(LinkOutcome.Provisioned, result.Outcome);
-        Assert.Equal(KgsmTier.Operator, result.User!.EffectiveTier);
-        Assert.Equal(UserStatus.Active, result.User.Status);
+        Assert.Equal(UserStatus.Active, result.User!.Status);
 
         // And the identity now proves it, which is the whole point of a seed.
-        UserStoreAuthority authority = new(temp.Store);
-        Assert.Equal(KgsmTier.Operator, await authority.ResolveTierAsync(Discord(), CancellationToken.None));
+        AccountAnswer answer = await new AccountResolver(temp.Store).ResolveAsync(Discord(), CancellationToken.None);
+        Assert.Equal(AccountOutcome.Ok, answer.Outcome);
+        Assert.Equal(result.User.UserId, answer.User!.UserId);
     }
 
     [Fact]
     public async Task LinkingToAnAccountAttachesTheIdentityToIt()
     {
         using TempStore temp = new();
-        KgsmUser user = Make.User(username: "haru", tier: KgsmTier.Admin);
+        KgsmUser user = Make.User(username: "haru");
         await temp.Store.CreateAsync(user);
         IdentityLinkService linking = new(temp.Store);
 

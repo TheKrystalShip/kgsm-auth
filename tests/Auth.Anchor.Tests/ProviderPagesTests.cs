@@ -62,7 +62,7 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
     {
         string username = "pages-" + Guid.NewGuid().ToString("N")[..10];
         const string password = "a long enough password";
-        return (await anchor.SeedAsync(username, password, KgsmTier.Viewer, status), password);
+        return (await anchor.SeedAsync(username, password, owner: false, status), password);
     }
 
     private string UiRoot => Path.Combine(anchor.Root, "ui");
@@ -219,7 +219,7 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
         KgsmUser account = (await anchor.Store.FindByUsernameAsync(username))!;
         await anchor.Store.UpdateAsync(account with
         {
-            Status = UserStatus.Active, Tier = KgsmTier.Viewer, TierSource = TierSource.Granted, Updated = DateTimeOffset.UtcNow,
+            Status = UserStatus.Active, Origin = AccountOrigin.Admitted, Updated = DateTimeOffset.UtcNow,
         });
         await Task.Delay(TimeSpan.FromSeconds(6));
 

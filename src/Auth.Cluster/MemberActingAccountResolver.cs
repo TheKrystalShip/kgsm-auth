@@ -4,6 +4,46 @@ using TheKrystalShip.KGSM.Cluster.Identity;
 namespace TheKrystalShip.KGSM.Auth.Cluster;
 
 /// <summary>
+/// Why a member-acting call was refused, as something a surface can branch on.
+/// </summary>
+/// <remarks>
+/// Typed rather than left to the message, because these do not all mean the same thing to whoever reads
+/// a log. <see cref="NoSuchAccount"/> is what a username collision looks like from the far end — a person
+/// who exists in the cluster and resolves to nobody here, with everything else healthy — and it deserves
+/// to be findable, while a token that failed to validate is ordinary noise. A surface that matched on the
+/// message text to tell them apart would break on a reworded sentence.
+/// </remarks>
+public enum MemberActingRefusal
+{
+    /// <summary>Not a refusal: the call resolved to an account.</summary>
+    None = 0,
+
+    /// <summary>No member service token was presented, so the caller is not a member.</summary>
+    NoToken,
+
+    /// <summary>The token did not validate here — wrong secret, expired, or malformed.</summary>
+    TokenNotValid,
+
+    /// <summary>The caller is a member this one has switched off.</summary>
+    MemberDisabled,
+
+    /// <summary>The acting handle was absent or not a <c>provider:subject</c> handle.</summary>
+    HandleNotQualified,
+
+    /// <summary>This member's authority replica could not be read. An outage, never a denial.</summary>
+    AccountsUnavailable,
+
+    /// <summary>No account here matches the handle. The caller named somebody this member cannot answer for.</summary>
+    NoSuchAccount,
+
+    /// <summary>The account exists here and is disabled.</summary>
+    AccountDisabled,
+
+    /// <summary>The handle names a service account belonging to a member other than the caller.</summary>
+    ServiceNotTheCallers,
+}
+
+/// <summary>
 /// What a member-acting call resolved to against the authority replica: the account acted as, and the
 /// member that asserted it, or why it was refused.
 /// </summary>

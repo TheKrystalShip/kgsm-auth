@@ -72,7 +72,16 @@ public sealed class MemberAccessTests : IDisposable
     [Fact]
     public async Task AVersionOneStore_IsUnavailable_NamingWhy()
     {
-        _ = new SqliteUserStore(new UserStoreOptions { Path = _path });
+        using (SqliteConnection connection = new($"Data Source={_path};Pooling=False"))
+        {
+            connection.Open();
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO schema_meta (key, value) VALUES ('schema_version', '1');
+                """;
+            command.ExecuteNonQuery();
+        }
 
         MemberAccessCaller caller = await new MemberAccess(Replica()).ResolveAsync(Session("discord:42"));
 

@@ -21,9 +21,10 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   chmod'd after — the gap between write and chmod is exactly what the mode exists to close.
 - **The anchor runs on the account store at schema version 2, and brings a version 1 file there on
   start.** `UserStoreUpgrade.ToVersion2` runs before anything opens the file; the start that upgraded
-  it ends every session (`auth.session.revoked`, scope `upgrade`), so no token minted under the tiers
-  outlives them. `SqliteAuthorityStore` is both the authority and the `IUserStore` every door reads.
-- **A token proves who, never what.** Sessions are minted with no tier. Every route decides its caller
+  it ends every session (`auth.session.revoked`, scope `upgrade`), so no token minted by a build that
+  read version 1 outlives the upgrade. `SqliteAuthorityStore` is both the authority and the `IUserStore`
+  every door reads.
+- **A token proves who, never what.** A session carries no claim about access. Every route decides its caller
   by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and, for
   `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
   withdrawn account has its session revoked rather than left to run out its bearer's lifetime.

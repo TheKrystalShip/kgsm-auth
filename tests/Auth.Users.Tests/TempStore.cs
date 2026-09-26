@@ -34,17 +34,17 @@ internal sealed class TempStore : IDisposable
             BusyTimeout = busyTimeout ?? TimeSpan.FromSeconds(5),
         };
 
-        Store = new SqliteUserStore(Options);
+        Store = new SqliteAuthorityStore(Options);
     }
 
     public string Path_ { get; }
 
     public UserStoreOptions Options { get; }
 
-    public SqliteUserStore Store { get; }
+    public SqliteAuthorityStore Store { get; }
 
     /// <summary>A second store over the same file, as a second service on the host would open it.</summary>
-    public SqliteUserStore OpenAgain() => new(new UserStoreOptions
+    public SqliteAuthorityStore OpenAgain() => new(new UserStoreOptions
     {
         Path = Path_,
         BusyTimeout = Options.BusyTimeout,
@@ -84,16 +84,14 @@ internal static class Make
 
     public static KgsmUser User(
         string username = "haru",
-        KgsmTier tier = KgsmTier.Operator,
         UserStatus status = UserStatus.Active,
-        TierSource source = TierSource.Granted,
+        AccountOrigin origin = AccountOrigin.Admitted,
         string? userId = null) =>
         new(
             userId ?? UserIds.NewUserId(),
             username,
             DisplayName: username,
-            tier,
-            source,
+            origin,
             status,
             Created: Now,
             Updated: Now);

@@ -2,13 +2,11 @@ namespace TheKrystalShip.KGSM.Auth;
 
 /// <summary>
 /// The claim names a KGSM session token carries. Named here so the token the anchor mints reads
-/// identically on every member that verifies it.
+/// identically on every member that verifies it. A token proves who; nothing it carries says what the
+/// holder may do.
 /// </summary>
 public static class KgsmAuthClaims
 {
-    /// <summary>The authorization tier, as a <see cref="KgsmTiers"/> wire string.</summary>
-    public const string Tier = "tier";
-
     /// <summary>The host id this bearer is scoped to (mirrors the token audience).</summary>
     public const string Host = "host";
 

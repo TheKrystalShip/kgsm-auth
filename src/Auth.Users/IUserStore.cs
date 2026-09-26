@@ -7,8 +7,8 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// <para>
 /// A seam for the same reason <c>ISessionRegistry</c> is one: a test stands the whole login and
 /// authorization matrix up in memory, and a host that wants its accounts somewhere other than a
-/// local file supplies its own. <see cref="SqliteUserStore"/> is the shipped implementation and the
-/// one both surfaces use.
+/// local file supplies its own. <see cref="SqliteAuthorityStore"/> is the shipped implementation, for
+/// person accounts.
 /// </para>
 /// <para>
 /// Implementations must be safe to call concurrently, and must be safe to call concurrently
@@ -47,7 +47,7 @@ public interface IUserStore
     Task CreateAsync(KgsmUser user, CancellationToken ct = default);
 
     /// <summary>
-    /// Overwrite an account's mutable fields — username, display name, tier, provenance and status.
+    /// Overwrite an account's mutable fields — username, display name, origin and status.
     /// Returns <see langword="false"/> when no such account exists; throws
     /// <see cref="DuplicateUsernameException"/> when the new username is taken by another.
     /// </summary>

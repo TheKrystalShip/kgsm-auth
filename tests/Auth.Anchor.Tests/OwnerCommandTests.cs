@@ -116,7 +116,16 @@ public sealed class OwnerCommandTests : IDisposable
     [Fact]
     public async Task AVersionOneStoreIsRefusedRatherThanUpgraded()
     {
-        new SqliteUserStore(new UserStoreOptions { Path = _options.UserStorePath });
+        using (Microsoft.Data.Sqlite.SqliteConnection connection = new($"Data Source={_options.UserStorePath};Pooling=False"))
+        {
+            connection.Open();
+            using Microsoft.Data.Sqlite.SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO schema_meta (key, value) VALUES ('schema_version', '1');
+                """;
+            command.ExecuteNonQuery();
+        }
 
         Assert.Equal(1, await OwnerCommand.RunAsync(["owner", "grant", "alice"], _options));
     }

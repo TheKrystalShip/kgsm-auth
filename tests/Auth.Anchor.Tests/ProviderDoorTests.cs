@@ -277,7 +277,7 @@ public sealed class ProviderDoorTests(AnchorFixture anchor)
         // matched on a username, and a person who has been using this cluster keeps being the same
         // person when they arrive through a different door.
         var identity = new KgsmIdentity("discord", "9001", "haru", "Haru", null, []);
-        KgsmUser seeded = await anchor.SeedAsync("haru-provider", "unused-password", KgsmTier.Admin);
+        KgsmUser seeded = await anchor.SeedAsync("haru-provider", "unused-password", owner: true);
 
         await anchor.Store.AddCredentialAsync(new UserCredential(
             UserIds.NewCredentialId(), seeded.UserId, CredentialKind.Identity,
@@ -331,7 +331,7 @@ public sealed class RegisterTests(AnchorFixture anchor)
 
         // Arrived, not admitted: nobody made it, and expiry reads that difference to tell an account
         // that arrived on its own from one an admin made.
-        Assert.Equal(TierSource.Derived, stored.TierSource);
+        Assert.Equal(AccountOrigin.Arrived, stored.Origin);
     }
 
     [Fact]
@@ -378,18 +378,19 @@ public sealed class RegisterTests(AnchorFixture anchor)
     }
 
     [Fact]
-    public async Task Nothing_on_the_wire_can_ask_for_a_tier()
+    public async Task Nothing_on_the_wire_can_ask_for_access_or_standing()
     {
         string name = "ambitious" + Guid.NewGuid().ToString("N")[..8];
 
-        // The shape has no tier and no status, so a caller sending them is sending fields that bind to
+        // The shape has no role and no status, so a caller sending them is sending fields that bind to
         // nothing. Asserted rather than assumed, because "the DTO does not have it" is exactly the kind
         // of thing a later edit quietly changes.
-        await RegisterAsync(new { username = name, password = "a-long-enough-password", tier = "admin", status = "active" });
+        await RegisterAsync(new { username = name, password = "a-long-enough-password", role = "role_owner", status = "active" });
 
         KgsmUser? stored = await anchor.Store.FindByUsernameAsync(name);
-        Assert.Equal(KgsmTier.None, stored!.Tier);
-        Assert.Equal(UserStatus.Pending, stored.Status);
+        Assert.Equal(UserStatus.Pending, stored!.Status);
+        Assert.Equal(AccountOrigin.Arrived, stored.Origin);
+        Assert.Empty((await anchor.Store.LoadAsync()).AssignmentsOf(stored.UserId));
     }
 
     [Fact]

@@ -13,24 +13,21 @@ public class UserStoreUpgradeTests
     private static readonly DateTimeOffset At = new(2026, 9, 25, 21, 0, 0, TimeSpan.Zero);
 
     /// <summary>A version 1 store with one account of every tier, provenance and status that matters.</summary>
-    private static async Task<(TempStore Store, Dictionary<string, KgsmUser> Users)> VersionOneAsync()
+    private static (VersionOneFile File, Dictionary<string, string> Ids) VersionOne()
     {
-        TempStore store = new();
-        Dictionary<string, KgsmUser> users = new()
+        VersionOneFile file = new();
+        Dictionary<string, string> ids = new()
         {
-            ["root"] = Make.User("root", KgsmTier.Admin, source: TierSource.Granted),
-            ["derived-admin"] = Make.User("derived-admin", KgsmTier.Admin, source: TierSource.Derived),
-            ["sleeping-admin"] = Make.User("sleeping-admin", KgsmTier.Admin, UserStatus.Disabled),
-            ["op"] = Make.User("op", KgsmTier.Operator, source: TierSource.Granted),
-            ["viewer"] = Make.User("viewer", KgsmTier.Viewer, source: TierSource.Derived),
-            ["waiting"] = Make.User("waiting", KgsmTier.None, UserStatus.Pending, TierSource.Derived),
+            ["root"] = file.User("root", "admin", "granted"),
+            ["derived-admin"] = file.User("derived-admin", "admin", "derived"),
+            ["sleeping-admin"] = file.User("sleeping-admin", "admin", "granted", "disabled"),
+            ["op"] = file.User("op", "operator", "granted"),
+            ["viewer"] = file.User("viewer", "viewer", "derived"),
+            ["waiting"] = file.User("waiting", "none", "derived", "pending"),
         };
 
-        foreach (KgsmUser user in users.Values)
-            await store.Store.CreateAsync(user);
-
-        await store.Store.AddCredentialAsync(Make.Identity(users["op"].UserId, "discord:1234", "op#0001"));
-        return (store, users);
+        file.Identity(ids["op"], "discord:1234", "op#0001");
+        return (file, ids);
     }
 
     private static List<string[]> Rows(string path, string sql)
@@ -51,19 +48,19 @@ public class UserStoreUpgradeTests
     [Fact]
     public async Task EveryAdminBecomesAnOwnerAndNobodyElseIsAssignedAnything()
     {
-        (TempStore store, Dictionary<string, KgsmUser> users) = await VersionOneAsync();
-        using TempStore _ = store;
+        (VersionOneFile file, Dictionary<string, string> ids) = VersionOne();
+        using VersionOneFile _ = file;
 
-        UpgradeReport report = UserStoreUpgrade.ToVersion2(store.Path_, At);
+        UpgradeReport report = UserStoreUpgrade.ToVersion2(file.Path, At);
 
         Assert.True(report.Upgraded);
         Assert.Equal(1, report.From);
         Assert.Equal(new[] { "derived-admin", "root", "sleeping-admin" }, report.Owners.Order());
 
-        AuthoritySnapshot snapshot = await new SqliteAuthorityStore(store.Options).LoadAsync();
-        Assert.True(snapshot.IsOwner(users["root"].UserId));
-        Assert.True(snapshot.IsOwner(users["derived-admin"].UserId));
-        Assert.True(snapshot.IsOwner(users["sleeping-admin"].UserId));
+        AuthoritySnapshot snapshot = await new SqliteAuthorityStore(file.Options).LoadAsync();
+        Assert.True(snapshot.IsOwner(ids["root"]));
+        Assert.True(snapshot.IsOwner(ids["derived-admin"]));
+        Assert.True(snapshot.IsOwner(ids["sleeping-admin"]));
         Assert.Equal(3, snapshot.Assignments.Count);
         Assert.All(snapshot.Assignments, a => Assert.Equal(AccessScope.Cluster, a.Scope));
     }
@@ -71,28 +68,28 @@ public class UserStoreUpgradeTests
     [Fact]
     public async Task ADisabledAdminIsAnOwnerWhoStillCannotActUntilEnabled()
     {
-        (TempStore store, Dictionary<string, KgsmUser> users) = await VersionOneAsync();
-        using TempStore _ = store;
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
+        (VersionOneFile file, Dictionary<string, string> ids) = VersionOne();
+        using VersionOneFile _ = file;
+        UserStoreUpgrade.ToVersion2(file.Path, At);
 
-        AccessEvaluator evaluator = new(await new SqliteAuthorityStore(store.Options).LoadAsync());
+        AccessEvaluator evaluator = new(await new SqliteAuthorityStore(file.Options).LoadAsync());
 
-        Assert.True(evaluator.Allows(users["root"].UserId, "kgsm:server.start", AccessScope.Cluster).Allowed);
+        Assert.True(evaluator.Allows(ids["root"], "kgsm:server.start", AccessScope.Cluster).Allowed);
         Assert.Equal(DenyReason.AccountDisabled,
-            evaluator.Allows(users["sleeping-admin"].UserId, "kgsm:server.start", AccessScope.Cluster).Reason);
+            evaluator.Allows(ids["sleeping-admin"], "kgsm:server.start", AccessScope.Cluster).Reason);
         Assert.Equal(DenyReason.UnknownAction,
-            evaluator.Allows(users["op"].UserId, "kgsm:server.start", AccessScope.Cluster).Reason);
+            evaluator.Allows(ids["op"], "kgsm:server.start", AccessScope.Cluster).Reason);
     }
 
     [Fact]
-    public async Task OriginIsTakenFromTheTiersProvenance()
+    public void OriginIsTakenFromTheTiersProvenance()
     {
-        (TempStore store, _) = await VersionOneAsync();
-        using TempStore _s = store;
+        (VersionOneFile file, _) = VersionOne();
+        using VersionOneFile _f = file;
 
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
+        UserStoreUpgrade.ToVersion2(file.Path, At);
 
-        Dictionary<string, string> origin = Rows(store.Path_, "SELECT username, origin, kind FROM users;")
+        Dictionary<string, string> origin = Rows(file.Path, "SELECT username, origin, kind FROM users;")
             .ToDictionary(r => r[0], r => r[1] + "/" + r[2]);
 
         Assert.Equal("admitted/person", origin["root"]);
@@ -103,38 +100,37 @@ public class UserStoreUpgradeTests
     }
 
     [Fact]
-    public async Task TheTiersAreDroppedAndEverythingElseSurvives()
+    public void TheTiersAreDroppedAndEverythingElseSurvives()
     {
-        (TempStore store, Dictionary<string, KgsmUser> users) = await VersionOneAsync();
-        using TempStore _ = store;
+        (VersionOneFile file, Dictionary<string, string> ids) = VersionOne();
+        using VersionOneFile _ = file;
 
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
+        UserStoreUpgrade.ToVersion2(file.Path, At);
 
-        string[] columns = [.. Rows(store.Path_, "SELECT name FROM pragma_table_info('users');").Select(r => r[0])];
+        string[] columns = [.. Rows(file.Path, "SELECT name FROM pragma_table_info('users');").Select(r => r[0])];
         Assert.DoesNotContain("tier", columns);
         Assert.DoesNotContain("tier_source", columns);
 
-        Assert.Equal(users.Count, Rows(store.Path_, "SELECT user_id FROM users;").Count);
-        Assert.Equal(["discord:1234"], Rows(store.Path_, "SELECT handle FROM credentials;").Select(r => r[0]));
-        Assert.Equal("2", Rows(store.Path_, "SELECT value FROM schema_meta WHERE key = 'schema_version';").Single()[0]);
+        Assert.Equal(ids.Count, Rows(file.Path, "SELECT user_id FROM users;").Count);
+        Assert.Equal(["discord:1234"], Rows(file.Path, "SELECT handle FROM credentials;").Select(r => r[0]));
+        Assert.Equal("2", Rows(file.Path, "SELECT value FROM schema_meta WHERE key = 'schema_version';").Single()[0]);
 
-        Dictionary<string, string> statuses = Rows(store.Path_, "SELECT username, status FROM users;").ToDictionary(r => r[0], r => r[1]);
+        Dictionary<string, string> statuses = Rows(file.Path, "SELECT username, status FROM users;").ToDictionary(r => r[0], r => r[1]);
         Assert.Equal("pending", statuses["waiting"]);
         Assert.Equal("disabled", statuses["sleeping-admin"]);
     }
 
     [Fact]
-    public async Task EveryAccountStartsAtTheFirstAuthorityVersion_AndThePerAccountCountersGo()
+    public void EveryAccountStartsAtTheFirstAuthorityVersion_AndThePerAccountCountersGo()
     {
-        (TempStore store, Dictionary<string, KgsmUser> _) = await VersionOneAsync();
-        using TempStore owned = store;
-        _ = new SqliteAccountVersions(new UserStoreOptions { Path = store.Path_ });
-        Assert.Single(Rows(store.Path_, "SELECT name FROM sqlite_master WHERE name = 'account_versions';"));
+        (VersionOneFile file, _) = VersionOne();
+        using VersionOneFile _f = file;
+        file.WithAccountCounters();
 
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
+        UserStoreUpgrade.ToVersion2(file.Path, At);
 
-        Assert.All(Rows(store.Path_, "SELECT version FROM users;"), r => Assert.Equal("1", r[0]));
-        string[] tables = [.. Rows(store.Path_, "SELECT name FROM sqlite_master WHERE type = 'table';").Select(r => r[0])];
+        Assert.All(Rows(file.Path, "SELECT version FROM users;"), r => Assert.Equal("1", r[0]));
+        string[] tables = [.. Rows(file.Path, "SELECT name FROM sqlite_master WHERE type = 'table';").Select(r => r[0])];
         Assert.DoesNotContain("account_versions", tables);
         Assert.DoesNotContain("account_announcements", tables);
         Assert.Contains("authority_outbox", tables);
@@ -144,11 +140,11 @@ public class UserStoreUpgradeTests
     [Fact]
     public async Task TheBuiltInRolesExistAndEveryoneStartsEmpty()
     {
-        (TempStore store, _) = await VersionOneAsync();
-        using TempStore _s = store;
+        (VersionOneFile file, _) = VersionOne();
+        using VersionOneFile _f = file;
 
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
-        AuthoritySnapshot snapshot = await new SqliteAuthorityStore(store.Options).LoadAsync();
+        UserStoreUpgrade.ToVersion2(file.Path, At);
+        AuthoritySnapshot snapshot = await new SqliteAuthorityStore(file.Options).LoadAsync();
 
         Assert.Equal(RoleKind.Owner, snapshot.Roles[BuiltInRoles.OwnerId].Kind);
         Assert.Empty(snapshot.Roles[BuiltInRoles.EveryoneId].Permissions);
@@ -158,53 +154,42 @@ public class UserStoreUpgradeTests
     }
 
     [Fact]
-    public async Task AnOwnerOnlyCopyOfTheVersionOneFileIsTakenFirst()
+    public void AnOwnerOnlyCopyOfTheVersionOneFileIsTakenFirst()
     {
-        (TempStore store, Dictionary<string, KgsmUser> users) = await VersionOneAsync();
-        using TempStore _ = store;
+        (VersionOneFile file, Dictionary<string, string> ids) = VersionOne();
+        using VersionOneFile _ = file;
 
-        UpgradeReport report = UserStoreUpgrade.ToVersion2(store.Path_, At);
+        UpgradeReport report = UserStoreUpgrade.ToVersion2(file.Path, At);
 
-        Assert.Equal(store.Path_ + ".v1-20260925T210000Z", report.Backup);
+        Assert.Equal(file.Path + ".v1-20260925T210000Z", report.Backup);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(report.Backup!));
 
-        KgsmUser? root = await new SqliteUserStore(new UserStoreOptions { Path = report.Backup! }).FindByUsernameAsync("root");
-        Assert.Equal(KgsmTier.Admin, root?.Tier);
-        Assert.Equal(users.Count, (await new SqliteUserStore(new UserStoreOptions { Path = report.Backup! }).ListAsync()).Count);
+        Assert.Equal("admin", Rows(report.Backup!, "SELECT tier FROM users WHERE username = 'root';").Single()[0]);
+        Assert.Equal(ids.Count, Rows(report.Backup!, "SELECT user_id FROM users;").Count);
+        Assert.Equal("1", Rows(report.Backup!, "SELECT value FROM schema_meta WHERE key = 'schema_version';").Single()[0]);
     }
 
     [Fact]
     public async Task UpgradingTwiceChangesNothingTheSecondTime()
     {
-        (TempStore store, _) = await VersionOneAsync();
-        using TempStore _s = store;
+        (VersionOneFile file, _) = VersionOne();
+        using VersionOneFile _f = file;
 
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
-        UpgradeReport again = UserStoreUpgrade.ToVersion2(store.Path_, At.AddMinutes(1));
+        UserStoreUpgrade.ToVersion2(file.Path, At);
+        UpgradeReport again = UserStoreUpgrade.ToVersion2(file.Path, At.AddMinutes(1));
 
         Assert.False(again.Upgraded);
         Assert.Equal(2, again.From);
-        Assert.Equal(3, (await new SqliteAuthorityStore(store.Options).LoadAsync()).Assignments.Count);
+        Assert.Equal(3, (await new SqliteAuthorityStore(file.Options).LoadAsync()).Assignments.Count);
     }
 
     [Fact]
-    public async Task AVersionOneReaderRefusesTheUpgradedFile()
+    public void TheAuthorityStoreRefusesAVersionOneFile()
     {
-        (TempStore store, _) = await VersionOneAsync();
-        using TempStore _s = store;
-        UserStoreUpgrade.ToVersion2(store.Path_, At);
-        SqliteConnection.ClearAllPools();
+        (VersionOneFile file, _) = VersionOne();
+        using VersionOneFile _f = file;
 
-        Assert.Throws<UserStoreSchemaException>(() => store.OpenAgain());
-    }
-
-    [Fact]
-    public async Task TheAuthorityStoreRefusesAVersionOneFile()
-    {
-        (TempStore store, _) = await VersionOneAsync();
-        using TempStore _s = store;
-
-        UserStoreSchemaException e = Assert.Throws<UserStoreSchemaException>(() => new SqliteAuthorityStore(store.Options));
+        UserStoreSchemaException e = Assert.Throws<UserStoreSchemaException>(() => new SqliteAuthorityStore(file.Options));
         Assert.Contains(nameof(UserStoreUpgrade), e.Message);
     }
 
@@ -228,20 +213,20 @@ public class UserStoreUpgradeTests
         if (string.IsNullOrEmpty(source))
             return;
 
-        using TempStore store = new();
+        using VersionOneFile file = new();
         SqliteConnection.ClearAllPools();
-        File.Copy(source, store.Path_, overwrite: true);
+        File.Copy(source, file.Path, overwrite: true);
 
-        int users = Rows(store.Path_, "SELECT user_id FROM users;").Count;
-        int credentials = Rows(store.Path_, "SELECT credential_id FROM credentials;").Count;
-        string[] admins = [.. Rows(store.Path_, "SELECT username FROM users WHERE tier = 'admin';").Select(r => r[0]).Order()];
+        int users = Rows(file.Path, "SELECT user_id FROM users;").Count;
+        int credentials = Rows(file.Path, "SELECT credential_id FROM credentials;").Count;
+        string[] admins = [.. Rows(file.Path, "SELECT username FROM users WHERE tier = 'admin';").Select(r => r[0]).Order()];
 
-        UpgradeReport report = UserStoreUpgrade.ToVersion2(store.Path_, At);
-        AuthoritySnapshot snapshot = await new SqliteAuthorityStore(store.Options).LoadAsync();
+        UpgradeReport report = UserStoreUpgrade.ToVersion2(file.Path, At);
+        AuthoritySnapshot snapshot = await new SqliteAuthorityStore(file.Options).LoadAsync();
 
         Assert.Equal(admins, report.Owners.Order());
         Assert.Equal(users, snapshot.Accounts.Count);
-        Assert.Equal(credentials, Rows(store.Path_, "SELECT credential_id FROM credentials;").Count);
+        Assert.Equal(credentials, Rows(file.Path, "SELECT credential_id FROM credentials;").Count);
         Assert.Equal(admins.Length, snapshot.Assignments.Count);
         Assert.All(snapshot.Accounts.Values, a => Assert.Equal(AccountKind.Person, a.Kind));
     }

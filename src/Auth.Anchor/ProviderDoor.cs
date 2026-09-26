@@ -232,9 +232,8 @@ internal static class Registration
             UserIds.NewUserId(),
             username,
             string.IsNullOrWhiteSpace(body.DisplayName) ? username : body.DisplayName.Trim(),
-            KgsmTier.None,
             // It arrived by itself, which is what expiry reads to remove it if nobody approves it.
-            TierSource.Derived,
+            AccountOrigin.Arrived,
             UserStatus.Pending,
             now,
             now);

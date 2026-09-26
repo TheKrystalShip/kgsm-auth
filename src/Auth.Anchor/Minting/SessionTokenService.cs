@@ -21,10 +21,10 @@ public sealed record MintedToken(string Token, DateTimeOffset ExpiresAt, string 
 /// identity provider.
 /// </summary>
 /// <remarks>
-/// The tier here is what was true when the token was minted. The anchor re-reads the account before
-/// it mints the next pair, so nothing is decided on it.
+/// The anchor re-reads the account before it mints the next pair, so a token outliving its account's
+/// switch-off buys nothing.
 /// </remarks>
-public sealed record RefreshClaims(KgsmIdentity Identity, KgsmTier Tier, string SessionId, string Jti);
+public sealed record RefreshClaims(KgsmIdentity Identity, string SessionId, string Jti);
 
 /// <summary>How the anchor mints session tokens.</summary>
 /// <param name="Audience">
@@ -53,19 +53,21 @@ public sealed record SessionTokenOptions(
 /// protected request; a <em>refresh</em> token buys a new one without a fresh sign-in, until the
 /// absolute cap.
 /// </summary>
+/// <remarks>
+/// A token proves who and carries no claim about what: a member resolves what the holder may do from
+/// its own replica on every request, so nothing a token says can outlive a revocation.
+/// </remarks>
 public interface ISessionTokenService
 {
     /// <summary>Mint a short-lived access bearer, scoped to a session.</summary>
     /// <param name="identity">Who the session belongs to.</param>
-    /// <param name="tier">The tier claim, or <see langword="null"/> for a token that proves identity alone.</param>
     /// <param name="sessionId">The session it is scoped to.</param>
-    MintedToken MintAccess(KgsmIdentity identity, KgsmTier? tier, string sessionId);
+    MintedToken MintAccess(KgsmIdentity identity, string sessionId);
 
     /// <summary>Mint the refresh token for a session. Its lifetime is the absolute cap.</summary>
     /// <param name="identity">Who the session belongs to.</param>
-    /// <param name="tier">The tier claim, or <see langword="null"/> for a token that proves identity alone.</param>
     /// <param name="sessionId">The session it is scoped to.</param>
-    MintedToken MintRefresh(KgsmIdentity identity, KgsmTier? tier, string sessionId);
+    MintedToken MintRefresh(KgsmIdentity identity, string sessionId);
 
     /// <summary>
     /// Validate a presented refresh token. Returns <see langword="null"/> when it is invalid, expired,
@@ -121,18 +123,13 @@ public sealed class SessionTokenService : ISessionTokenService
         };
     }
 
-    public MintedToken MintAccess(KgsmIdentity identity, KgsmTier? tier, string sessionId) =>
-        Mint(identity, tier, KgsmTokenKind.Access, _options.AccessLifetime, sessionId);
+    public MintedToken MintAccess(KgsmIdentity identity, string sessionId) =>
+        Mint(identity, KgsmTokenKind.Access, _options.AccessLifetime, sessionId);
 
-    public MintedToken MintRefresh(KgsmIdentity identity, KgsmTier? tier, string sessionId) =>
-        Mint(identity, tier, KgsmTokenKind.Refresh, _options.RefreshLifetime, sessionId);
+    public MintedToken MintRefresh(KgsmIdentity identity, string sessionId) =>
+        Mint(identity, KgsmTokenKind.Refresh, _options.RefreshLifetime, sessionId);
 
-    /// <remarks>
-    /// With no tier the token carries no claim about authority at all: a member resolves what the holder
-    /// may do from its own replica on every request, so nothing a token says can outlive a revocation.
-    /// </remarks>
-    private MintedToken Mint(
-        KgsmIdentity identity, KgsmTier? tier, string kind, TimeSpan ttl, string sessionId)
+    private MintedToken Mint(KgsmIdentity identity, string kind, TimeSpan ttl, string sessionId)
     {
         // A fresh jti per mint. For a refresh token this is the reuse-detection key the registry
         // stores; for an access token it is informational, and both get one so every token is
@@ -152,8 +149,6 @@ public sealed class SessionTokenService : ISessionTokenService
         ];
         if (identity.AvatarUrl is not null)
             claims.Add(new Claim(KgsmAuthClaims.Avatar, identity.AvatarUrl));
-        if (tier is { } held)
-            claims.Add(new Claim(KgsmAuthClaims.Tier, KgsmTiers.ToWire(held)));
 
         DateTime expires = DateTime.UtcNow.Add(ttl);
         string token = _handler.CreateToken(new SecurityTokenDescriptor
@@ -193,6 +188,6 @@ public sealed class SessionTokenService : ISessionTokenService
         if (sid is null || jti is null)
             return null;
 
-        return new RefreshClaims(identity, SessionClaims.ReadTier(ci), sid, jti);
+        return new RefreshClaims(identity, sid, jti);
     }
 }

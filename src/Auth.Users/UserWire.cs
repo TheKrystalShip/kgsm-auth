@@ -6,7 +6,7 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// How instants are spelled on disk, and the parse back.
 /// </summary>
 /// <remarks>
-/// The enums are spelled by <see cref="UserStatuses"/>, <see cref="TierSources"/> and
+/// The enums are spelled by <see cref="UserStatuses"/>, <see cref="AccountWire"/> and
 /// <see cref="CredentialKinds"/>, which are public because the surfaces above this store put the same
 /// strings on the wire — one spelling for one fact, rather than a second that can drift from it.
 /// Timestamps stay here: their format is the file's own, and nothing reads it back out of the store's

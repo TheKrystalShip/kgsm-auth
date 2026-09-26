@@ -30,10 +30,6 @@ implementation each.
   is reserved for a transient failure. A stale change never becomes newer and a username conflict never
   resolves itself, so both are logged and acknowledged; throwing would wedge the sender's queue behind
   a message it can never deliver, taking every later account change with it, including a disable.
-- **The snapshot is taken once and then the stream carries everything.** Both paths carry the same
-  per-account version and the replica refuses anything not newer, so "snapshot, then follow" is a
-  sequence rather than a handover, and re-reading the whole set on a timer would be a poll standing in
-  for a push that works.
 - **A leaf verifies what its machine's member verified, through the host file.** A leaf joins no
   cluster, so it cannot resolve the holder; the node writes `HostProviderFile` from its own read
   through the holder, and `HostSessionKeys` reads it back. One writer per machine, the node. The file
@@ -61,6 +57,6 @@ implementation each.
   reads nothing about access off a token; `AuthorityReplicaFile` opens the member's account store only
   once it is at schema version 2 and never creates it, and until then every answer is
   `authority_unavailable` — an outage, never a denial.
-- **Three seams, and the package owns none:** `IReplicatedAuthority` is the member's authority
-  replica, `IReplicatedAccounts` its own account store and `IClusterSessionDenyList` its own record of
+- **Two seams, and the package owns neither:** `IReplicatedAuthority` is the member's authority
+  replica — accounts and who may do what in one file — and `IClusterSessionDenyList` its own record of
   ended sessions. Opening a file and serving a route stay the member's business.

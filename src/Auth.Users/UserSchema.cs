@@ -13,137 +13,18 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 public sealed class UserStoreSchemaException(string message) : Exception(message);
 
 /// <summary>
-/// The store's schema, and the rule that keeps two independently deployed services able to share
-/// one file.
+/// Where a store file states its schema version, and the one earlier version this build still reads.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>Schema changes are additive only, and the version is a floor rather than a match.</b> The
-/// ecosystem's usual answer — <c>EnsureCreated</c>, and wipe the database when the schema
-/// changes — cannot apply to this one. Wiping it is every account, every password and every link, and
-/// there is nothing to re-derive them from. On top of that the Control Panel API and the assistant
-/// deploy separately, so at any moment one of them may be a version ahead: an older build must keep
-/// working against a newer file, which it can, as long as every change only ever adds.
-/// </para>
-/// <para>
-/// So: add tables, add nullable columns, add indexes. Never drop or rename one, never make an
-/// existing column <c>NOT NULL</c> without a default, and never change what a value in an existing
-/// column means. Anything that cannot be expressed that way needs a new table beside the old one.
-/// </para>
+/// Version 1 held a tier on each account. Nothing opens a version 1 file except
+/// <see cref="UserStoreUpgrade.ToVersion2"/>, which brings it to <see cref="AuthoritySchema.Version"/>
+/// in place; <see cref="SqliteAuthorityStore"/> refuses one.
 /// </remarks>
 public static class UserSchema
 {
-    /// <summary>
-    /// The schema version this build writes and understands.
-    /// </summary>
-    /// <remarks>
-    /// Bumped only when the shape changes, and a bump obliges a matching forward step in
-    /// <see cref="SqliteUserStore"/>'s initialisation so an existing file is brought up rather than
-    /// rejected.
-    /// </remarks>
-    public const int Version = 1;
+    /// <summary>The version whose files <see cref="UserStoreUpgrade.ToVersion2"/> upgrades.</summary>
+    public const int VersionOne = 1;
 
-    /// <summary>The key the version is filed under in <c>schema_meta</c>.</summary>
+    /// <summary>The key the version is filed under in <c>schema_meta</c>, in every version.</summary>
     public const string VersionKey = "schema_version";
-
-    /// <summary>
-    /// Version 1: accounts, the credentials that prove them, and the failed-password counter.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <c>credentials.handle</c> is unique across the whole table, and that one constraint carries
-    /// two rules the code would otherwise have to remember: an external identity belongs to exactly
-    /// one account, and an account has at most one password. Enforcing them in the schema means a
-    /// second service writing the same file cannot break either, however it was written.
-    /// </para>
-    /// <para>
-    /// Times are ISO-8601 round-trip strings in UTC. Sortable as text, unambiguous to a human
-    /// reading the file with <c>sqlite3</c>, and immune to the epoch-unit confusion an integer
-    /// invites.
-    /// </para>
-    /// </remarks>
-    public const string CreateV1 = """
-        CREATE TABLE IF NOT EXISTS schema_meta (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS users (
-            user_id      TEXT PRIMARY KEY,
-            username     TEXT NOT NULL,
-            username_key TEXT NOT NULL UNIQUE,
-            display_name TEXT NOT NULL,
-            tier         TEXT NOT NULL,
-            tier_source  TEXT NOT NULL,
-            status       TEXT NOT NULL,
-            created_utc  TEXT NOT NULL,
-            updated_utc  TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS credentials (
-            credential_id TEXT PRIMARY KEY,
-            user_id       TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-            kind          TEXT NOT NULL,
-            handle        TEXT NOT NULL UNIQUE,
-            secret        TEXT NULL,
-            label         TEXT NULL,
-            created_utc   TEXT NOT NULL,
-            last_used_utc TEXT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS ix_credentials_user ON credentials(user_id);
-
-        CREATE TABLE IF NOT EXISTS login_failures (
-            user_id          TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-            failed_count     INTEGER NOT NULL,
-            last_failed_utc  TEXT NOT NULL,
-            locked_until_utc TEXT NULL
-        );
-        """;
-
-    /// <summary>
-    /// The per-account counter that orders account changes between members of a cluster.
-    /// </summary>
-    /// <remarks>
-    /// <b>Deliberately not part of <see cref="Version"/>.</b> A table an older build has never heard
-    /// of is invisible to it — it reads accounts exactly as before and nothing is half-understood —
-    /// whereas raising the version would make every build pinned to an earlier one refuse the file,
-    /// which on a host running the Control Panel, the bot and the assistant is all three at once.
-    /// Created on open by any build that knows about it, and simply absent on one that does not.
-    /// </remarks>
-    public const string CreateAccountVersions = """
-        CREATE TABLE IF NOT EXISTS account_versions (
-            user_id     TEXT PRIMARY KEY,
-            version     INTEGER NOT NULL,
-            updated_utc TEXT NOT NULL
-        );
-        """;
-
-    /// <summary>
-    /// Account changes that have been made here and not yet told to the cluster.
-    /// </summary>
-    /// <remarks>
-    /// <b>In the accounts' own file, which is the whole point.</b> A row here is written in the same
-    /// transaction as the version that orders the change, so a change cannot exist at a version and
-    /// have no announcement owed for it — which is what a queue in another database could never
-    /// promise, however carefully the two writes were sequenced.
-    /// <para>
-    /// Keyed by account and version so the same change is never owed twice, and rows are deleted once
-    /// the cluster has been told. An empty table is a member with nothing outstanding, which is the
-    /// ordinary state.
-    /// </para>
-    /// <para>
-    /// Like <c>account_versions</c>, a table older builds have never heard of, so
-    /// <see cref="Version"/> does not move and no surface reading this file is refused.
-    /// </para>
-    /// </remarks>
-    public const string CreateAccountAnnouncements = """
-        CREATE TABLE IF NOT EXISTS account_announcements (
-            user_id     TEXT NOT NULL,
-            version     INTEGER NOT NULL,
-            kind        TEXT NOT NULL,
-            created_utc TEXT NOT NULL,
-            PRIMARY KEY (user_id, version)
-        );
-        """;
 }

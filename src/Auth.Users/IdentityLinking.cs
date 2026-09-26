@@ -51,15 +51,15 @@ public readonly record struct LinkResult(LinkOutcome Outcome, KgsmUser? User)
 /// <remarks>
 /// <para>
 /// Provisioning is reachable by anyone who can complete a login at a configured provider, which on a
-/// publicly-exposed host is anyone at all. The account it creates holds
-/// <see cref="KgsmTier.None"/> and so grants nothing — but rows are still rows, and an unbounded
-/// table an unauthenticated caller can grow is a defect whatever each row can do.
+/// publicly-exposed host is anyone at all. The account it creates is pending and so holds nothing —
+/// but rows are still rows, and an unbounded table an unauthenticated caller can grow is a defect
+/// whatever each row can do.
 /// </para>
 /// <para>
 /// <see cref="Ttl"/> is what keeps the cap from becoming a lockout: without it, one burst of
 /// arrivals fills the cap permanently and the next real person is refused. Expiry only ever removes
 /// an account that arrived on its own and is still unapproved — never one an admin created or
-/// approved, which carries <see cref="TierSource.Granted"/> and is spared however long it waits.
+/// approved, which carries <see cref="AccountOrigin.Admitted"/> and is spared however long it waits.
 /// </para>
 /// </remarks>
 /// <param name="Cap">The most unapproved accounts to hold at once.</param>
@@ -79,14 +79,14 @@ public readonly record struct PendingPolicy(int Cap, TimeSpan Ttl)
 /// An external identity never <em>is</em> a user and never carries authority. What a login at a
 /// provider establishes is one fact — that the caller holds subject X at provider P — and this is
 /// where that fact is turned into an account, or found already attached to one. The account it
-/// creates starts <see cref="UserStatus.Pending"/> at <see cref="KgsmTier.None"/>: proving who you
-/// are is not the same as being let in, and an admin decides the second.
+/// creates starts <see cref="UserStatus.Pending"/>, holding nothing: proving who you are is not the
+/// same as being let in, and somebody holding <c>auth:accounts.approve</c> decides the second.
 /// </para>
 /// <para>
 /// Never auto-links on a matching email or username. Providers disagree about what "verified" means
 /// and Discord's <c>identify</c> scope returns no email at all, so matching on one is a documented
 /// account-takeover route: register the address at a provider the host trusts, sign in, and inherit
-/// somebody's tier. Linking an identity to an existing account is a deliberate act by the person who
+/// somebody's account. Linking an identity to an existing account is a deliberate act by the person who
 /// already holds it.
 /// </para>
 /// </remarks>
@@ -117,11 +117,11 @@ public sealed class IdentityLinkService(IUserStore store)
             return new LinkResult(LinkOutcome.PendingCapReached, null);
 
         return await ProvisionAsync(
-            identity, KgsmTier.None, TierSource.Derived, UserStatus.Pending, now, ct).ConfigureAwait(false);
+            identity, AccountOrigin.Arrived, UserStatus.Pending, now, ct).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Create an account for a verified identity and attach it, at a tier and status the caller
+    /// Create an account for a verified identity and attach it, with the origin and status the caller
     /// chooses. The seeding path, and the shape <see cref="ResolveOrProvisionAsync"/> uses for an
     /// arrival.
     /// </summary>
@@ -131,7 +131,7 @@ public sealed class IdentityLinkService(IUserStore store)
     /// account.
     /// </remarks>
     public async Task<LinkResult> ProvisionAsync(
-        KgsmIdentity identity, KgsmTier tier, TierSource source, UserStatus status,
+        KgsmIdentity identity, AccountOrigin origin, UserStatus status,
         DateTimeOffset now, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(identity);
@@ -143,7 +143,7 @@ public sealed class IdentityLinkService(IUserStore store)
             // The provider's own rendering of their name, kept verbatim: it is displayed, never
             // matched, so none of the username charset applies to it.
             string.IsNullOrWhiteSpace(identity.Display) ? username : identity.Display,
-            tier, source, status, now, now);
+            origin, status, now, now);
 
         try
         {
@@ -269,9 +269,9 @@ public sealed class IdentityLinkService(IUserStore store)
     /// <remarks>
     /// <para>
     /// Deliberately narrow. An account is only swept when all three hold: it is still
-    /// <see cref="UserStatus.Pending"/>, it is older than the policy's TTL, and its tier is
-    /// <see cref="TierSource.Derived"/> — it arrived on its own rather than being made by hand. An
-    /// account an admin created or approved carries <see cref="TierSource.Granted"/> and stays
+    /// <see cref="UserStatus.Pending"/>, it is older than the policy's TTL, and its origin is
+    /// <see cref="AccountOrigin.Arrived"/> — it arrived on its own rather than being made by hand. An
+    /// account somebody created or approved carries <see cref="AccountOrigin.Admitted"/> and stays
     /// however long it waits, because deleting deliberate work is a different act from tidying up
     /// after someone who signed up and never came back.
     /// </para>
@@ -297,7 +297,7 @@ public sealed class IdentityLinkService(IUserStore store)
             if (user.Status != UserStatus.Pending || user.Created > cutoff)
                 continue;
 
-            if (user.TierSource == TierSource.Granted)
+            if (user.Origin == AccountOrigin.Admitted)
                 continue;
 
             if (await store.DeleteAsync(user.UserId, ct).ConfigureAwait(false))

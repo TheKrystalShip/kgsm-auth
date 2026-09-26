@@ -7,17 +7,17 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// </summary>
 /// <remarks>
 /// The three states answer three different questions and a caller must not collapse them.
-/// <see cref="Pending"/> authenticates and holds no authority — the honest answer for someone who
-/// has proved who they are and has not been let in yet, and what lets a surface render "awaiting
-/// approval" instead of a bare denial. <see cref="Disabled"/> does not authenticate at all: it is
-/// the revocation switch, and it cuts live sessions on every surface through the enabled check.
+/// <see cref="Pending"/> authenticates and holds nothing — the honest answer for someone who has
+/// proved who they are and has not been let in yet, and what lets a surface render "awaiting approval"
+/// instead of a bare denial. <see cref="Disabled"/> does not authenticate at all: it is the revocation
+/// switch, and it cuts live sessions on every surface through the enabled check.
 /// </remarks>
 public enum UserStatus
 {
-    /// <summary>Verified, not yet approved. Signs in; resolves to <see cref="KgsmTier.None"/>.</summary>
+    /// <summary>Verified, not yet approved. Signs in; holds nothing, not even <c>everyone</c>.</summary>
     Pending = 0,
 
-    /// <summary>Approved. Signs in and holds the tier on the record.</summary>
+    /// <summary>Approved. Signs in and holds what its roles and <c>everyone</c> grant.</summary>
     Active = 1,
 
     /// <summary>Switched off. Cannot sign in, and every live session dies at its next validation.</summary>
@@ -25,27 +25,8 @@ public enum UserStatus
 }
 
 /// <summary>
-/// Where a user's tier came from, so an access review can answer <em>why</em> someone holds
-/// operator.
-/// </summary>
-/// <remarks>
-/// The internal record is the sole authority, which means nothing reconciles it against an external
-/// group afterwards. That is a deliberate choice and this column is its compensating control: a tier
-/// nobody ever deliberately granted is exactly the deprovisioning drift an access review looks for,
-/// and without provenance it is indistinguishable from one an admin chose.
-/// </remarks>
-public enum TierSource
-{
-    /// <summary>Seeded from an external mapping. Never re-checked; reported by the drift report.</summary>
-    Derived = 0,
-
-    /// <summary>Chosen by an admin on this host.</summary>
-    Granted = 1,
-}
-
-/// <summary>
-/// A KGSM account. The primary object of the identity model: it exists on its own, carries the
-/// tier, and is what every credential attaches to.
+/// A KGSM account. The primary object of the identity model: it exists on its own, and is what every
+/// credential attaches to.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -54,16 +35,14 @@ public enum TierSource
 /// the day they change it — and both are enumerable, which an opaque id is not.
 /// </para>
 /// <para>
-/// One tier per user, never a permission set. The ordered <c>viewer ⊆ operator ⊆ admin</c> ladder is
-/// the ecosystem's whole authorization model; a permission the ladder cannot express is how the
-/// surfaces diverged before they shared one.
+/// What an account may do is not on it: it is the roles assigned to it, evaluated by
+/// <c>TheKrystalShip.KGSM.Auth.Access</c> from the authority the same store holds.
 /// </para>
 /// </remarks>
 /// <param name="UserId">The opaque <c>usr_&lt;32 hex&gt;</c> id. Stable for the account's life.</param>
 /// <param name="Username">The login name. Renameable; never used as a key.</param>
 /// <param name="DisplayName">What a human is shown. For rendering only, never authority.</param>
-/// <param name="Tier">What this account may do here.</param>
-/// <param name="TierSource">Why it holds that tier.</param>
+/// <param name="Origin">Whether it arrived on its own or somebody admitted it — what pending expiry reads.</param>
 /// <param name="Status">Whether it may be used at all.</param>
 /// <param name="Created">When the account was made.</param>
 /// <param name="Updated">When any field above last changed.</param>
@@ -71,8 +50,7 @@ public sealed record KgsmUser(
     string UserId,
     string Username,
     string DisplayName,
-    KgsmTier Tier,
-    TierSource TierSource,
+    AccountOrigin Origin,
     UserStatus Status,
     DateTimeOffset Created,
     DateTimeOffset Updated)
@@ -87,16 +65,6 @@ public sealed record KgsmUser(
     /// </remarks>
     public KgsmIdentity AsIdentity() => new(
         KgsmActorProvider.Local, UserId, Username, DisplayName, AvatarUrl: null, Scopes: []);
-
-    /// <summary>
-    /// The tier this account actually resolves to right now: the recorded tier while
-    /// <see cref="UserStatus.Active"/>, and <see cref="KgsmTier.None"/> otherwise.
-    /// </summary>
-    /// <remarks>
-    /// Kept here rather than at each call site so no caller can read <see cref="Tier"/> off a
-    /// pending or disabled record and grant on it.
-    /// </remarks>
-    public KgsmTier EffectiveTier => Status == UserStatus.Active ? Tier : KgsmTier.None;
 }
 
 /// <summary>

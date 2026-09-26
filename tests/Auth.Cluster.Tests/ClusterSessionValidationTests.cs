@@ -50,7 +50,6 @@ public sealed class ClusterSessionValidationTests
             Audience = audience,
             Subject = new ClaimsIdentity([
                 new Claim("sub", "local:usr_abc"),
-                new Claim(KgsmAuthClaims.Tier, KgsmTiers.ToWire(KgsmTier.Admin)),
             ]),
             Expires = DateTime.UtcNow.AddMinutes(15),
             SigningCredentials = credentials,
@@ -62,12 +61,12 @@ public sealed class ClusterSessionValidationTests
     public async Task A_session_the_anchor_minted_is_accepted()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), "sid_1");
 
         TokenValidationResult result = await Validate(minted.Token, Known.Of(ClusterId, signer));
 
         Assert.True(result.IsValid, result.Exception?.Message);
-        Assert.Equal(KgsmTier.Admin, SessionClaims.ReadTier(result.ClaimsIdentity!));
+        Assert.Equal("local:usr_abc", SessionClaims.ReadIdentity(result.ClaimsIdentity!)!.Handle);
     }
 
     // ── Refused until the anchor is known ────────────────────────────────────
@@ -76,7 +75,7 @@ public sealed class ClusterSessionValidationTests
     public async Task Everything_is_refused_until_the_anchor_is_known()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), "sid_1");
 
         Assert.False((await Validate(minted.Token, Known.Nothing)).IsValid);
     }
@@ -85,7 +84,7 @@ public sealed class ClusterSessionValidationTests
     public async Task A_session_is_refused_while_no_key_has_been_published()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), "sid_1");
 
         Assert.False((await Validate(minted.Token, new Known(ClusterId, Issuer, []))).IsValid);
     }
@@ -94,7 +93,7 @@ public sealed class ClusterSessionValidationTests
     public async Task A_session_is_refused_while_no_audience_has_been_stated()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), "sid_1");
 
         var half = new Known(null, Issuer, SessionKeys.VerificationKeysFrom(signer.PublicKeys));
 
@@ -105,7 +104,7 @@ public sealed class ClusterSessionValidationTests
     public async Task A_session_is_refused_while_no_issuer_has_been_stated()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(signer).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(signer).MintAccess(Identity(), "sid_1");
 
         var half = new Known(ClusterId, null, SessionKeys.VerificationKeysFrom(signer.PublicKeys));
 
@@ -119,7 +118,7 @@ public sealed class ClusterSessionValidationTests
     {
         using var published = EcdsaSessionSigner.Generate();
         using var stranger = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(stranger).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(stranger).MintAccess(Identity(), "sid_1");
 
         Assert.False((await Validate(minted.Token, Known.Of(ClusterId, published))).IsValid);
     }
@@ -128,7 +127,7 @@ public sealed class ClusterSessionValidationTests
     public async Task Another_cluster_s_session_is_refused()
     {
         using var signer = EcdsaSessionSigner.Generate();
-        MintedToken minted = Anchor(signer, audience: "another-cluster").MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = Anchor(signer, audience: "another-cluster").MintAccess(Identity(), "sid_1");
 
         Assert.False((await Validate(minted.Token, Known.Of(ClusterId, signer))).IsValid);
     }
@@ -138,7 +137,7 @@ public sealed class ClusterSessionValidationTests
     {
         using var signer = EcdsaSessionSigner.Generate();
         MintedToken minted = Anchor(signer, issuer: "https://auth.elsewhere.test")
-            .MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+            .MintAccess(Identity(), "sid_1");
 
         Assert.False((await Validate(minted.Token, Known.Of(ClusterId, signer))).IsValid);
     }
@@ -192,8 +191,8 @@ public sealed class ClusterSessionValidationTests
         using var incoming = EcdsaSessionSigner.Generate();
         Known both = Known.Of(ClusterId, outgoing, incoming);
 
-        MintedToken old = Anchor(outgoing).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
-        MintedToken @new = Anchor(incoming).MintAccess(Identity(), KgsmTier.Admin, "sid_2");
+        MintedToken old = Anchor(outgoing).MintAccess(Identity(), "sid_1");
+        MintedToken @new = Anchor(incoming).MintAccess(Identity(), "sid_2");
 
         Assert.True((await Validate(old.Token, both)).IsValid);
         Assert.True((await Validate(@new.Token, both)).IsValid);
@@ -205,7 +204,7 @@ public sealed class ClusterSessionValidationTests
         using var outgoing = EcdsaSessionSigner.Generate();
         using var incoming = EcdsaSessionSigner.Generate();
 
-        MintedToken old = Anchor(outgoing).MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken old = Anchor(outgoing).MintAccess(Identity(), "sid_1");
 
         Assert.True((await Validate(old.Token, Known.Of(ClusterId, outgoing, incoming))).IsValid);
         Assert.False((await Validate(old.Token, Known.Of(ClusterId, incoming))).IsValid);

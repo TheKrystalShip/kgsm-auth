@@ -1,5 +1,18 @@
 namespace TheKrystalShip.KGSM.Auth.Users;
 
+/// <summary>
+/// An external identity attached to a replicated account: enough to resolve who somebody is, and
+/// nothing that could prove it.
+/// </summary>
+/// <remarks>
+/// A handle proves nothing on its own — it is the name of a fact, not the evidence for it — so it
+/// travels where a password hash never does: a session naming <c>discord:123</c> is matched to an
+/// account through it, and a member with no such row would report a stranger.
+/// </remarks>
+/// <param name="Handle">The <c>provider:subject</c> handle a session's subject is matched against.</param>
+/// <param name="Label">What a person sees in "connected accounts". Never matched on.</param>
+public sealed record ReplicatedIdentity(string Handle, string? Label);
+
 /// <summary>The message types the authority travels between members as.</summary>
 /// <remarks>
 /// A changed record carries the whole record at the version it was last written at; a removal carries

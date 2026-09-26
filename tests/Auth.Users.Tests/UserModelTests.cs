@@ -21,15 +21,6 @@ public class UserModelTests
         Assert.Equal(user.AsIdentity().Handle, (user with { Username = "kaito" }).AsIdentity().Handle);
     }
 
-    [Theory]
-    [InlineData(UserStatus.Active, KgsmTier.Admin)]
-    [InlineData(UserStatus.Pending, KgsmTier.None)]
-    [InlineData(UserStatus.Disabled, KgsmTier.None)]
-    public void OnlyAnActiveAccountHoldsTheTierWrittenOnIt(UserStatus status, KgsmTier expected)
-    {
-        Assert.Equal(expected, (Make.User(tier: KgsmTier.Admin, status: status)).EffectiveTier);
-    }
-
     [Fact]
     public void IdsCarryTheirPrefixAreUnguessableAndNeverRepeat()
     {
@@ -161,12 +152,12 @@ public class UserWireTests
         Assert.Equal(UserStatus.Active, UserStatuses.Parse("  Active "));
 
     [Fact]
-    public void AProvenanceThisBuildDoesNotKnowReadsAsDerived()
+    public void AnOriginThisBuildDoesNotKnowReadsAsArrived()
     {
-        // So it lands in the drift report rather than passing for a tier an admin chose.
-        Assert.Equal(TierSource.Granted, TierSources.Parse("granted"));
-        Assert.Equal(TierSource.Derived, TierSources.Parse("inherited-from-somewhere"));
-        Assert.Equal(TierSource.Derived, TierSources.Parse(null));
+        // The origin that expires unattended, rather than the one that is spared.
+        Assert.Equal(AccountOrigin.Admitted, AccountWire.ParseOrigin("admitted"));
+        Assert.Equal(AccountOrigin.Arrived, AccountWire.ParseOrigin("inherited-from-somewhere"));
+        Assert.Equal(AccountOrigin.Arrived, AccountWire.ParseOrigin(null));
     }
 
     [Fact]

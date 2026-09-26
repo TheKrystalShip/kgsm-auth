@@ -52,7 +52,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task An_admin_creates_an_admitted_account_holding_nothing_yet()
     {
         string admin = Unique("creator-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         string subject = Unique("created-");
@@ -87,7 +87,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task An_account_can_be_created_for_somebody_who_will_only_arrive_by_provider()
     {
         string admin = Unique("provisioner-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         string subject = Unique("awaited-");
@@ -106,7 +106,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task A_new_account_cannot_be_created_already_switched_off()
     {
         string admin = Unique("offswitch-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         HttpResponseMessage response = await SendAsync(
@@ -122,7 +122,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task A_weak_password_is_refused_at_creation_like_everywhere_else()
     {
         string admin = Unique("floor-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         HttpResponseMessage response = await SendAsync(
@@ -138,7 +138,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task Creating_an_account_takes_the_create_action()
     {
         string viewer = Unique("presumptuous-");
-        await anchor.SeedAsync(viewer, Long, KgsmTier.Viewer);
+        await anchor.SeedAsync(viewer, Long, owner: false);
         string bearer = await BearerAsync(viewer, Long);
 
         HttpResponseMessage response = await SendAsync(
@@ -154,11 +154,11 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task An_admin_sets_a_password_without_knowing_the_old_one()
     {
         string admin = Unique("resetter-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         string subject = Unique("reset-");
-        KgsmUser user = await anchor.SeedAsync(subject, Long, KgsmTier.Viewer);
+        KgsmUser user = await anchor.SeedAsync(subject, Long, owner: false);
 
         // The case it exists for is a person who has lost theirs. Requiring the old one would make
         // the door useless for the only situation that reaches it.
@@ -184,11 +184,11 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task An_admin_reset_clears_the_lockout_it_resolves()
     {
         string admin = Unique("rescuer-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         string subject = Unique("locked-");
-        KgsmUser user = await anchor.SeedAsync(subject, Long, KgsmTier.Viewer);
+        KgsmUser user = await anchor.SeedAsync(subject, Long, owner: false);
 
         for (int attempt = 0; attempt < 6; attempt++)
             await SignInRawAsync(subject, $"wrong-{attempt}");
@@ -209,10 +209,10 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task Setting_somebody_elses_password_needs_admin()
     {
         string viewer = Unique("nosy-");
-        await anchor.SeedAsync(viewer, Long, KgsmTier.Viewer);
+        await anchor.SeedAsync(viewer, Long, owner: false);
         string bearer = await BearerAsync(viewer, Long);
 
-        KgsmUser target = await anchor.SeedAsync(Unique("target-"), Long, KgsmTier.Viewer);
+        KgsmUser target = await anchor.SeedAsync(Unique("target-"), Long, owner: false);
 
         HttpResponseMessage response = await SendAsync(
             HttpMethod.Post, $"/auth/cluster/users/{target.UserId}/password", bearer,
@@ -228,11 +228,11 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task Deleting_an_account_ends_it_and_records_what_it_was()
     {
         string admin = Unique("remover-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         string subject = Unique("removed-");
-        KgsmUser user = await anchor.SeedAsync(subject, Long, KgsmTier.Operator);
+        KgsmUser user = await anchor.SeedAsync(subject, Long, owner: false);
 
         Assert.Equal(HttpStatusCode.NoContent,
             (await SendAsync(HttpMethod.Delete, $"/auth/cluster/users/{user.UserId}", bearer)).StatusCode);
@@ -256,10 +256,10 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task Deleting_an_account_journals_every_assignment_that_went_with_it()
     {
         string admin = Unique("remover-");
-        KgsmUser owner = await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        KgsmUser owner = await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
-        KgsmUser user = await anchor.SeedAsync(Unique("assigned-"), Long, KgsmTier.Operator);
+        KgsmUser user = await anchor.SeedAsync(Unique("assigned-"), Long, owner: false);
         string role = (await anchor.Store.ApplyAsync(owner.UserId, new Access.CreateRole(Unique("Role-")),
             await anchor.Store.VersionAsync(), DateTimeOffset.UtcNow)).CreatedId!;
         string assignment = (await anchor.Store.ApplyAsync(owner.UserId, new Access.Assign(user.UserId, role, Access.AccessScope.Cluster),
@@ -276,7 +276,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task The_last_active_Owner_cannot_be_deleted()
     {
         string admin = Unique("sole-");
-        KgsmUser self = await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        KgsmUser self = await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         // Every other Owner in the shared store is switched off first, so this really is the last one.
@@ -308,7 +308,7 @@ public sealed class AccountDoorTests(AnchorFixture anchor)
     public async Task Deleting_an_account_that_is_not_there_is_a_404()
     {
         string admin = Unique("hunter-");
-        await anchor.SeedAsync(admin, Long, KgsmTier.Admin);
+        await anchor.SeedAsync(admin, Long, owner: true);
         string bearer = await BearerAsync(admin, Long);
 
         HttpResponseMessage response =

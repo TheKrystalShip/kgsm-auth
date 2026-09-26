@@ -15,12 +15,10 @@ feed. Every other component is a resource server and takes `Auth.Cluster`, which
 session and cannot produce one. `Auth.Testing` compiles the anchor's minter for test projects, so a
 test presents exactly the session the anchor would mint; no production project references it.
 
-**Identity and authority are two seams, not one.** The anchor's `IIdentityProvider` answers *who is
-this* (the OAuth bounce and the code exchange); `IAuthorityProvider` answers *what may they do* (the
-tier). An identity provider answers the first, and `Auth.Users` answers the second for everyone,
-however they signed in. **`IAuthorityProvider` has exactly one implementation that ships: the account
-store.** A provider implements the identity half and nothing else, which is what lets one be added
-with no authority story of its own.
+**Identity and access are two seams, not one.** The anchor's `IIdentityProvider` answers *who is
+this* (the OAuth bounce and the code exchange); `Auth.Access`, evaluating the authority the account
+store holds, answers *what may they do*. An identity provider answers the first and nothing else,
+which is what lets one be added with no access story of its own; a session carries the first alone.
 
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
 its own with a password, and an external identity is a credential attached to it.
@@ -30,11 +28,11 @@ member that holds the accounts and signs people in to the whole cluster at once.
 these libraries by project reference, so a change to a library is a compile break here before it is
 anything else.
 
-**The access model that replaces the tiers is `Auth.Access`** — actions declared by components,
-permissions, ranked roles, assignments scoped to the cluster, a node or an instance, and service
-accounts — with its authority `kgsm-docs/plans/permissions.md`. The account store holds it at schema
-version 2 (`SqliteAuthorityStore`), and `UserStoreUpgrade` brings a version 1 file there. The anchor
-runs on it; every other surface enforces the tiers from its version 1 replica until that plan's cutover.
+**The access model is `Auth.Access`** — actions declared by components, permissions, ranked roles,
+assignments scoped to the cluster, a node or an instance, and service accounts — with its authority
+`kgsm-docs/plans/permissions.md`. The account store holds it at schema version 2
+(`SqliteAuthorityStore`), and `UserStoreUpgrade` brings a version 1 file, whose accounts carried a
+tier, there.
 
 **Each package's locked decisions live in a `CLAUDE.md` beside it**: `src/Auth.Access/`,
 `src/Auth.Users/`, `src/Auth.Journal/`, `src/Auth.Cluster/`, `src/Auth.Anchor/` (the daemon, the Discord
@@ -55,16 +53,16 @@ account-store design is also covered by `../auth-internal-users-plan.md`, and th
   most providers, and keying on one detaches a person from their own sessions the day they rename.
 - **`ActorString` and `Handle` are different strings on purpose.** The handle keys things; the actor
   string (`provider:username`) is what a human reads in an audit log. Do not merge them.
-- **Three ordered tiers, and the ordering is load-bearing.** `admin ⊇ operator ⊇ viewer` is what lets a
-  viewer requirement admit an operator. Do not add a tier between them without walking every
-  consumer's gate, and do not add a parallel boolean axis — a permission the tier ladder cannot express
-  lets surfaces answer the same question differently.
-- **No surface derives authority from a group, a guild or a role.** An OAuth application carries the
-  application and nothing else; the account store is the single authority on what anyone may do,
-  including for kgsm-bot, whose caller is a Discord account with no login behind it. Do not add a role
-  map: an authority source that lives outside the account lets surfaces disagree about one person.
-- **Parsing is fail-closed.** `KgsmTiers.Parse` maps anything unrecognised — absent, misspelled, or a
-  tier invented by a newer peer — to `None`. Never add a permissive fallback.
+- **One evaluator decides access.** `AccessEvaluator` in `Auth.Access` answers every "may this
+  account do this action here", on the anchor and on every member from its replica. Do not add a
+  second check beside it — a rule written anywhere else lets surfaces answer the same question
+  differently.
+- **No surface derives access from an outside group, a guild or a provider's role.** An OAuth
+  application carries the application and nothing else; the account store is the single authority on
+  what anyone may do, including for kgsm-bot, whose caller is a Discord account with no login behind
+  it. An access source that lives outside the store lets surfaces disagree about one person.
+- **Parsing is fail-closed.** An unrecognised status is disabled, an unrecognised action id is
+  malformed, and nothing unrecognised ever grants. Never add a permissive fallback.
 - **A provider is a key, never a property.** The anchor reads `KgsmAuth:Providers:<name>:ClientId`
   and `ClientSecret`, so wiring it to a new provider is a pair of environment keys and no code. Do not
   add a per-provider setting beside that pattern: an asymmetry there is how one provider ends up with
@@ -95,7 +93,8 @@ the daemon. Only the bare `v*` fires the release workflow, which asserts the tag
 
 ## Gotchas
 
-- A change to how a tier is resolved changes live authority on four running surfaces at once. The
-  tests in `tests/Auth.Users.Tests/` are the specification — extend them before the code.
+- A change to how access is evaluated changes it on every running surface at once. The tests in
+  `tests/Auth.Access.Tests/` and `tests/Auth.Users.Tests/` are the specification — extend them before
+  the code.
 - The packages are referenced by projects in four other repos — kgsm-api, kgsm-llm, kgsm-bot and
   kgsm-dns. Build those before declaring work done.

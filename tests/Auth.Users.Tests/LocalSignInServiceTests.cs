@@ -12,9 +12,7 @@ public class LocalSignInServiceTests
         IUserPasswordHasher? hasher = null, LockoutPolicy? lockout = null)
     {
         TempStore temp = new();
-        LocalSignInService signIn = new(
-            temp.Store, hasher ?? new IdentityPasswordHasher(),
-            new UserStoreAuthority(temp.Store), lockout);
+        LocalSignInService signIn = new(temp.Store, hasher ?? new IdentityPasswordHasher(), lockout);
 
         return (temp, signIn);
     }
@@ -28,19 +26,18 @@ public class LocalSignInServiceTests
     }
 
     [Fact]
-    public async Task TheRightPasswordSignsInWithTheTierOnTheRecord()
+    public async Task TheRightPasswordSignsInAsTheAccount()
     {
         (TempStore temp, LocalSignInService signIn) = Build();
         using TempStore _ = temp;
 
-        KgsmUser user = await Enrol(temp, signIn, Make.User("haru", KgsmTier.Admin));
+        KgsmUser user = await Enrol(temp, signIn, Make.User("haru"));
         LocalSignInResult result = await signIn.SignInAsync("haru", Password, Make.Now);
 
         Assert.Equal(LocalSignInOutcome.Success, result.Outcome);
-        Assert.Equal(KgsmTier.Admin, result.Principal!.Tier);
-        Assert.Equal(KgsmActorProvider.Local, result.Principal.Identity.Provider);
-        Assert.Equal(user.UserId, result.Principal.Identity.Subject);
-        Assert.Equal("local:haru", result.Principal.Identity.ActorString);
+        Assert.Equal(KgsmActorProvider.Local, result.Identity!.Provider);
+        Assert.Equal(user.UserId, result.Identity.Subject);
+        Assert.Equal("local:haru", result.Identity.ActorString);
     }
 
     [Fact]
@@ -64,11 +61,11 @@ public class LocalSignInServiceTests
         (TempStore temp, LocalSignInService signIn) = Build();
         using TempStore _ = temp;
 
-        await Enrol(temp, signIn, Make.User("haru", KgsmTier.Admin, UserStatus.Pending));
+        await Enrol(temp, signIn, Make.User("haru", UserStatus.Pending));
         LocalSignInResult result = await signIn.SignInAsync("haru", Password, Make.Now);
 
         Assert.Equal(LocalSignInOutcome.Success, result.Outcome);
-        Assert.Equal(KgsmTier.None, result.Principal!.Tier);
+        Assert.NotNull(result.Identity);
         Assert.Equal(UserStatus.Pending, result.User!.Status);
     }
 
@@ -78,12 +75,12 @@ public class LocalSignInServiceTests
         (TempStore temp, LocalSignInService signIn) = Build();
         using TempStore _ = temp;
 
-        await Enrol(temp, signIn, Make.User("haru", KgsmTier.Admin, UserStatus.Disabled));
+        await Enrol(temp, signIn, Make.User("haru", UserStatus.Disabled));
 
         LocalSignInResult result = await signIn.SignInAsync("haru", Password, Make.Now);
 
         Assert.Equal(LocalSignInOutcome.Disabled, result.Outcome);
-        Assert.Null(result.Principal);
+        Assert.Null(result.Identity);
         Assert.Equal(UserStatus.Disabled, result.User!.Status);
     }
 
@@ -96,7 +93,7 @@ public class LocalSignInServiceTests
         (TempStore temp, LocalSignInService signIn) = Build();
         using TempStore _ = temp;
 
-        await Enrol(temp, signIn, Make.User("haru", KgsmTier.Admin, UserStatus.Disabled));
+        await Enrol(temp, signIn, Make.User("haru", UserStatus.Disabled));
 
         Assert.Equal(
             LocalSignInOutcome.InvalidCredentials,

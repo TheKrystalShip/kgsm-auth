@@ -42,7 +42,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
     [Fact]
     public async Task A_session_it_mints_verifies_against_the_key_it_publishes()
     {
-        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Operator, "verified");
+        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: false, "verified");
 
         // Exactly what a member has: the published document, fetched over HTTP, and nothing else.
         string published = await anchor.Client.GetStringAsync("/auth/cluster/public-key");
@@ -61,7 +61,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
         Assert.True(result.IsValid);
 
         // A session proves who, never what: no claim about access rides on it.
-        Assert.Null(result.ClaimsIdentity!.FindFirst(KgsmAuthClaims.Tier));
+        Assert.Null(result.ClaimsIdentity!.FindFirst("tier"));
 
         // The audience is the cluster, which is what makes one sign-in valid on every member of it.
         Assert.Contains(AnchorFixture.ClusterId, new JsonWebToken(session.Access).Audiences);
@@ -84,7 +84,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
     [Fact]
     public async Task Authority_is_read_from_the_store_rather_than_the_token()
     {
-        (KgsmUser user, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "live");
+        (KgsmUser user, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: true, "live");
         Assert.Equal(HttpStatusCode.OK, (await GetAsync("/auth/cluster/users", session.Access)).StatusCode);
 
         // Owner taken away after the session was minted — by the bootstrap administrator, so the
@@ -110,7 +110,7 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
     [Fact]
     public async Task A_refresh_token_is_not_a_bearer()
     {
-        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "kinds");
+        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: true, "kinds");
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await GetAsync("/auth/cluster/users", session.Refresh)).StatusCode);
     }
@@ -118,10 +118,10 @@ public sealed class AnchorEndpointTests(AnchorFixture anchor)
     [Fact]
     public async Task The_account_list_is_admin_only_and_matches_the_store()
     {
-        (_, AnchorFixture.Session viewer) = await anchor.SignedInAsync(KgsmTier.Viewer, "nosy");
+        (_, AnchorFixture.Session viewer) = await anchor.SignedInAsync(owner: false, "nosy");
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsync("/auth/cluster/users", viewer.Access)).StatusCode);
 
-        (KgsmUser admin, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "boss");
+        (KgsmUser admin, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: true, "boss");
         HttpResponseMessage response = await GetAsync("/auth/cluster/users", session.Access);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -169,7 +169,7 @@ public sealed class AnchorStandDownTests(AnchorFixture anchor)
     [Fact]
     public async Task A_member_that_does_not_hold_the_accounts_answers_for_none_of_them()
     {
-        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "standdown");
+        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: true, "standdown");
 
         await anchor.StandingBy("node-b-auth", async () =>
         {
@@ -213,7 +213,7 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
     private async Task<string> AdminBearerAsync() =>
-        (await anchor.SignedInAsync(KgsmTier.Admin, "writer-admin")).Session.Access;
+        (await anchor.SignedInAsync(owner: true, "writer-admin")).Session.Access;
 
     private async Task<HttpResponseMessage> PatchAsync(string bearer, string userId, object body)
     {
@@ -229,7 +229,7 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     public async Task A_change_takes_a_version_and_every_change_takes_a_higher_one()
     {
         string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer, UserStatus.Pending);
+        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", owner: false, UserStatus.Pending);
 
         JsonElement first = await (await PatchAsync(bearer, subject.UserId, new { status = "active" }))
             .Content.ReadFromJsonAsync<JsonElement>();
@@ -246,8 +246,8 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     public async Task Approving_an_arrival_admits_it()
     {
         string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(Unique("arrival-"), "a password", KgsmTier.Viewer, UserStatus.Pending);
-        await anchor.Store.UpdateAsync(subject with { TierSource = TierSource.Derived });
+        KgsmUser subject = await anchor.SeedAsync(Unique("arrival-"), "a password", owner: false, UserStatus.Pending);
+        await anchor.Store.UpdateAsync(subject with { Origin = AccountOrigin.Arrived });
 
         JsonElement account = (await (await PatchAsync(bearer, subject.UserId, new { status = "active" }))
             .Content.ReadFromJsonAsync<JsonElement>()).GetProperty("account");
@@ -261,7 +261,7 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     public async Task A_status_nobody_recognises_is_refused()
     {
         string bearer = await AdminBearerAsync();
-        KgsmUser subject = await anchor.SeedAsync(Unique("typo-"), "a password", KgsmTier.Viewer);
+        KgsmUser subject = await anchor.SeedAsync(Unique("typo-"), "a password", owner: false);
 
         HttpResponseMessage response = await PatchAsync(bearer, subject.UserId, new { status = "actve" });
 
@@ -274,7 +274,7 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     [Fact]
     public async Task The_cluster_s_last_active_Owner_cannot_be_switched_off()
     {
-        (KgsmUser only, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Admin, "only-owner");
+        (KgsmUser only, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: true, "only-owner");
 
         // Every other Owner in the shared store is switched off first, so this really is the last one.
         Access.AuthoritySnapshot s = await anchor.Store.LoadAsync();
@@ -304,8 +304,8 @@ public sealed class AnchorAccountWriteTests(AnchorFixture anchor)
     [Fact]
     public async Task Approving_takes_the_approve_action()
     {
-        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(KgsmTier.Operator, "nosy-writer");
-        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", KgsmTier.Viewer, UserStatus.Pending);
+        (_, AnchorFixture.Session session) = await anchor.SignedInAsync(owner: false, "nosy-writer");
+        KgsmUser subject = await anchor.SeedAsync(Unique("subject-"), "a password", owner: false, UserStatus.Pending);
 
         HttpResponseMessage response = await PatchAsync(session.Access, subject.UserId, new { status = "active" });
 

@@ -56,7 +56,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task A_password_sign_in_is_recorded_with_the_session_it_minted()
     {
         string username = Unique("recorded-");
-        KgsmUser user = await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Operator);
+        KgsmUser user = await anchor.SeedAsync(username, "correct horse battery", owner: false);
 
         using HttpClient browser = (await SignInPage.ThroughThePagesAsync(anchor, username, "correct horse battery")).Browser;
 
@@ -91,7 +91,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task A_sign_in_that_did_not_happen_is_not_recorded()
     {
         string username = Unique("refused-");
-        await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
+        await anchor.SeedAsync(username, "correct horse battery", owner: false);
 
         HttpResponseMessage response = await CredentialAsync(username, "not the password");
 
@@ -110,7 +110,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task A_sign_out_is_recorded_against_the_session_it_ended()
     {
         string username = Unique("left-");
-        await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
+        await anchor.SeedAsync(username, "correct horse battery", owner: false);
 
         SignInPage.SignedIn session = await SignInPage.ThroughThePagesAsync(anchor, username, "correct horse battery");
         using HttpClient browser = session.Browser;
@@ -139,7 +139,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task Signing_out_of_a_session_that_already_ended_records_nothing_more()
     {
         string username = Unique("twice-");
-        await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
+        await anchor.SeedAsync(username, "correct horse battery", owner: false);
 
         SignInPage.SignedIn session = await SignInPage.ThroughThePagesAsync(anchor, username, "correct horse battery");
         using HttpClient browser = session.Browser;
@@ -190,7 +190,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task A_registration_that_was_refused_leaves_no_account_line()
     {
         string username = Unique("taken-");
-        await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
+        await anchor.SeedAsync(username, "correct horse battery", owner: false);
 
         HttpResponseMessage response = await RegisterAsync(username, "a long enough password");
 
@@ -206,12 +206,12 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task An_approval_is_recorded_with_who_approved_it()
     {
         string admin = Unique("mover-");
-        await anchor.SeedAsync(admin, "correct horse battery", KgsmTier.Admin);
+        await anchor.SeedAsync(admin, "correct horse battery", owner: true);
         string bearer = await BearerAsync(admin, "correct horse battery");
 
         string subject = Unique("moved-");
         KgsmUser user = await anchor.SeedAsync(
-            subject, "correct horse battery", KgsmTier.None, UserStatus.Pending);
+            subject, "correct horse battery", owner: false, UserStatus.Pending);
 
         Assert.Equal(HttpStatusCode.OK, (await PatchAsync(bearer, user.UserId, new { status = "active" })).StatusCode);
 
@@ -228,11 +228,11 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task A_patch_that_changes_nothing_records_nothing()
     {
         string admin = Unique("still-");
-        await anchor.SeedAsync(admin, "correct horse battery", KgsmTier.Admin);
+        await anchor.SeedAsync(admin, "correct horse battery", owner: true);
         string bearer = await BearerAsync(admin, "correct horse battery");
 
         string subject = Unique("unchanged-");
-        KgsmUser user = await anchor.SeedAsync(subject, "correct horse battery", KgsmTier.Viewer);
+        KgsmUser user = await anchor.SeedAsync(subject, "correct horse battery", owner: false);
 
         Assert.Equal(HttpStatusCode.OK, (await PatchAsync(bearer, user.UserId, new { status = "active" })).StatusCode);
 
@@ -258,7 +258,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     public async Task The_attempt_that_locks_an_account_is_recorded_once_however_long_the_run()
     {
         string username = Unique("guessed-");
-        KgsmUser user = await anchor.SeedAsync(username, "correct horse battery", KgsmTier.Viewer);
+        KgsmUser user = await anchor.SeedAsync(username, "correct horse battery", owner: false);
 
         // Past the policy's threshold, and then well past it. Every attempt after the lock is refused
         // by the lock rather than by the password.

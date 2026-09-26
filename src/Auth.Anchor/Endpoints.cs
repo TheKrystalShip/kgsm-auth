@@ -187,8 +187,8 @@ internal static class Endpoints
         AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
 
         string sessionId = NewSessionId();
-        MintedToken access = tokens.MintAccess(identity, tier: null, sessionId);
-        MintedToken refresh = tokens.MintRefresh(identity, tier: null, sessionId);
+        MintedToken access = tokens.MintAccess(identity, sessionId);
+        MintedToken refresh = tokens.MintRefresh(identity, sessionId);
 
         var registration = new SessionRegistration(
             SessionId: sessionId,
@@ -260,21 +260,21 @@ internal static class Endpoints
 
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
         var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
-        var authority = ctx.RequestServices.GetRequiredService<UserStoreAuthority>();
+        var accounts = ctx.RequestServices.GetRequiredService<AccountResolver>();
 
-        // Standing is re-read rather than carried over from the presented token, so a demotion or a
-        // disable takes effect at the next rotation instead of at the end of the session.
-        AuthorityAnswer answer;
+        // Standing is re-read rather than carried over from the presented token, so a disable takes
+        // effect at the next rotation instead of at the end of the session.
+        AccountAnswer answer;
         try
         {
-            answer = await authority.ResolveAsync(claims.Identity, ctx.RequestAborted);
+            answer = await accounts.ResolveAsync(claims.Identity, ctx.RequestAborted);
         }
         catch (KgsmAuthProviderException)
         {
             return new Rotation(RotationOutcome.Unavailable, null, null);
         }
 
-        if (answer.Outcome != AuthorityOutcome.Ok)
+        if (answer.Outcome != AccountOutcome.Ok)
         {
             // A withdrawn account keeps no session. Killing the row here is what stops the remaining
             // access bearer from being refreshed into a new one for its whole lifetime, and telling
@@ -303,7 +303,7 @@ internal static class Endpoints
             return new Rotation(RotationOutcome.Withdrawn, null, null);
         }
 
-        MintedToken refresh = tokens.MintRefresh(claims.Identity, tier: null, claims.SessionId);
+        MintedToken refresh = tokens.MintRefresh(claims.Identity, claims.SessionId);
 
         // The presented jti has to be the one the session currently holds. Anything else is a replay
         // of a token that has already been rotated away — a stale client or a stolen token, and this
@@ -317,7 +317,7 @@ internal static class Endpoints
             return new Rotation(RotationOutcome.Invalid, null, null);
         }
 
-        MintedToken access = tokens.MintAccess(claims.Identity, tier: null, claims.SessionId);
+        MintedToken access = tokens.MintAccess(claims.Identity, claims.SessionId);
         return new Rotation(RotationOutcome.Rotated, access, refresh);
     }
 
@@ -448,7 +448,7 @@ internal static class Endpoints
             // arrival nobody looked at.
             updated = user with
             {
-                TierSource = status == UserStatus.Active && user.Status == UserStatus.Pending ? TierSource.Granted : user.TierSource,
+                Origin = status == UserStatus.Active && user.Status == UserStatus.Pending ? AccountOrigin.Admitted : user.Origin,
                 Status = status,
                 Updated = now,
             };
@@ -686,7 +686,7 @@ internal static class Endpoints
             Id: user.UserId,
             Username: user.Username,
             DisplayName: user.DisplayName,
-            Origin: user.TierSource == TierSource.Granted ? AccountWire.Admitted : AccountWire.Arrived,
+            Origin: AccountWire.ToWire(user.Origin),
             Status: UserStatuses.ToWire(user.Status),
             HasPassword: credentials.Any(c => c.Kind == CredentialKind.Password),
             Identities: [.. credentials.Where(c => c.Kind == CredentialKind.Identity).Select(c => c.Handle)],

@@ -30,9 +30,9 @@ public sealed class BootstrapAdminTests : IDisposable
     private (IUserStore Store, LocalSignInService SignIn) Empty()
     {
         Directory.CreateDirectory(_root);
-        var store = new SqliteUserStore(new UserStoreOptions { Path = Path.Combine(_root, "users.db") });
+        var store = new SqliteAuthorityStore(new UserStoreOptions { Path = Path.Combine(_root, "users.db") });
         var hasher = new IdentityPasswordHasher();
-        return (store, new LocalSignInService(store, hasher, new UserStoreAuthority(store, TimeSpan.Zero)));
+        return (store, new LocalSignInService(store, hasher));
     }
 
     [Fact]
@@ -43,11 +43,11 @@ public sealed class BootstrapAdminTests : IDisposable
         string? password = await FirstAdmin.CreateAsync(store, signIn, FirstAdmin.DefaultUsername);
         Assert.NotNull(password);
 
-        // Active and admin, not pending: an account awaiting approval is the state this exists to
+        // Active and admitted, not pending: an account awaiting approval is the state this exists to
         // avoid, because there would be nobody to approve it.
         KgsmUser? admin = await store.FindByUsernameAsync(FirstAdmin.DefaultUsername);
         Assert.NotNull(admin);
-        Assert.Equal(KgsmTier.Admin, admin.EffectiveTier);
+        Assert.Equal(AccountOrigin.Admitted, admin.Origin);
         Assert.Equal(UserStatus.Active, admin.Status);
 
         LocalSignInResult result = await signIn.SignInAsync(
@@ -63,7 +63,7 @@ public sealed class BootstrapAdminTests : IDisposable
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         await store.CreateAsync(new KgsmUser(
-            UserIds.NewUserId(), "somebody", "somebody", KgsmTier.Viewer, TierSource.Granted,
+            UserIds.NewUserId(), "somebody", "somebody", AccountOrigin.Admitted,
             UserStatus.Active, now, now));
 
         // Every start but the first, and the case that matters most where an anchor shares a store

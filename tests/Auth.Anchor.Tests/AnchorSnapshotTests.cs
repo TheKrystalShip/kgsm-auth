@@ -28,7 +28,7 @@ public sealed class AnchorSnapshotTests(AnchorFixture anchor)
     [Fact]
     public async Task A_person_s_own_session_does_not_open_this_door()
     {
-        string bearer = (await anchor.SignedInAsync(KgsmTier.Admin, "person")).Session.Access;
+        string bearer = (await anchor.SignedInAsync(owner: true, "person")).Session.Access;
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "/auth/cluster/snapshot");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
@@ -42,7 +42,7 @@ public sealed class AnchorSnapshotTests(AnchorFixture anchor)
     public async Task A_member_receives_every_account_with_its_version_and_no_secret()
     {
         string username = Unique("replicated-");
-        KgsmUser user = await anchor.SeedAsync(username, "a real password", KgsmTier.Operator);
+        KgsmUser user = await anchor.SeedAsync(username, "a real password", owner: false);
         await anchor.Store.AddCredentialAsync(new UserCredential(
             UserIds.NewCredentialId(), user.UserId, CredentialKind.Identity,
             "discord:" + Guid.NewGuid().ToString("N")[..8], null, "haru", DateTimeOffset.UtcNow, null));

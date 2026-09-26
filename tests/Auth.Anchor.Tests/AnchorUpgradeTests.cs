@@ -53,13 +53,35 @@ public sealed class AnchorUpgradeTests(AnchorFixture anchor) : IDisposable
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
         // A version 1 store with an administrator, and a browser signed in under the tiers.
-        SqliteUserStore v1 = new(new UserStoreOptions { Path = users });
-        KgsmUser root = new(UserIds.NewUserId(), "root", "root", KgsmTier.Admin, TierSource.Granted, UserStatus.Active, now, now);
-        await v1.CreateAsync(root);
+        string rootId = UserIds.NewUserId();
+        using (Microsoft.Data.Sqlite.SqliteConnection connection = new($"Data Source={users};Pooling=False"))
+        {
+            connection.Open();
+            using Microsoft.Data.Sqlite.SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE users (
+                    user_id TEXT PRIMARY KEY, username TEXT NOT NULL, username_key TEXT NOT NULL UNIQUE,
+                    display_name TEXT NOT NULL, tier TEXT NOT NULL, tier_source TEXT NOT NULL, status TEXT NOT NULL,
+                    created_utc TEXT NOT NULL, updated_utc TEXT NOT NULL);
+                CREATE TABLE credentials (
+                    credential_id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL, handle TEXT NOT NULL UNIQUE, secret TEXT NULL, label TEXT NULL,
+                    created_utc TEXT NOT NULL, last_used_utc TEXT NULL);
+                CREATE TABLE login_failures (
+                    user_id TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE, failed_count INTEGER NOT NULL,
+                    last_failed_utc TEXT NOT NULL, locked_until_utc TEXT NULL);
+                INSERT INTO schema_meta (key, value) VALUES ('schema_version', '1');
+                INSERT INTO users VALUES ($id, 'root', 'root', 'root', 'admin', 'granted', 'active', $at, $at);
+                """;
+            command.Parameters.AddWithValue("$id", rootId);
+            command.Parameters.AddWithValue("$at", now.UtcDateTime.ToString("o"));
+            command.ExecuteNonQuery();
+        }
 
         SqliteSessionRegistry registry = new(sessionsPath);
-        await registry.CreateProviderSessionAsync("psid", $"local:{root.UserId}", "{}", "cookie", "c", now, now.AddDays(1), null);
-        await registry.CreateAsync(new SessionRegistration("sid", $"local:{root.UserId}", "c", now, now.AddDays(1), null, "jti"), "psid");
+        await registry.CreateProviderSessionAsync("psid", $"local:{rootId}", "{}", "cookie", "c", now, now.AddDays(1), null);
+        await registry.CreateAsync(new SessionRegistration("sid", $"local:{rootId}", "c", now, now.AddDays(1), null, "jti"), "psid");
         Assert.True(await registry.IsAliveAsync("sid"));
 
         UpgradeReport upgrade = UserStoreUpgrade.ToVersion2(users, now);
@@ -74,7 +96,7 @@ public sealed class AnchorUpgradeTests(AnchorFixture anchor) : IDisposable
         services.AddSingleton<IUserStore>(sp => sp.GetRequiredService<AnchorAuthority>().Store!);
         services.AddSingleton<IUserPasswordHasher, IdentityPasswordHasher>();
         services.AddSingleton(sp => new LocalSignInService(sp.GetRequiredService<IUserStore>(),
-            sp.GetRequiredService<IUserPasswordHasher>(), new UserStoreAuthority(sp.GetRequiredService<IUserStore>())));
+            sp.GetRequiredService<IUserPasswordHasher>()));
         services.AddSingleton(registry);
         services.AddSingleton(upgrade);
         services.AddSingleton<AnchorBootstrapper>();
@@ -88,7 +110,7 @@ public sealed class AnchorUpgradeTests(AnchorFixture anchor) : IDisposable
 
         // The administrator is the store's Owner, and the store had accounts, so nobody new was made.
         AuthoritySnapshot s = await provider.GetRequiredService<AnchorAuthority>().Store!.LoadAsync();
-        Assert.True(s.IsOwner(root.UserId));
+        Assert.True(s.IsOwner(rootId));
         Assert.Single(s.Accounts.Values, a => a.Kind == AccountKind.Person);
     }
 }

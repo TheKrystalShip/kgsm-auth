@@ -29,7 +29,7 @@ public sealed class SessionSigningTests
         using var signer = EcdsaSessionSigner.Generate();
         var service = new SessionTokenService(Options(), signer);
 
-        MintedToken minted = service.MintAccess(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken minted = service.MintAccess(Identity(),"sid_1");
 
         // The published document, and nothing else, is what a verifier is given.
         SessionJwks? published = SessionKeys.Read(signer.PublicKeysJson);
@@ -53,7 +53,6 @@ public sealed class SessionSigningTests
 
         Assert.True(result.IsValid);
         Assert.Equal("local:usr_abc", result.ClaimsIdentity!.FindFirst("sub")!.Value);
-        Assert.Equal(KgsmTier.Admin, SessionClaims.ReadTier(result.ClaimsIdentity));
     }
 
     [Fact]
@@ -74,7 +73,7 @@ public sealed class SessionSigningTests
         using var theirs = EcdsaSessionSigner.Generate();
 
         var impostor = new SessionTokenService(Options(), theirs);
-        MintedToken forged = impostor.MintRefresh(Identity(), KgsmTier.Admin, "sid_1");
+        MintedToken forged = impostor.MintRefresh(Identity(),"sid_1");
 
         var service = new SessionTokenService(Options(), mine);
         Assert.Null(await service.ReadRefreshAsync(forged.Token));
@@ -95,14 +94,13 @@ public sealed class SessionSigningTests
 
         // And a session minted before the reload is still valid after it.
         MintedToken minted = new SessionTokenService(Options(), original)
-            .MintRefresh(Identity(), KgsmTier.Operator, "sid_1");
+            .MintRefresh(Identity(), "sid_1");
 
         RefreshClaims? read = await new SessionTokenService(Options(), reloaded)
             .ReadRefreshAsync(minted.Token);
 
         Assert.NotNull(read);
         Assert.Equal("sid_1", read.SessionId);
-        Assert.Equal(KgsmTier.Operator, read.Tier);
     }
 
     [Fact]

@@ -103,7 +103,7 @@ public sealed class AuthorityEndpointTests : IAsyncLifetime
         await sessions.CreateAsync(new SessionRegistration(sid, $"local:{account}", "kgsm-cluster", at, at.AddDays(30), null, "jti"), "p" + sid);
 
         KgsmIdentity identity = new("local", account, account, account, null, []);
-        return _cluster.Anchor.Resolve<ISessionTokenService>().MintAccess(identity, tier: null, sid).Token;
+        return _cluster.Anchor.Resolve<ISessionTokenService>().MintAccess(identity, sid).Token;
     }
 
     private async Task<HttpResponseMessage> EditAsync(string bearer, object edit, long? version = null)

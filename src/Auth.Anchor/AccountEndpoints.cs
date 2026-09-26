@@ -80,10 +80,9 @@ internal static class AccountEndpoints
             UserIds.NewUserId(),
             username,
             string.IsNullOrWhiteSpace(body.DisplayName) ? username : body.DisplayName.Trim(),
-            KgsmTier.None,
             // Made by somebody, which is what expiry reads to tell an admitted account from one that
             // arrived on its own.
-            TierSource.Granted,
+            AccountOrigin.Admitted,
             status,
             now,
             now);

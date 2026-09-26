@@ -3,7 +3,7 @@ using System.Security.Claims;
 namespace TheKrystalShip.KGSM.Auth.Cluster;
 
 /// <summary>
-/// Reads identity, tier and session back out of a validated token's claims — shared by the refresh
+/// Reads identity and session back out of a validated token's claims — shared by the refresh
 /// path and by anything answering "who is this caller".
 /// </summary>
 /// <remarks>
@@ -23,8 +23,8 @@ public static class SessionClaims
     /// The provider is read from the handle rather than matched against a list this build knows: a
     /// token minted by a host configured with a provider this build predates still names a real
     /// person, and refusing it would make adding a provider a synchronised upgrade across every
-    /// surface. Authority does not ride on the provider — that is the <c>tier</c> claim, checked
-    /// separately — so reading an unfamiliar one grants nothing.
+    /// surface. Nothing about access rides on a token — a member evaluates the account behind it from
+    /// its own replica — so reading an unfamiliar provider grants nothing.
     /// </remarks>
     public static KgsmIdentity? ReadIdentity(ClaimsIdentity ci)
     {
@@ -41,10 +41,6 @@ public static class SessionClaims
             provider, subject, username, display, avatar,
             [.. scope.Split(' ', StringSplitOptions.RemoveEmptyEntries)]);
     }
-
-    /// <summary>The tier claim. A missing or unreadable one parses to <see cref="KgsmTier.None"/>.</summary>
-    public static KgsmTier ReadTier(ClaimsIdentity ci) =>
-        KgsmTiers.Parse(ci.FindFirst(KgsmAuthClaims.Tier)?.Value);
 
     /// <summary>
     /// The session id, or <see langword="null"/> on a token that carries none. A token with no

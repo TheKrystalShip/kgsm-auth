@@ -26,7 +26,7 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
     private static string Unique(string prefix) => prefix + Guid.NewGuid().ToString("N")[..8];
 
     private async Task<string> BearerAsync() =>
-        (await anchor.SignedInAsync(KgsmTier.Viewer, "looker")).Session.Access;
+        (await anchor.SignedInAsync(owner: false, "looker")).Session.Access;
 
     private async Task<JsonElement> RosterAsync(string bearer)
     {

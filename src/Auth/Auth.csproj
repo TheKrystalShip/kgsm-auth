@@ -19,7 +19,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>4.0.0-dev.2</Version>
+    <Version>4.0.0-dev.3</Version>
     <Description>
       The KGSM authorization model: the ordered viewer/operator/admin tier, the provider-agnostic
       KgsmIdentity, the IAuthorityProvider seam and its failure, the session claim names, and the

@@ -56,7 +56,7 @@ internal readonly record struct Caller(
 /// who has signed out somewhere, and a disabled account is a person whose access was withdrawn.
 /// </para>
 /// </remarks>
-internal sealed class AnchorAuth(SessionReader sessions, UserStoreAuthority authority)
+internal sealed class AnchorAuth(SessionReader sessions, AccountResolver accounts)
 {
     /// <summary>The caller behind <paramref name="request"/>.</summary>
     internal async Task<Caller> ResolveAsync(HttpRequest request, CancellationToken ct)
@@ -67,16 +67,16 @@ internal sealed class AnchorAuth(SessionReader sessions, UserStoreAuthority auth
         if (refusal != CallerRefusal.None || identity is null)
             return new Caller(refusal, null, sessionId);
 
-        AuthorityAnswer answer = await authority.ResolveAsync(identity, ct).ConfigureAwait(false);
+        AccountAnswer answer = await accounts.ResolveAsync(identity, ct).ConfigureAwait(false);
 
         return answer.Outcome switch
         {
-            AuthorityOutcome.Disabled =>
+            AccountOutcome.Disabled =>
                 new Caller(CallerRefusal.AccountDisabled, answer.User, sessionId, identity),
 
             // An account that has been deleted since the session was minted is a stranger holding a
             // token, which is exactly an unauthenticated caller.
-            AuthorityOutcome.NoAccount =>
+            AccountOutcome.NoAccount =>
                 new Caller(CallerRefusal.Unauthenticated, null, sessionId),
 
             _ => new Caller(CallerRefusal.None, answer.User, sessionId, identity),

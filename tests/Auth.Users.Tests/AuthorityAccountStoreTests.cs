@@ -32,8 +32,8 @@ public sealed class AuthorityAccountStoreTests : IDisposable
         }
     }
 
-    private static KgsmUser Person(string username, UserStatus status = UserStatus.Active, TierSource source = TierSource.Granted) =>
-        new(UserIds.NewUserId(), username, username, KgsmTier.Admin, source, status, Now, Now);
+    private static KgsmUser Person(string username, UserStatus status = UserStatus.Active, AccountOrigin origin = AccountOrigin.Admitted) =>
+        new(UserIds.NewUserId(), username, username, origin, status, Now, Now);
 
     private async Task<IReadOnlyList<AuthorityAnnouncement>> OwedAsync() => await _store.PendingAnnouncementsAsync();
 
@@ -44,18 +44,17 @@ public sealed class AuthorityAccountStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task AnAccountReadsBackWithItsOriginAndNoTier()
+    public async Task AnAccountReadsBackWithItsOrigin()
     {
         KgsmUser alice = Person("alice");
-        KgsmUser bob = Person("bob", UserStatus.Pending, TierSource.Derived);
+        KgsmUser bob = Person("bob", UserStatus.Pending, AccountOrigin.Arrived);
         await _store.CreateAsync(alice);
         await _store.CreateAsync(bob);
 
         KgsmUser read = (await _store.FindByUsernameAsync("ALICE"))!;
         Assert.Equal(alice.UserId, read.UserId);
-        Assert.Equal(KgsmTier.None, read.Tier);
-        Assert.Equal(TierSource.Granted, read.TierSource);
-        Assert.Equal(TierSource.Derived, (await _store.FindByIdAsync(bob.UserId))!.TierSource);
+        Assert.Equal(AccountOrigin.Admitted, read.Origin);
+        Assert.Equal(AccountOrigin.Arrived, (await _store.FindByIdAsync(bob.UserId))!.Origin);
         Assert.Equal(UserStatus.Pending, (await _store.FindByIdAsync(bob.UserId))!.Status);
         Assert.Equal(AccountKind.Person, (await _store.LoadAsync()).Accounts[alice.UserId].Kind);
     }
@@ -191,7 +190,7 @@ public sealed class AuthorityAccountStoreTests : IDisposable
         await _store.AddCredentialAsync(new UserCredential("cred_pw", alice.UserId, CredentialKind.Password,
             UserCredentials.LocalHandle(alice.UserId), hasher.Hash("correct horse battery"), null, Now, null));
 
-        LocalSignInService signIn = new(_store, hasher, new UserStoreAuthority(_store));
+        LocalSignInService signIn = new(_store, hasher);
 
         Assert.Equal(LocalSignInOutcome.Success, (await signIn.SignInAsync("alice", "correct horse battery", Now)).Outcome);
         Assert.Equal(LocalSignInOutcome.InvalidCredentials, (await signIn.SignInAsync("alice", "wrong", Now)).Outcome);
@@ -208,7 +207,7 @@ public sealed class AuthorityAccountStoreTests : IDisposable
         Assert.Equal(LinkOutcome.Provisioned, result.Outcome);
         KgsmUser user = (await _store.FindByCredentialAsync("discord:42"))!;
         Assert.Equal(UserStatus.Pending, user.Status);
-        Assert.Equal(TierSource.Derived, user.TierSource);
+        Assert.Equal(AccountOrigin.Arrived, user.Origin);
         Assert.Equal(AccountStatus.Pending, (await _store.LoadAsync()).Accounts[user.UserId].Status);
     }
 }

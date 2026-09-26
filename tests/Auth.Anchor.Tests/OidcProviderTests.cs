@@ -58,11 +58,11 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
     }
 
     private async Task<(KgsmUser User, string Password)> AccountAsync(
-        UserStatus status = UserStatus.Active, KgsmTier tier = KgsmTier.Viewer)
+        UserStatus status = UserStatus.Active)
     {
         string username = "oidc-" + Guid.NewGuid().ToString("N")[..10];
         const string password = "a long enough password";
-        return (await anchor.SeedAsync(username, password, tier, status), password);
+        return (await anchor.SeedAsync(username, password, owner: false, status), password);
     }
 
     private sealed record Pkce(string Verifier, string Challenge);
@@ -581,7 +581,7 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
     public async Task A_pending_account_waits_and_is_returned_to_the_client_once_approved()
     {
         await RegisterClientsAsync();
-        (KgsmUser user, string password) = await AccountAsync(UserStatus.Pending, KgsmTier.None);
+        (KgsmUser user, string password) = await AccountAsync(UserStatus.Pending);
         using HttpClient browser = anchor.Following();
         Pkce pkce = NewPkce();
         await browser.GetAsync(AuthorizeUrl(Panel, PanelRedirect, pkce, state: "wait-state"));
@@ -598,7 +598,7 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
 
         await anchor.Store.UpdateAsync(user with
         {
-            Status = UserStatus.Active, Tier = KgsmTier.Viewer, TierSource = TierSource.Granted,
+            Status = UserStatus.Active, Origin = AccountOrigin.Admitted,
             Updated = DateTimeOffset.UtcNow,
         });
         await Task.Delay(TimeSpan.FromSeconds(6));
@@ -815,7 +815,7 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
     // ── Clients ───────────────────────────────────────────────────────────────
 
     private async Task<string> AdminBearerAsync() =>
-        (await anchor.SignedInAsync(KgsmTier.Admin, "oidc-admin")).Session.Access;
+        (await anchor.SignedInAsync(owner: true, "oidc-admin")).Session.Access;
 
     [Fact]
     public async Task An_administrator_registers_lists_and_removes_a_client()

@@ -96,15 +96,14 @@ builder.Services.AddSingleton<IUserStore>(sp => sp.GetRequiredService<AnchorAuth
     ?? throw new InvalidOperationException(sp.GetRequiredService<AnchorAuthority>().UnavailableReason));
 builder.Services.AddSingleton<IUserPasswordHasher, IdentityPasswordHasher>();
 
-// The staleness bound on a demotion. Short, because the read behind it is a local point query and
-// there is nothing to buy by keeping it long.
-builder.Services.AddSingleton(sp => new UserStoreAuthority(
+// How long a switched-off account can still be found usable. Short, because the read behind it is a
+// local point query and there is nothing to buy by keeping it long.
+builder.Services.AddSingleton(sp => new AccountResolver(
     sp.GetRequiredService<IUserStore>(), TimeSpan.FromSeconds(5)));
 
 builder.Services.AddSingleton(sp => new LocalSignInService(
     sp.GetRequiredService<IUserStore>(),
-    sp.GetRequiredService<IUserPasswordHasher>(),
-    sp.GetRequiredService<UserStoreAuthority>()));
+    sp.GetRequiredService<IUserPasswordHasher>()));
 
 // This anchor's own event journal — the record of what happened to the cluster's accounts. It writes
 // to this daemon's state directory under its own producer name, which is the same rule a reader

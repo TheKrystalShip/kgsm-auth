@@ -177,15 +177,15 @@ public sealed class AnchorFixture : IDisposable
     }
 
     /// <summary>
-    /// An account with a password, as an admin would have created it. <see cref="KgsmTier.Admin"/> is an
-    /// Owner; any other tier holds nothing but <c>everyone</c>.
+    /// An account with a password, as somebody would have created it: an Owner, or holding nothing but
+    /// <c>everyone</c>.
     /// </summary>
     public async Task<KgsmUser> SeedAsync(
-        string username, string password, KgsmTier tier, UserStatus status = UserStatus.Active)
+        string username, string password, bool owner = false, UserStatus status = UserStatus.Active)
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         var user = new KgsmUser(
-            UserIds.NewUserId(), username, username, KgsmTier.None, TierSource.Granted, status, now, now);
+            UserIds.NewUserId(), username, username, AccountOrigin.Admitted, status, now, now);
 
         await Store.CreateAsync(user);
         await Store.AddCredentialAsync(new UserCredential(
@@ -193,7 +193,7 @@ public sealed class AnchorFixture : IDisposable
             UserCredentials.LocalHandle(user.UserId), Hasher.Hash(password),
             Label: null, Created: now, LastUsed: null));
 
-        if (tier == KgsmTier.Admin)
+        if (owner)
             await Store.GrantOwnerLocallyAsync(username, "local:test", now);
 
         return user;
@@ -245,8 +245,8 @@ public sealed class AnchorFixture : IDisposable
             ProviderCookies.Hash(cookie), ClusterId, now, now.AddDays(1), device);
 
         string sid = Endpoints.NewSessionId();
-        var access = tokens.MintAccess(identity, tier: null, sid);
-        var refresh = tokens.MintRefresh(identity, tier: null, sid);
+        var access = tokens.MintAccess(identity, sid);
+        var refresh = tokens.MintRefresh(identity, sid);
         await registry.CreateAsync(
             new SessionRegistration(
                 sid, identity.Handle, ClusterId, now, refresh.ExpiresAt, device, refresh.Jti),
@@ -255,11 +255,11 @@ public sealed class AnchorFixture : IDisposable
         return new Session(access.Token, refresh.Token, sid, provider, cookie);
     }
 
-    /// <summary>A fresh account at <paramref name="tier"/>, signed in.</summary>
-    public async Task<(KgsmUser User, Session Session)> SignedInAsync(KgsmTier tier, string prefix = "user")
+    /// <summary>A fresh account, an Owner or not, signed in.</summary>
+    public async Task<(KgsmUser User, Session Session)> SignedInAsync(bool owner = false, string prefix = "user")
     {
         KgsmUser user = await SeedAsync(
-            prefix + "-" + Guid.NewGuid().ToString("N")[..10], "a long enough password", tier);
+            prefix + "-" + Guid.NewGuid().ToString("N")[..10], "a long enough password", owner);
         return (user, await SignInAsync(user));
     }
 

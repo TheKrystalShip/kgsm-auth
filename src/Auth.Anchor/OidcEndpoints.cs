@@ -229,9 +229,9 @@ internal static class OidcEndpoints
 
         switch (result.Outcome)
         {
-            case LocalSignInOutcome.Success when result.Principal is { } principal && result.User is { } user:
+            case LocalSignInOutcome.Success when result.Identity is { } identity && result.User is { } user:
                 ProviderSessionRow session = await ctx.RequestServices.GetRequiredService<ProviderSessions>()
-                    .EstablishAsync(ctx, principal.Identity, user);
+                    .EstablishAsync(ctx, identity, user);
                 await ProceedAsync(ctx, request, session, json ? Answer.Json : Answer.Navigation, silent: false);
                 return;
 
@@ -436,13 +436,13 @@ internal static class OidcEndpoints
         HttpContext ctx, AuthorizeRequest request, ProviderSessionRow session, Answer answer, bool silent)
     {
         var sessions = ctx.RequestServices.GetRequiredService<ProviderSessions>();
-        var authority = ctx.RequestServices.GetRequiredService<UserStoreAuthority>();
+        var accounts = ctx.RequestServices.GetRequiredService<AccountResolver>();
         bool json = answer is Answer.Json or Answer.WaitJson;
 
-        AuthorityAnswer standing;
+        AccountAnswer standing;
         try
         {
-            standing = await authority.ResolveAsync(session.Identity.ToIdentity(), ctx.RequestAborted);
+            standing = await accounts.ResolveAsync(session.Identity.ToIdentity(), ctx.RequestAborted);
         }
         catch (KgsmAuthProviderException)
         {
@@ -451,7 +451,7 @@ internal static class OidcEndpoints
             return;
         }
 
-        if (standing.Outcome != AuthorityOutcome.Ok || standing.User is not { } user
+        if (standing.Outcome != AccountOutcome.Ok || standing.User is not { } user
             || user.Status == UserStatus.Disabled)
         {
             // The sign-in this browser holds is for an account that can no longer be signed in to, so it
@@ -465,7 +465,7 @@ internal static class OidcEndpoints
                 return;
             }
 
-            bool disabled = standing.Outcome == AuthorityOutcome.Disabled || standing.User?.Status == UserStatus.Disabled;
+            bool disabled = standing.Outcome == AccountOutcome.Disabled || standing.User?.Status == UserStatus.Disabled;
             await RefuseInFlightAsync(ctx, request, json,
                 disabled ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized,
                 disabled ? "account_disabled" : "no_account",
@@ -631,10 +631,10 @@ internal static class OidcEndpoints
         }
 
         KgsmIdentity identity = session.Identity.ToIdentity();
-        AuthorityAnswer standing;
+        AccountAnswer standing;
         try
         {
-            standing = await ctx.RequestServices.GetRequiredService<UserStoreAuthority>()
+            standing = await ctx.RequestServices.GetRequiredService<AccountResolver>()
                 .ResolveAsync(identity, ctx.RequestAborted);
         }
         catch (KgsmAuthProviderException)
@@ -644,7 +644,7 @@ internal static class OidcEndpoints
             return;
         }
 
-        if (standing is not { Outcome: AuthorityOutcome.Ok, User: { Status: UserStatus.Active } user }
+        if (standing is not { Outcome: AccountOutcome.Ok, User: { Status: UserStatus.Active } user }
             || !string.Equals(user.UserId, issued.UserId, StringComparison.Ordinal))
         {
             await OAuthErrorAsync(ctx, StatusCodes.Status400BadRequest, "invalid_grant",

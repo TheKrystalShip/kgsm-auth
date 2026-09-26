@@ -13,11 +13,11 @@ decide what the person holding one may do. None of them can mint a session.
 
 | package | contents | taken by |
 |---|---|---|
-| **`TheKrystalShip.KGSM.Auth`** | the tier model, the identity, the authority seam and its failure, the session claim names, the tier cache, the actor convention. **No dependencies, AOT-safe.** | every surface |
-| **`TheKrystalShip.KGSM.Auth.Access`** | the access model — actions, permissions, ranked roles, assignments scoped to the cluster, a node or an instance, service accounts and their requirements — the evaluator every access question goes through (`AccessEvaluator.Allows`), and the rules deciding who may change any of it (`AuthorityRules`). **No dependencies, AOT-safe.** | the anchor; every member at the cutover |
-| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts: local passwords, the credentials that prove an account, and the tier it holds. One SQLite file per host. | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.KGSM.Auth`** | the identity, the failure of an identity or account source, the session claim names, the actor convention. **No dependencies, AOT-safe.** | every surface |
+| **`TheKrystalShip.KGSM.Auth.Access`** | the access model — actions, permissions, ranked roles, assignments scoped to the cluster, a node or an instance, service accounts and their requirements — the evaluator every access question goes through (`AccessEvaluator.Allows`), the rules deciding who may change any of it (`AuthorityRules`), and what `/me/access` answers (`AccessReport`). **No dependencies, AOT-safe.** | every member |
+| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts — local passwords, the credentials that prove an account — and the authority over them, in one SQLite file (`SqliteAuthorityStore`): the anchor's authoritative copy and every member's replica. | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
 | **`TheKrystalShip.KGSM.Auth.Journal`** | the account events, named and written in one place for every writer. | the anchor, kgsm-api |
-| **`TheKrystalShip.KGSM.Auth.Cluster`** | everything a member or a leaf does about identity as a resource server of the anchor: verify a session it cannot mint (`ClusterSessionValidation`) and read who holds it (`SessionClaims`), read the published key set (`SessionKeys`), admit the provider's registered clients (`IClientOrigins`), honour a session somebody ended (`SessionRevokeHandler`, `ClusterSessionRevocations`), replicate the accounts, write and read the host file a machine's leaves verify against (`HostProviderFile`, `HostSessionKeys`), and name the sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.KGSM.Auth.Cluster`** | everything a member or a leaf does about identity as a resource server of the anchor: verify a session it cannot mint (`ClusterSessionValidation`) and read who holds it (`SessionClaims`), read the published key set (`SessionKeys`), admit the provider's registered clients (`IClientOrigins`), honour a session somebody ended (`SessionRevokeHandler`, `ClusterSessionRevocations`), replicate the authority (`AddAuthorityReplica`) and answer for a person from it (`MemberAccess`), write and read the host file a machine's leaves verify against (`HostProviderFile`, `HostSessionKeys`), and name the sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
 | **`TheKrystalShip.KGSM.Auth.Testing`** | the anchor's session minter and signer, compiled from the anchor's own source, so a test presents a session exactly as the anchor would mint it. | test projects only |
 
 The deployable is **`kgsm-auth-anchor`** (`src/Auth.Anchor`), built from those libraries and shipped
@@ -27,40 +27,29 @@ them.
 
 ## The model
 
-Three ordered tiers — a higher one subsumes the lower (`admin ⊇ operator ⊇ viewer`):
+Components declare the **actions** they perform (`kgsm:server.start`, `auth:roles.edit`); actions are
+filed into **permissions**, permissions into ranked **roles**, and a role is **assigned** to an account
+at a scope — the cluster, a node, or one server. Owner holds everything; `everyone` is what every active
+person holds. The full model and its rules are `kgsm-docs/plans/permissions.md`.
 
-| tier | holds |
-|---|---|
-| `viewer` | reads: status, listings, whether a server is running |
-| `operator` | acts: start, stop, restart, install, uninstall, backup, update |
-| `admin` | host settings, audit configuration, session revocation, reading other people's conversations |
-
-One rule decides every request:
-
-- **The KGSM account carries the tier**, and nothing outside it contributes. A provider proves you are
-  an account this host already has; an identity attached to no account holds `none`, whatever group or
-  guild it belongs to elsewhere.
+One function decides every request, on the anchor and on every member from its own replica:
 
 ```csharp
-KgsmTier tier = await authority.ResolveTierAsync(identity, ct);   // UserStoreAuthority, in production
-
-if (tier < KgsmTier.Operator)
-    return Deny();
+AccessDecision decision = evaluator.Allows(accountId, "kgsm:server.start", AccessScope.ForInstance(node, id, nonce));
+if (!decision.Allowed)
+    return Deny(decision.Reason);
 ```
+
+**A session proves who, never what.** The token names an identity; a member finds the account that
+identity is a credential of in its replica and evaluates it there, so a change of access lands on the
+next request with no session ended.
 
 **Every surface answers it the same way, including kgsm-bot.** The bot has no login of its own, so the
-Discord account the gateway hands it *is* the identity — and the tier is whatever KGSM account that
-identity is attached to, exactly as it is for a browser that signed in with a password:
-
-```csharp
-KgsmTier tier = await authority.ResolveTierAsync(
-    new KgsmIdentity(KgsmActorProvider.Discord, discordUserId, username), ct);
-```
-
-An identity attached to no account holds `none`. A group or a guild role is a fact about somewhere
-else and is not consulted anywhere. A store that cannot be read **throws** rather than resolving to
-`none`: "we could not ask" is not "the answer is no", and reporting the first as the second demotes an
-admin mid-incident.
+Discord account the gateway hands it *is* the identity — resolved to whatever KGSM account it is
+attached to, exactly as for a browser that signed in with a password. An identity attached to no
+account holds nothing. A group or a guild role is a fact about somewhere else and is not consulted
+anywhere. A store that cannot be read **throws** rather than answering: "we could not ask" is not "the
+answer is no", and reporting the first as the second locks an Owner out mid-incident.
 
 ## Configuration
 
@@ -80,7 +69,7 @@ authorize, and the account store answers that.
 ## Why it is dependency-free
 
 Every surface takes this assembly, including the Discord bot, whose deploy is tuned for footprint.
-Anything referenced here would reach all of them, so the tier model stays a pure library: no HTTP, no
+Anything referenced here would reach all of them, so it stays a pure library: no HTTP, no
 configuration binder, no ORM. Transports that need those live in sibling packages that only the
 surfaces needing them take.
 
@@ -163,8 +152,8 @@ var tokens = new SessionTokenService(
         Issuer: "https://auth.anchors.example.com"),
     signer);
 
-MintedToken access  = tokens.MintAccess(identity, tier, sid);
-MintedToken refresh = tokens.MintRefresh(identity, tier, sid);
+MintedToken access  = tokens.MintAccess(identity, sid);
+MintedToken refresh = tokens.MintRefresh(identity, sid);
 ```
 
 **`RefreshLifetime` is written once and used twice** — the token's expiry and the registry row's. It
@@ -237,10 +226,10 @@ every member checking against a key nothing signs with, so "this anchor has no k
 anchor's key is unreadable" must not take the same path. The public half is served at
 `/auth/cluster/public-key` and `/.well-known/jwks.json`, and gossiped to every member.
 
-**Authority is read on every request, never off the token.** The tier claim is what was true at mint
-time; a demotion has to land at the caller's next request, so the store's answer overwrites it. The
-same read happens on refresh, and a withdrawn account has its session ended there rather than being
-left to run out its bearer.
+**Access is evaluated on every request, never read off the token.** The token carries no claim about
+it, so a change of access lands at the caller's next request. The account's standing is re-read on
+refresh too, and a withdrawn account has its session ended there rather than being left to run out
+its bearer.
 
 **Nothing on the serving path leaves the machine.** Signature checks are local and the standing read
 is a local point query, which is what lets a member keep serving and keep refreshing while the
@@ -379,23 +368,23 @@ external provider configured at all. A Discord, GitHub or Google identity is one
 to* an account, never the source of one, and never a source of authority.
 
 ```csharp
-var store  = new SqliteUserStore(new UserStoreOptions());          // /var/lib/kgsm/auth/users.db
-var signIn = new LocalSignInService(store, new IdentityPasswordHasher(), new UserStoreAuthority(store));
+var store  = new SqliteAuthorityStore(new UserStoreOptions());     // the anchor's account store
+var signIn = new LocalSignInService(store, new IdentityPasswordHasher());
 
 LocalSignInResult result = await signIn.SignInAsync(username, password, DateTimeOffset.UtcNow);
 if (result.Outcome == LocalSignInOutcome.Success)
-    Mint(result.Principal!.Identity, result.Principal.Tier);
+    Mint(result.Identity!);
 ```
 
-**A credential answers "which account is this"; the account answers "what may they do".** Nothing
-else contributes. That is what lets a provider be added with no authority story of its own, and it is
-why `UserStoreAuthority` is an `IAuthorityProvider` like any other — the login path does not change
-shape when the source of authority does.
+**A credential answers "which account is this"; the account's roles answer "what may they do".**
+Nothing else contributes. That is what lets a provider be added with no access story of its own — the
+login path is the same shape whichever credential proved the account.
 
-**One file, several services, all of them direct.** The Control Panel API and the assistant each open
-`/var/lib/kgsm/auth/users.db` themselves. It is a shared host *resource*, in the same category as
-`/var/lib/kgsm/leaves/` — not a service, so nothing here can be down, and no leaf ends up
-authenticating through a sibling.
+**One writer, and a replica on every member.** The anchor's store is the authority; every other member
+holds a read-only replica in its own file, built from the anchor's snapshot and kept current by the
+changes it sends, and evaluates every request from that. A member's replica is a host *resource*, not a
+service, so nothing on the serving path can be down, and no leaf ends up authenticating through a
+sibling.
 
 ### The schema rule is the opposite of everywhere else
 
@@ -405,7 +394,9 @@ Two services also deploy separately, so at any moment one may be a version ahead
 
 So changes are **additive only** — add tables, add nullable columns, add indexes; never drop, rename,
 or change what a stored value means. The file carries a `schema_version`, and a store written by a
-build newer than the one opening it is **refused outright** rather than half read.
+build newer than the one opening it is **refused outright** rather than half read. The one change that
+drops anything is `UserStoreUpgrade.ToVersion2`, which takes a version 1 file's tiers away in place and
+copies the file, owner-only, before it touches it.
 
 ### What a password costs
 

@@ -9,9 +9,8 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 // cached against exactly as a role change is.
 //
 // Only person accounts are reached through IUserStore; service accounts belong to the reports that
-// create them. A version 2 account holds no tier: what it may do is its assignments, so a KgsmUser read
-// here carries KgsmTier.None, and its TierSource is the account's origin — Granted for one somebody
-// admitted, Derived for one that arrived by itself.
+// create them. What an account may do is its assignments, which are read through the authority rather
+// than off the account.
 public sealed partial class SqliteAuthorityStore : IUserStore
 {
     private const string PersonColumns =
@@ -275,8 +274,7 @@ public sealed partial class SqliteAuthorityStore : IUserStore
         }
     }
 
-    private static string Origin(KgsmUser user) =>
-        AccountWire.ToWire(user.TierSource == TierSource.Granted ? AccountOrigin.Admitted : AccountOrigin.Arrived);
+    private static string Origin(KgsmUser user) => AccountWire.ToWire(user.Origin);
 
     private async Task<KgsmUser?> ReadPersonAsync(string where, string parameter, CancellationToken ct)
     {
@@ -291,8 +289,7 @@ public sealed partial class SqliteAuthorityStore : IUserStore
         UserId: r.GetString(0),
         Username: r.GetString(1),
         DisplayName: r.GetString(2),
-        Tier: KgsmTier.None,
-        TierSource: AccountWire.ParseOrigin(r.GetString(3)) == AccountOrigin.Admitted ? TierSource.Granted : TierSource.Derived,
+        Origin: AccountWire.ParseOrigin(r.GetString(3)),
         Status: UserStatuses.Parse(r.GetString(4)),
         Created: UserWire.ReadTime(r.GetString(5)),
         Updated: UserWire.ReadTime(r.GetString(6)));

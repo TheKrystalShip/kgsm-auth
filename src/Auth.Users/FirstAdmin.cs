@@ -15,6 +15,8 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// empty, and its password — generated, never chosen — is written to
 /// <see cref="ApiOptions.InitialAdminPasswordPath"/> for whoever has a shell on the host to read.
 /// <c>kgsm-api user bootstrap</c> does the same thing from a terminal and prints the password instead.
+/// The account holds nothing until whoever made it grants it Owner, which the anchor does in the same
+/// start from the store that holds the authority.
 /// </para>
 /// <para>
 /// <b>The file is written once and never rewritten.</b> It is removed the first time the account it
@@ -53,10 +55,10 @@ public static class FirstAdmin
         string password = GeneratePassword();
         DateTimeOffset now = DateTimeOffset.UtcNow;
         KgsmUser user = new(
-            UserIds.NewUserId(), username, "Administrator", KgsmTier.Admin,
-            // The host itself decided this, at the only moment it could — as deliberate as a grant gets,
-            // and the provenance that spares the account from the pending-account expiry.
-            TierSource.Granted, UserStatus.Active, now, now);
+            UserIds.NewUserId(), username, "Administrator",
+            // The host itself decided this, at the only moment it could — as deliberate as admitting
+            // somebody gets, and the origin that spares the account from the pending-account expiry.
+            AccountOrigin.Admitted, UserStatus.Active, now, now);
 
         await store.CreateAsync(user, ct);
         await signIn.SetPasswordAsync(user.UserId, password, now, ct);

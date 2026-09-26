@@ -6,9 +6,9 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </summary>
 /// <remarks>
 /// This answers identity only. What that person may <em>do</em> is a separate question with a
-/// separate answer — see <see cref="IAuthorityProvider"/> — because the two need not come from the
-/// same place: the anchor can verify someone through one provider and grant them authority from
-/// somewhere else entirely.
+/// separate answer — the roles their account holds, evaluated by <c>Auth.Access</c> — because the two
+/// need not come from the same place: the anchor can verify someone through any provider and the
+/// answer about access is the same.
 /// </remarks>
 public interface IIdentityProvider
 {

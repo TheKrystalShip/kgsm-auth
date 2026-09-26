@@ -7,6 +7,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed — the tier model (3.2.1, auth 4.0.0-dev.3, users 2.0.0-dev.6, cluster 1.0.0-dev.16, testing 1.0.0-dev.3)
+
+- **`Auth`**: `KgsmTier`, `KgsmTiers`, `KgsmTierCache`, `IAuthorityProvider`, `ResolvedPrincipal` and
+  the `tier` claim name. `KgsmAuthProviderException` stays, in a file of its own.
+- **`Auth.Users`**: the tier and `TierSource` on `KgsmUser`, which carries `Origin` (`AccountOrigin`)
+  instead; `SqliteUserStore`, the version 1 account replication (`AccountReplica`, `AccountVersions`)
+  and `TierSources`. `SqliteAuthorityStore` is the one reader, and `UserSchema` keeps only the version
+  key and `VersionOne`, which `UserStoreUpgrade` reads. `UserStoreAuthority` is `AccountResolver`,
+  answering an account's standing and nothing about access; `LocalSignInService` takes no resolver and
+  its result carries `Identity`. `IdentityLinkService.ProvisionAsync` takes an origin.
+- **`Auth.Cluster`**: `SessionClaims.ReadTier`, the version 1 account handlers and snapshot worker,
+  `IReplicatedAccounts`, and `MemberActingResolver` with `IMemberAccounts` —
+  `MemberActingAccountResolver`, over the authority replica, is the one member-acting resolver, and
+  `MemberActingRefusal` lives beside it.
+- **The minter** (`ISessionTokenService`, and so `Auth.Testing`) takes no tier: `MintAccess(identity,
+  sid)`, and `RefreshClaims` carries none.
+
 ### Added — judging edits without making them (3.2.0)
 
 - **`POST /auth/cluster/authority/checks`** takes up to 200 edits (`{edits: [...]}`, each an edit request

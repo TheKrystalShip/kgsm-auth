@@ -41,10 +41,3 @@ public sealed record KgsmIdentity(
     public string ActorString =>
         KgsmActor.Format(Provider, string.IsNullOrWhiteSpace(Username) ? Subject : Username);
 }
-
-/// <summary>
-/// The outcome of a login: the verified identity plus the tier this host grants it.
-/// <see cref="KgsmTier.None"/> means "we know who you are, and you have no access here" — a terminal
-/// denial, distinct from a failure to find out.
-/// </summary>
-public sealed record ResolvedPrincipal(KgsmIdentity Identity, KgsmTier Tier);
