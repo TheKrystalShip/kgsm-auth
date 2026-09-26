@@ -176,6 +176,7 @@ internal sealed class BusCluster : IAsyncDisposable
             app.MapGet("/auth/cluster/snapshot", MemberEndpoints.Snapshot);
             app.MapGet("/auth/cluster/authority", AuthorityEndpoints.Read);
             app.MapPost("/auth/cluster/authority/edits", AuthorityEndpoints.Edit);
+            app.MapPost("/auth/cluster/authority/checks", AuthorityEndpoints.Check);
             app.MapGet("/me/access", AuthorityEndpoints.MeAccess);
             app.Services.GetRequiredService<AnchorRole>().Update(AnchorStanding.Holder, AnchorId);
         }

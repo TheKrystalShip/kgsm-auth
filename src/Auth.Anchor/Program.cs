@@ -354,10 +354,11 @@ app.MapPost("/auth/cluster/users/{userId}/sessions/{sid}/revoke", SessionEndpoin
 // is and what they may do. Authenticated by a member service token, never by a person's session.
 app.MapGet("/auth/cluster/snapshot", MemberEndpoints.Snapshot);
 
-// Who may do what: the authority for the pages that administer it, one change at a time, and the
-// caller's own actions here. Served from a store at schema version 2, and 503 from one that is not.
+// Who may do what: the authority for the pages that administer it, one change at a time, whether the
+// rules would allow a change without making it, and the caller's own actions here. Served from a store at schema version 2, and 503 from one that is not.
 app.MapGet("/auth/cluster/authority", AuthorityEndpoints.Read);
 app.MapPost("/auth/cluster/authority/edits", AuthorityEndpoints.Edit);
+app.MapPost("/auth/cluster/authority/checks", AuthorityEndpoints.Check);
 app.MapGet("/me/access", AuthorityEndpoints.MeAccess);
 
 // The verification key, unauthenticated because publishing it is the point: every member has to hold

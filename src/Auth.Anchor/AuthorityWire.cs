@@ -83,6 +83,18 @@ internal sealed record AuthorityRefusalEnvelope(ErrorBody Error, IReadOnlyList<s
 /// <summary>An edit made against an older version: the refusal, and the authority as it stands now.</summary>
 internal sealed record StaleAuthorityEnvelope(ErrorBody Error, AuthorityView Authority);
 
+/// <summary>Edits to judge without making them. Each is an edit request without its version.</summary>
+internal sealed record AuthorityCheckRequest(IReadOnlyList<AuthorityEditRequest>? Edits);
+
+/// <summary>Each edit's answer, in the order asked.</summary>
+/// <param name="Version">The authority version every edit was judged against.</param>
+/// <param name="Results">One answer per edit.</param>
+internal sealed record AuthorityCheckResponse(long Version, IReadOnlyList<AuthorityCheckResult> Results);
+
+/// <summary>Whether the rules allow one edit, and when not, the refusal an edit would get.</summary>
+internal sealed record AuthorityCheckResult(
+    bool Allowed, string? Code = null, string? Message = null, IReadOnlyList<string>? Actions = null);
+
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
@@ -91,4 +103,6 @@ internal sealed record StaleAuthorityEnvelope(ErrorBody Error, AuthorityView Aut
 [JsonSerializable(typeof(AuthorityEditResult))]
 [JsonSerializable(typeof(AuthorityRefusalEnvelope))]
 [JsonSerializable(typeof(StaleAuthorityEnvelope))]
+[JsonSerializable(typeof(AuthorityCheckRequest))]
+[JsonSerializable(typeof(AuthorityCheckResponse))]
 internal sealed partial class AuthorityWireJson : JsonSerializerContext;

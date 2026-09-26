@@ -160,6 +160,57 @@ internal static class AuthorityEndpoints
             AuthorityWireJson.Default.AuthorityEditResult);
     }
 
+    /// <summary>
+    /// <c>POST /auth/cluster/authority/checks</c>: whether the rules would allow each of several edits,
+    /// and why not, changing nothing.
+    /// </summary>
+    /// <remarks>
+    /// This is how a page says why a control is closed before anybody reaches for it — a role above the
+    /// caller's in the assignment picker, a permission a higher role holds — without holding a copy of the
+    /// rules. Each edit is judged by <see cref="AuthorityRules"/> against the same snapshot; nothing is
+    /// held to a recent sign-in, because nothing is written.
+    /// </remarks>
+    internal static async Task Check(HttpContext ctx)
+    {
+        if (!await Endpoints.RequireAuthorityAsync(ctx))
+            return;
+
+        if (await RequireCallerAsync(ctx) is not { } caller)
+            return;
+
+        AuthorityCheckRequest? body = await Endpoints.ReadBodyAsync(ctx, AuthorityWireJson.Default.AuthorityCheckRequest);
+        if (body?.Edits is not { Count: > 0 and <= MaxChecks } edits)
+        {
+            await Endpoints.Refuse(ctx, StatusCodes.Status400BadRequest, "malformed_request",
+                $"A check names between 1 and {MaxChecks} edits.");
+            return;
+        }
+
+        AnchorAuthority authority = ctx.RequestServices.GetRequiredService<AnchorAuthority>();
+        AuthoritySnapshot snapshot = await authority.Source!.CurrentAsync(ctx.RequestAborted);
+
+        List<AuthorityCheckResult> results = new(edits.Count);
+        foreach (AuthorityEditRequest request in edits)
+        {
+            if (ToEdit(request) is not { } edit)
+            {
+                results.Add(new AuthorityCheckResult(false, "malformed_request",
+                    "The edit names no kind this anchor knows, or not what that kind needs."));
+                continue;
+            }
+
+            results.Add(AuthorityRules.Check(snapshot, caller.AccountId!, edit) is { } refused
+                ? new AuthorityCheckResult(false, Code(refused.Code), refused.Message, refused.Actions)
+                : new AuthorityCheckResult(true));
+        }
+
+        await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
+            new AuthorityCheckResponse(snapshot.Version, results), AuthorityWireJson.Default.AuthorityCheckResponse);
+    }
+
+    /// <summary>The most edits one check names: a page's worth of roles, never an enumeration.</summary>
+    internal const int MaxChecks = 200;
+
     /// <summary><c>GET /me/access</c>: the caller's own <c>auth:*</c> actions, at every scope they hold a role in.</summary>
     internal static async Task MeAccess(HttpContext ctx)
     {

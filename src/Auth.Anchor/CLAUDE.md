@@ -164,7 +164,9 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
 - **An authority edit is decided by `AuthorityRules`, never by the endpoint.** `AuthorityEndpoints`
   maps a request to an `AuthorityEdit`, pre-checks it against the snapshot to answer with the rule's
   code, and the store checks it again in the transaction that applies it. A check written in the
-  endpoint is a second implementation of the rules.
+  endpoint is a second implementation of the rules. `POST /auth/cluster/authority/checks` asks the same
+  rules about several edits at once and writes nothing, which is how a page says why a control is
+  closed before anybody reaches for it without the page holding a copy of them.
 - **The anchor's actions are declared twice and held together by a test.** `[Action]` on this assembly
   writes the manifest; `AuthActions` in `Auth.Access` names them for every evaluator.
   `AnchorManifestTests` fails when the two disagree.

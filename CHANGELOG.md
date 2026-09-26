@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — judging edits without making them (3.2.0)
+
+- **`POST /auth/cluster/authority/checks`** takes up to 200 edits (`{edits: [...]}`, each an edit request
+  without its version) and answers, in order, whether the administration rules allow each one and, when
+  not, the refusal it would get (`code`, `message`, `actions`). Nothing is written and nothing is held to
+  a recent sign-in. It is what lets a management page show why a role above the caller's cannot be
+  chosen before anybody chooses it.
+
 ### Added — a report says when its caller holds everything (3.1.0, access 1.0.0-dev.5, users 2.0.0-dev.5, cluster 1.0.0-dev.15)
 
 - **`AccessReport.Owner`** (`"owner"` on the wire) is true for an active Owner on a current member

@@ -257,6 +257,40 @@ public sealed class AuthorityEndpointTests : IAsyncLifetime
         Assert.Contains((await Store.LoadAsync()).AssignmentsOf(_alice), a => a.AssignmentId == assignment);
     }
 
+    // ── checking ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ACheck_AnswersEachEditWithTheRulesRefusal_AndChangesNothing()
+    {
+        long before = await Store.VersionAsync();
+        using HttpRequestMessage request = new(HttpMethod.Post, "/auth/cluster/authority/checks")
+        {
+            Content = JsonContent.Create(new
+            {
+                edits = new object[]
+                {
+                    new { kind = "role.rename", roleId = _seniors, name = "Juniors" },
+                    new { kind = "role.create", name = "Mine" },
+                    new { kind = "role.explode" },
+                },
+            }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await SignInAsync(_manager));
+
+        HttpResponseMessage response = await _http.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        JsonElement body = await JsonAsync(response);
+        Assert.Equal(before, body.GetProperty("version").GetInt64());
+        JsonElement[] results = [.. body.GetProperty("results").EnumerateArray()];
+        Assert.Equal("rank_not_below", results[0].GetProperty("code").GetString());
+        Assert.False(results[0].GetProperty("allowed").GetBoolean());
+        Assert.True(results[1].GetProperty("allowed").GetBoolean());
+        Assert.Equal("malformed_request", results[2].GetProperty("code").GetString());
+        Assert.Equal(before, await Store.VersionAsync());
+        Assert.DoesNotContain((await Store.LoadAsync()).Roles.Values, r => r.Name == "Mine");
+    }
+
     // ── reading ───────────────────────────────────────────────────────────────────────────────
 
     [Fact]
