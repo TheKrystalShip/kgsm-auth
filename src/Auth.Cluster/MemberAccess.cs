@@ -125,12 +125,22 @@ public sealed class MemberAccess(IReplicatedAuthority authority, TimeProvider? c
     private (SqliteAuthorityStore Store, AuthoritySource Source)? _source;
 
     /// <summary>The person behind <paramref name="user"/>, a principal the member's own validation produced.</summary>
-    public async Task<MemberAccessCaller> ResolveAsync(ClaimsPrincipal user, CancellationToken ct = default)
+    public Task<MemberAccessCaller> ResolveAsync(ClaimsPrincipal user, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        if (user.Identity is not ClaimsIdentity identity || SessionClaims.ReadIdentity(identity) is not { } who)
-            return new MemberAccessCaller(MemberAccessRefusal.NoAccount, null, null);
+        return user.Identity is ClaimsIdentity identity && SessionClaims.ReadIdentity(identity) is { } who
+            ? ResolveAsync(who, ct)
+            : Task.FromResult(new MemberAccessCaller(MemberAccessRefusal.NoAccount, null, null));
+    }
+
+    /// <summary>
+    /// The person a verified session names, for a member whose own session check hands it the identity
+    /// rather than a principal.
+    /// </summary>
+    public async Task<MemberAccessCaller> ResolveAsync(KgsmIdentity who, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(who);
 
         if (Source() is not { } source)
             return new MemberAccessCaller(MemberAccessRefusal.Unavailable, null, null,
@@ -162,14 +172,19 @@ public sealed class MemberAccess(IReplicatedAuthority authority, TimeProvider? c
     /// actions <paramref name="include"/> accepts — the ones this member performs.
     /// </summary>
     public async Task<(MemberAccessCaller Caller, AccessReport? Report)> ReportAsync(
-        ClaimsPrincipal user, IEnumerable<AccessScope> targets, Func<string, bool> include, CancellationToken ct = default)
-    {
-        MemberAccessCaller caller = await ResolveAsync(user, ct).ConfigureAwait(false);
-        if (caller.Refusal != MemberAccessRefusal.None)
-            return (caller, null);
+        ClaimsPrincipal user, IEnumerable<AccessScope> targets, Func<string, bool> include, CancellationToken ct = default) =>
+        Report(await ResolveAsync(user, ct).ConfigureAwait(false), targets, include);
 
-        return (caller, AccessReport.For(caller.Evaluator!, caller.AccountId!, targets, include, _clock.GetUtcNow()));
-    }
+    /// <inheritdoc cref="ReportAsync(ClaimsPrincipal, IEnumerable{AccessScope}, Func{string, bool}, CancellationToken)"/>
+    public async Task<(MemberAccessCaller Caller, AccessReport? Report)> ReportAsync(
+        KgsmIdentity who, IEnumerable<AccessScope> targets, Func<string, bool> include, CancellationToken ct = default) =>
+        Report(await ResolveAsync(who, ct).ConfigureAwait(false), targets, include);
+
+    private (MemberAccessCaller Caller, AccessReport? Report) Report(
+        MemberAccessCaller caller, IEnumerable<AccessScope> targets, Func<string, bool> include) =>
+        caller.Refusal != MemberAccessRefusal.None
+            ? (caller, null)
+            : (caller, AccessReport.For(caller.Evaluator!, caller.AccountId!, targets, include, _clock.GetUtcNow()));
 
     /// <summary>
     /// The <c>/me/access</c> answer for an account already known — what a surface pushes to that

@@ -7,7 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added — a member answering `/me/access` (cluster 1.0.0-dev.12, 1.0.0-dev.13)
+### Added — a member answering `/me/access` (cluster 1.0.0-dev.12 to 1.0.0-dev.14)
 
 - **`MemberAccess`** resolves the person behind a session a member has already verified — the
   session's subject looked up as a credential handle in the member's own replica — and answers
@@ -19,6 +19,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`IAuthorityChangeListener`** is told every time the replica takes a change — a record from the
   stream or a snapshot — so a surface refreshes what depends on somebody's access then, not on a timer.
   `MemberAccess.ReportForAccountAsync` is the report it pushes to an account's open connections.
+- `MemberAccess.ResolveAsync` and `ReportAsync` also take the `KgsmIdentity` a member's own session
+  check produced, for a member that does not hand on a claims principal.
 
 ### Added — administering access (2.5.0, access 1.0.0-dev.4)
 
