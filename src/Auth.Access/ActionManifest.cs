@@ -124,9 +124,10 @@ public static class ActionManifests
     }
 }
 
-/// <summary>Source-generated JSON for everything a member reports about actions.</summary>
+/// <summary>Source-generated JSON for everything a member reports about actions, and what it answers about a caller's.</summary>
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = false)]
 [JsonSerializable(typeof(ActionManifest))]
 [JsonSerializable(typeof(MemberCatalogReport))]
 [JsonSerializable(typeof(InstanceUninstalledReport))]
+[JsonSerializable(typeof(AccessReport))]
 public sealed partial class AccessJsonContext : JsonSerializerContext;

@@ -117,63 +117,96 @@ internal sealed class AuthorityIntake(
     /// <summary>Journal a write, then tell the cluster what it changed.</summary>
     private async Task SettleAsync(string member, AuthorityWrite write, CancellationToken ct)
     {
-        await JournalAsync(member, write, ct).ConfigureAwait(false);
+        string[] added = [.. write.Changes.Where(c => c.Kind == AuthorityChangeKind.CatalogActionAdded).Select(c => c.Subject)];
+        if (added.Length > 0)
+            logger.LogInformation("'{Member}' declared {Count} action(s) new to the catalog, unmapped: {Actions}",
+                member, added.Length, string.Join(", ", added));
+
+        await AuthorityJournaling.JournalAsync(
+            journal, write, KgsmActor.Format(KgsmActorProvider.System, member), origin: null, member, ct).ConfigureAwait(false);
         await broadcast.DrainAsync(ct).ConfigureAwait(false);
     }
+}
 
-    /// <summary>
-    /// One line per change a system write made, attributed to the member it came from. The catalog's
-    /// arrivals and departures are one line; every other change is its own.
-    /// </summary>
-    private async Task JournalAsync(string member, AuthorityWrite write, CancellationToken ct)
+/// <summary>
+/// One journal line per change an authority write made, whoever made it.
+/// </summary>
+/// <remarks>
+/// A cascade is journaled as the changes it made — deleting a role is the role's line and one line per
+/// assignment that ended with it — so an access review reads what happened to each person rather than
+/// inferring it. The catalog's arrivals and departures from one report are one line.
+/// </remarks>
+internal static class AuthorityJournaling
+{
+    /// <param name="journal">Where the lines go.</param>
+    /// <param name="write">What the write changed.</param>
+    /// <param name="actor">Who made it: a person, or <c>system:&lt;member&gt;</c> for a member's report.</param>
+    /// <param name="origin">The surface a person made it from, when a person did.</param>
+    /// <param name="member">The member whose report changed the catalog, when one did.</param>
+    /// <param name="ct">Cancellation.</param>
+    internal static async Task JournalAsync(
+        AnchorJournal journal, AuthorityWrite write, string actor, string? origin, string? member, CancellationToken ct)
     {
         if (write.Changes.Count == 0)
             return;
 
-        string actor = KgsmActor.Format(KgsmActorProvider.System, member);
+        bool automatic = origin is null && actor.StartsWith(KgsmActorProvider.System + ":", StringComparison.Ordinal);
 
         string[] added = [.. write.Changes.Where(c => c.Kind == AuthorityChangeKind.CatalogActionAdded).Select(c => c.Subject)];
         string[] removed = [.. write.Changes.Where(c => c.Kind == AuthorityChangeKind.CatalogActionRemoved).Select(c => c.Subject)];
         if (added.Length > 0 || removed.Length > 0)
-        {
-            await journal.CatalogAsync(member, added, removed, write.Version, actor, ct).ConfigureAwait(false);
-
-            if (added.Length > 0)
-                logger.LogInformation("'{Member}' declared {Count} action(s) new to the catalog, unmapped: {Actions}",
-                    member, added.Length, string.Join(", ", added));
-        }
+            await journal.CatalogAsync(member ?? "", added, removed, write.Version, actor, ct).ConfigureAwait(false);
 
         foreach (AuthorityChange change in write.Changes)
         {
             switch (change.Kind)
             {
-                case AuthorityChangeKind.RequirementApproved:
-                    await journal.RequirementAsync(AuthEvents.ServiceRequirementApproved, change.AccountId!, null,
-                        change.Subject, change.Scope, automatic: true, write.Version, actor, ct).ConfigureAwait(false);
-                    break;
-
-                case AuthorityChangeKind.RequirementRevoked:
-                    await journal.RequirementAsync(AuthEvents.ServiceRequirementRevoked, change.AccountId!, null,
-                        change.Subject, change.Scope, automatic: true, write.Version, actor, ct).ConfigureAwait(false);
-                    break;
-
-                case AuthorityChangeKind.AssignmentRevoked:
-                    await journal.AssignmentAsync(AuthEvents.AssignmentRevoked, change.Subject, change.AccountId!, null,
-                        change.RoleId!, change.Name, change.Scope!, write.Version, actor, origin: null, ct).ConfigureAwait(false);
-                    break;
-
+                case AuthorityChangeKind.RoleChanged:
+                case AuthorityChangeKind.RoleRemoved:
                 case AuthorityChangeKind.PermissionChanged:
-                    await journal.AuthorityRecordAsync(AuthEvents.PermissionChanged, change.Subject, change.Name,
+                case AuthorityChangeKind.PermissionRemoved:
+                    await journal.AuthorityRecordAsync(RecordEvent(change.Kind), change.Subject, change.Name,
                         write.Version, actor, ct).ConfigureAwait(false);
+                    break;
+
+                case AuthorityChangeKind.AssignmentGranted:
+                case AuthorityChangeKind.AssignmentRevoked:
+                    await journal.AssignmentAsync(
+                        change.Kind == AuthorityChangeKind.AssignmentGranted ? AuthEvents.AssignmentGranted : AuthEvents.AssignmentRevoked,
+                        change.Subject, change.AccountId!, null, change.RoleId!, change.Name, change.Scope!,
+                        write.Version, actor, origin, ct).ConfigureAwait(false);
+                    break;
+
+                case AuthorityChangeKind.RequirementApproved:
+                case AuthorityChangeKind.RequirementRevoked:
+                    await journal.RequirementAsync(
+                        change.Kind == AuthorityChangeKind.RequirementApproved
+                            ? AuthEvents.ServiceRequirementApproved
+                            : AuthEvents.ServiceRequirementRevoked,
+                        change.AccountId!, null, change.Subject, change.Scope, automatic, write.Version, actor, ct).ConfigureAwait(false);
+                    break;
+
+                case AuthorityChangeKind.AccountDisabled:
+                    await journal.AccountAsync(AuthEvents.UserDisabled, change.Subject, change.Name ?? change.Subject,
+                        fromStatus: UserStatuses.Active, toStatus: UserStatuses.Disabled, actor: actor, origin: origin, ct: ct)
+                        .ConfigureAwait(false);
                     break;
 
                 case AuthorityChangeKind.AccountDeleted:
                     await journal.AccountAsync(AuthEvents.UserDeleted, change.Subject, change.Name ?? change.Subject,
-                        actor: actor, ct: ct).ConfigureAwait(false);
+                        actor: actor, origin: origin, ct: ct).ConfigureAwait(false);
                     break;
             }
         }
     }
+
+    private static string RecordEvent(AuthorityChangeKind kind) => kind switch
+    {
+        AuthorityChangeKind.RoleChanged => AuthEvents.RoleChanged,
+        AuthorityChangeKind.RoleRemoved => AuthEvents.RoleRemoved,
+        AuthorityChangeKind.PermissionChanged => AuthEvents.PermissionChanged,
+        _ => AuthEvents.PermissionRemoved,
+    };
 }
 
 /// <summary><c>catalog.declared</c>: another member's report.</summary>

@@ -67,43 +67,16 @@ internal readonly record struct Caller(
 /// who has signed out somewhere, and a disabled account is a person whose access was withdrawn.
 /// </para>
 /// </remarks>
-internal sealed class AnchorAuth(
-    ISessionTokenService tokens,
-    ISessionValidator sessions,
-    UserStoreAuthority authority)
+internal sealed class AnchorAuth(SessionReader sessions, UserStoreAuthority authority)
 {
-    private readonly JsonWebTokenHandler _handler = new();
-
     /// <summary>The caller behind <paramref name="request"/>.</summary>
     internal async Task<Caller> ResolveAsync(HttpRequest request, CancellationToken ct)
     {
-        string? bearer = ReadBearer(request);
-        if (bearer is null)
-            return new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, null);
+        (CallerRefusal refusal, string? sessionId, KgsmIdentity? identity) =
+            await sessions.ReadAsync(request, ct).ConfigureAwait(false);
 
-        TokenValidationResult result =
-            await _handler.ValidateTokenAsync(bearer, tokens.ValidationParameters).ConfigureAwait(false);
-
-        if (!result.IsValid || result.ClaimsIdentity is null)
-            return new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, null);
-
-        ClaimsIdentity claims = result.ClaimsIdentity;
-
-        // A refresh token presented as a bearer would turn the long-lived credential into the one
-        // sent on every request, which is the whole reason the two are different kinds.
-        if (claims.FindFirst(KgsmAuthClaims.TokenKind)?.Value != KgsmTokenKind.Access)
-            return new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, null);
-
-        string? sessionId = SessionClaims.ReadSessionId(claims);
-        if (sessionId is null)
-            return new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, null);
-
-        if (!await sessions.IsValidAsync(sessionId, ct).ConfigureAwait(false))
-            return new Caller(CallerRefusal.SessionEnded, null, KgsmTier.None, sessionId);
-
-        KgsmIdentity? identity = SessionClaims.ReadIdentity(claims);
-        if (identity is null)
-            return new Caller(CallerRefusal.Unauthenticated, null, KgsmTier.None, sessionId);
+        if (refusal != CallerRefusal.None || identity is null)
+            return new Caller(refusal, null, KgsmTier.None, sessionId);
 
         AuthorityAnswer answer = await authority.ResolveAsync(identity, ct).ConfigureAwait(false);
 
@@ -119,6 +92,49 @@ internal sealed class AnchorAuth(
 
             _ => new Caller(CallerRefusal.None, answer.User, answer.Tier, sessionId, identity),
         };
+    }
+}
+
+/// <summary>
+/// Reads the session behind a request: the signature, the token kind, and whether the session is
+/// still alive. Who the session's holder is, and what they may do, is the caller's next question.
+/// </summary>
+internal sealed class SessionReader(ISessionTokenService tokens, ISessionValidator sessions)
+{
+    private readonly JsonWebTokenHandler _handler = new();
+
+    /// <summary>The live session on <paramref name="request"/> and who it names, or why there is none.</summary>
+    internal async Task<(CallerRefusal Refusal, string? SessionId, KgsmIdentity? Identity)> ReadAsync(
+        HttpRequest request, CancellationToken ct)
+    {
+        string? bearer = ReadBearer(request);
+        if (bearer is null)
+            return (CallerRefusal.Unauthenticated, null, null);
+
+        TokenValidationResult result =
+            await _handler.ValidateTokenAsync(bearer, tokens.ValidationParameters).ConfigureAwait(false);
+
+        if (!result.IsValid || result.ClaimsIdentity is null)
+            return (CallerRefusal.Unauthenticated, null, null);
+
+        ClaimsIdentity claims = result.ClaimsIdentity;
+
+        // A refresh token presented as a bearer would turn the long-lived credential into the one
+        // sent on every request, which is the whole reason the two are different kinds.
+        if (claims.FindFirst(KgsmAuthClaims.TokenKind)?.Value != KgsmTokenKind.Access)
+            return (CallerRefusal.Unauthenticated, null, null);
+
+        string? sessionId = SessionClaims.ReadSessionId(claims);
+        if (sessionId is null)
+            return (CallerRefusal.Unauthenticated, null, null);
+
+        if (!await sessions.IsValidAsync(sessionId, ct).ConfigureAwait(false))
+            return (CallerRefusal.SessionEnded, sessionId, null);
+
+        KgsmIdentity? identity = SessionClaims.ReadIdentity(claims);
+        return identity is null
+            ? (CallerRefusal.Unauthenticated, sessionId, null)
+            : (CallerRefusal.None, sessionId, identity);
     }
 
     /// <summary>

@@ -73,6 +73,7 @@ internal sealed class CorsMiddleware(RequestDelegate next, ClientRegistry client
         || path.Equals("/token")
         || path.Equals("/userinfo")
         || path.StartsWithSegments("/auth/cluster")
+        || path.Equals("/me/access")
         || path.Equals("/auth/identity")
         || path.StartsWithSegments("/auth/config")
         || path.StartsWithSegments("/auth/system")

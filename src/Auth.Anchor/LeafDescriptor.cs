@@ -1,3 +1,4 @@
+using TheKrystalShip.KGSM.Auth.Access;
 using TheKrystalShip.KGSM.ComponentConfig;
 
 // What this daemon can be configured with, declared beside the configuration it describes. The
@@ -14,7 +15,20 @@ using TheKrystalShip.KGSM.ComponentConfig;
     id: "auth-anchor",
     displayName: "Auth anchor",
     unit: "kgsm-auth-anchor.service",
-    role: "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.")]
+    role: "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.",
+    ActionNamespace = "auth")]
+
+// What this anchor does that access is granted for: administering access itself. The generator writes
+// them to deploy/kgsm-auth-anchor.anchor.actions.json, which the anchor reports into its own catalog.
+// AuthActions in Auth.Access names the same actions for every evaluator; a test holds the two together.
+[assembly: Action(AuthActions.RolesEdit, "Edit roles", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.PermissionsEdit, "Edit permissions", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.RolesAssign, "Assign roles", DeclaredEffect.Write, DeclaredScope.Instance)]
+[assembly: Action(AuthActions.AccountsApprove, "Approve accounts", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.AccountsDisable, "Disable accounts", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.AccountsDelete, "Delete accounts", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.AccountsCreate, "Create accounts", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.ServicesManage, "Manage service requirements", DeclaredEffect.Write, DeclaredScope.Cluster)]
 
 // Panel sections, in the order they render. Fields land in one by naming its id, and follow the
 // order they are declared in AnchorSettings.

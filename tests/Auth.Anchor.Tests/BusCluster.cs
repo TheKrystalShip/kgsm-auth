@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.KGSM.Auth.Minting;
 using TheKrystalShip.KGSM.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
@@ -140,7 +141,22 @@ internal sealed class BusCluster : IAsyncDisposable
             builder.Services.AddSingleton<IClusterMessageHandler, InstanceUninstalledHandler>();
             builder.Services.AddSingleton<MemberDepartureWorker>();
             builder.Services.AddSingleton(_ => new SqliteSessionRegistry(Path.Combine(dir, "sessions.db")));
+            builder.Services.AddSingleton<ISessionRegistry>(sp => sp.GetRequiredService<SqliteSessionRegistry>());
             builder.Services.AddSingleton<AnchorAccess>();
+
+            // Sessions, minted and read the way the anchor does, for the authority's own routes.
+            builder.Services.AddSingleton<ISessionTokenService>(_ => new SessionTokenService(
+                new SessionTokenOptions("kgsm-cluster", TimeSpan.FromMinutes(15), TimeSpan.FromDays(30), "https://auth.test"),
+                EcdsaSessionSigner.Generate()));
+            builder.Services.AddSingleton<Microsoft.Extensions.Caching.Memory.IMemoryCache>(_ =>
+                new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+            builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
+                sp.GetRequiredService<ISessionRegistry>(),
+                sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+                TimeSpan.Zero));
+            builder.Services.AddSingleton<SessionReader>();
+            builder.Services.AddSingleton<AuthorityCaller>();
+            builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>()));
         }
         else
         {
@@ -154,7 +170,13 @@ internal sealed class BusCluster : IAsyncDisposable
         WebApplication app = builder.Build();
         app.MapClusterEndpoints();
         if (kind == MemberKind.Anchor)
+        {
             app.MapGet("/auth/cluster/snapshot", MemberEndpoints.Snapshot);
+            app.MapGet("/auth/cluster/authority", AuthorityEndpoints.Read);
+            app.MapPost("/auth/cluster/authority/edits", AuthorityEndpoints.Edit);
+            app.MapGet("/me/access", AuthorityEndpoints.MeAccess);
+            app.Services.GetRequiredService<AnchorRole>().Update(AnchorStanding.Holder, AnchorId);
+        }
 
         await app.StartAsync();
 

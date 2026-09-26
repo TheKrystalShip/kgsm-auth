@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "component": "auth",
+  "version": "2.5.0",
+  "actions": [
+    {
+      "id": "accounts.approve",
+      "title": "Approve accounts",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "accounts.create",
+      "title": "Create accounts",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "accounts.delete",
+      "title": "Delete accounts",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "accounts.disable",
+      "title": "Disable accounts",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "config.read",
+      "title": "Read Auth anchor settings",
+      "effect": "read",
+      "scope": "cluster"
+    },
+    {
+      "id": "config.write",
+      "title": "Change Auth anchor settings",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "journal.read",
+      "title": "Read Auth anchor logs",
+      "effect": "read",
+      "scope": "cluster"
+    },
+    {
+      "id": "lifecycle.restart",
+      "title": "Restart Auth anchor",
+      "effect": "execute",
+      "scope": "cluster"
+    },
+    {
+      "id": "permissions.edit",
+      "title": "Edit permissions",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "roles.assign",
+      "title": "Assign roles",
+      "effect": "write",
+      "scope": "instance"
+    },
+    {
+      "id": "roles.edit",
+      "title": "Edit roles",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "services.manage",
+      "title": "Manage service requirements",
+      "effect": "write",
+      "scope": "cluster"
+    }
+  ],
+  "requires": []
+}

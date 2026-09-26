@@ -221,7 +221,9 @@ builder.Services.AddSingleton<ISessionValidator>(sp => new SessionValidator(
     sp.GetRequiredService<ISessionRegistry>(),
     sp.GetRequiredService<IMemoryCache>(),
     TimeSpan.FromSeconds(5)));
+builder.Services.AddSingleton<SessionReader>();
 builder.Services.AddSingleton<AnchorAuth>();
+builder.Services.AddSingleton<AuthorityCaller>();
 
 // Signing in with an account somebody already holds elsewhere. The provider answers WHO, and the
 // account store answers what they may do — so a provider is added with no authority story of its own.
@@ -349,6 +351,12 @@ app.MapPost("/auth/cluster/users/{userId}/sessions/{sid}/revoke", SessionEndpoin
 // What this anchor serves to other MEMBERS: the accounts, so each can answer for itself who somebody
 // is and what they may do. Authenticated by a member service token, never by a person's session.
 app.MapGet("/auth/cluster/snapshot", MemberEndpoints.Snapshot);
+
+// Who may do what: the authority for the pages that administer it, one change at a time, and the
+// caller's own actions here. Served from a store at schema version 2, and 503 from one that is not.
+app.MapGet("/auth/cluster/authority", AuthorityEndpoints.Read);
+app.MapPost("/auth/cluster/authority/edits", AuthorityEndpoints.Edit);
+app.MapGet("/me/access", AuthorityEndpoints.MeAccess);
 
 // The verification key, unauthenticated because publishing it is the point: every member has to hold
 // it to check a session, and holding it grants nothing — it verifies a signature and cannot produce

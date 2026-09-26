@@ -153,6 +153,13 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   it was sent, so one held in the outbox for a member that is down would confirm nothing on arrival; a
   member that was down goes stale and takes a snapshot. The staleness bound is held to at least two
   heartbeats, so one late heartbeat never leaves a member read-only.
+- **An authority edit is decided by `AuthorityRules`, never by the endpoint.** `AuthorityEndpoints`
+  maps a request to an `AuthorityEdit`, pre-checks it against the snapshot to answer with the rule's
+  code, and the store checks it again in the transaction that applies it. A check written in the
+  endpoint is a second implementation of the rules.
+- **The anchor's actions are declared twice and held together by a test.** `[Action]` on this assembly
+  writes the manifest; `AuthActions` in `Auth.Access` names them for every evaluator.
+  `AnchorManifestTests` fails when the two disagree.
 - **Every `auth:*` action needs a recent sign-in, and only after the evaluator allows it.**
   `AnchorAccess` reads when the session's provider sign-in last proved a credential; nobody is sent to
   type a password for something they would be refused anyway.

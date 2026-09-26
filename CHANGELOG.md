@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — administering access (2.5.0, access 1.0.0-dev.4)
+
+The fourth phase of `kgsm-docs/plans/permissions.md`: the anchor's endpoints for who may do what.
+
+- **`GET /auth/cluster/authority`** — roles in rank order, permissions with the roles holding them, the
+  catalog with each action's declarers and whether it is *unmapped*, assignments, and accounts with
+  service accounts' requirements. Read by a caller holding any `auth:*` action at any scope.
+- **`POST /auth/cluster/authority/edits`** — one change per request, named against the authority
+  version: roles, permissions, assignments and service requirements. A refusal carries the rule's code
+  (`not_permitted`, `rank_not_below`, `not_held` with the actions not held, `permission_held_above`,
+  `last_owner`, …); an edit against an older version is `409 stale_authority` with the authority as it
+  stands; an edit the rules allow on a session that has not proved a credential within the
+  re-authentication window is `reauth_required`. Every change is journaled one line per record, a
+  cascade included, and sent to the cluster.
+- **`GET /me/access`** — the caller's own `auth:*` actions, cluster-wide and at every scope they hold a
+  role in. **`AccessReport`** in `Auth.Access` is the shape and the builder every member answers with.
+- **The anchor declares its actions** (`[Action]` on the assembly, `ActionNamespace = "auth"`) and its
+  build writes `deploy/kgsm-auth-anchor.anchor.actions.json`; a test holds it to `AuthActions`.
+- The bearer and session check is `SessionReader`, shared by the version 1 caller and
+  `AuthorityCaller`, which resolves a session's identity against the version 2 store.
+
 ### Added — the authority, replicated to every member (2.4.0, access 1.0.0-dev.3, users 2.0.0-dev.3, cluster 1.0.0-dev.11, testing 1.0.0-dev.2)
 
 The third phase of `kgsm-docs/plans/permissions.md`: the anchor is the one writer of who may do what,
