@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a member answering `/me/access` (cluster 1.0.0-dev.12)
+
+- **`MemberAccess`** resolves the person behind a session a member has already verified — the
+  session's subject looked up as a credential handle in the member's own replica — and answers
+  `/me/access` for the targets and actions that member supplies (`ReportAsync`). Unavailable, no
+  account and disabled are separate answers.
+- **`AuthorityReplicaFile`** is the replica in the member's own account store file, opened once that
+  file is at schema version 2 and reported unavailable, with the reason, until then. It never creates
+  the file.
+
 ### Added — administering access (2.5.0, access 1.0.0-dev.4)
 
 The fourth phase of `kgsm-docs/plans/permissions.md`: the anchor's endpoints for who may do what.

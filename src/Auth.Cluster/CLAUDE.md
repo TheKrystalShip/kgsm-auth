@@ -57,6 +57,10 @@ implementation each.
 - **A member acts as a service account only when that account is its own.** `MemberActingAccountResolver`
   accepts `svc:<component>@<member>` from `<member>` alone, and like every member-acting call it asserts
   who, never what: the receiver evaluates the account from its own replica.
+- **A member answers for a person from its own replica, and says so when it cannot.** `MemberAccess`
+  reads nothing about access off a token; `AuthorityReplicaFile` opens the member's account store only
+  once it is at schema version 2 and never creates it, and until then every answer is
+  `authority_unavailable` — an outage, never a denial.
 - **Three seams, and the package owns none:** `IReplicatedAuthority` is the member's authority
   replica, `IReplicatedAccounts` its own account store and `IClusterSessionDenyList` its own record of
   ended sessions. Opening a file and serving a route stay the member's business.
