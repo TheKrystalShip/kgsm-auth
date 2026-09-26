@@ -21,12 +21,17 @@ namespace TheKrystalShip.KGSM.Auth.Access;
 /// <param name="Cluster">The actions allowed cluster-wide.</param>
 /// <param name="Nodes">The actions allowed on each node, by member id.</param>
 /// <param name="Instances">The actions allowed on each instance.</param>
+/// <param name="Owner">
+/// Whether the caller may perform every action everywhere, including actions no manifest declares and
+/// so no list here can name: an active Owner on a current member.
+/// </param>
 public sealed record AccessReport(
     [property: JsonPropertyName("version")] long Version,
     [property: JsonPropertyName("current")] bool Current,
     [property: JsonPropertyName("cluster")] IReadOnlyList<string> Cluster,
     [property: JsonPropertyName("nodes")] IReadOnlyDictionary<string, IReadOnlyList<string>> Nodes,
-    [property: JsonPropertyName("instances")] IReadOnlyDictionary<string, IReadOnlyList<string>> Instances)
+    [property: JsonPropertyName("instances")] IReadOnlyDictionary<string, IReadOnlyList<string>> Instances,
+    [property: JsonPropertyName("owner")] bool Owner = false)
 {
     /// <summary>
     /// The report for <paramref name="accountId"/> at <paramref name="targets"/>, listing only the
@@ -67,6 +72,6 @@ public sealed record AccessReport(
 
         return new AccessReport(
             evaluator.Snapshot.Version, evaluator.Snapshot.Freshness.IsCurrent(now),
-            Allowed(AccessScope.Cluster), nodes, instances);
+            Allowed(AccessScope.Cluster), nodes, instances, evaluator.HoldsEverything(accountId));
     }
 }

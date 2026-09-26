@@ -418,4 +418,41 @@ public class AccessEvaluatorTests
 
         Assert.Equal(snapshot.Catalog.Count, new AccessEvaluator(snapshot, world.Clock).EffectiveActions(owner, World.Walter).Count);
     }
+
+    [Fact]
+    public void AReportSaysAnActiveOwnerOnACurrentMemberHoldsEverything()
+    {
+        World world = new();
+        string owner = world.Owner();
+        string alice = world.Person("alice");
+        world.Assign(alice, world.Role("Runner", 1, World.Start), AccessScope.Cluster);
+
+        AccessEvaluator evaluator = world.Evaluator();
+        AccessReport report = AccessReport.For(evaluator, owner, [], _ => true, world.Clock.GetUtcNow());
+
+        Assert.True(report.Owner);
+        Assert.True(evaluator.Allows(owner, "kgsm:never.declared", World.Terraria).Allowed);
+        Assert.False(AccessReport.For(evaluator, alice, [], _ => true, world.Clock.GetUtcNow()).Owner);
+    }
+
+    [Fact]
+    public void AReportDoesNotSayAnOwnerHoldsEverythingWhereTheEvaluatorWouldRefuseThem()
+    {
+        World stale = new();
+        stale.Freshness = AuthorityFreshness.Replica(stale.Clock.GetUtcNow(), TimeSpan.FromMinutes(5));
+        string owner = stale.Owner();
+        stale.Clock.Advance(TimeSpan.FromMinutes(6));
+
+        World disabled = new();
+        string gone = disabled.Person("gone", AccountStatus.Disabled);
+        disabled.Assign(gone, BuiltInRoles.OwnerId, AccessScope.Cluster);
+
+        World outdated = new() { MinimumContract = AccessContract.Version + 1 };
+        string behind = outdated.Owner();
+
+        Assert.False(stale.Evaluator().HoldsEverything(owner));
+        Assert.False(stale.Evaluator().Allows(owner, "kgsm:never.declared", AccessScope.Cluster).Allowed);
+        Assert.False(disabled.Evaluator().HoldsEverything(gone));
+        Assert.False(outdated.Evaluator().HoldsEverything(behind));
+    }
 }

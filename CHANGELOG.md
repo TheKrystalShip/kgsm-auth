@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — a report says when its caller holds everything (3.1.0, access 1.0.0-dev.5, users 2.0.0-dev.5, cluster 1.0.0-dev.15)
+
+- **`AccessReport.Owner`** (`"owner"` on the wire) is true for an active Owner on a current member
+  that evaluates by the cluster's contract — `AccessEvaluator.HoldsEverything`. An Owner performs
+  actions no manifest declares, which no list of declared actions can name, so a surface gating an
+  undeclared action reads this instead. The anchor's `/me/access` and every member's `MemberAccess`
+  report it; users and cluster are re-versioned to carry the access package that has it.
+
 ### Changed — the anchor runs on the access model (3.0.0, users 2.0.0-dev.4, journal 1.1.0-dev.3)
 
 - **The anchor opens its account store at schema version 2, and brings a version 1 file there on

@@ -120,6 +120,22 @@ public sealed class AccessEvaluator(AuthoritySnapshot snapshot, TimeProvider? cl
     }
 
     /// <summary>
+    /// Whether <paramref name="accountId"/> may perform every action at every target, including actions
+    /// no member has declared: an active Owner, on a replica that is current and evaluates by the
+    /// cluster's contract.
+    /// </summary>
+    /// <remarks>
+    /// Steps 1 to 3 of the order, for an action that is not a read. A catalog lists only declared
+    /// actions, so this is the one answer a list of them cannot give.
+    /// </remarks>
+    public bool HoldsEverything(string accountId) =>
+        AccessContract.Version >= Snapshot.MinimumContractVersion
+        && Snapshot.Accounts.TryGetValue(accountId, out AccessAccount? account)
+        && account.Status == AccountStatus.Active
+        && Snapshot.Freshness.IsCurrent(_clock.GetUtcNow())
+        && Snapshot.IsOwner(accountId);
+
+    /// <summary>
     /// Every catalog action <paramref name="accountId"/> may perform at <paramref name="target"/>:
     /// what <c>GET /me/access</c> reports for one target.
     /// </summary>
