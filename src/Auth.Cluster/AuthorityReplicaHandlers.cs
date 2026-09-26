@@ -28,6 +28,40 @@ public interface IReplicatedAuthority
     string? UnavailableReason { get; }
 }
 
+/// <summary>
+/// Told every time this member's replica takes a change, so what depends on somebody's access — an open
+/// panel's controls — is refreshed then rather than on a timer.
+/// </summary>
+/// <remarks>
+/// Called after the change has committed. A listener that throws is logged and the others still run:
+/// the replica is already right, and the next change tells them again.
+/// </remarks>
+public interface IAuthorityChangeListener
+{
+    /// <summary>The replica has taken a change.</summary>
+    Task AuthorityChangedAsync(CancellationToken ct);
+}
+
+/// <summary>Tells every <see cref="IAuthorityChangeListener"/> a change was taken.</summary>
+public sealed class AuthorityChangeNotifier(IEnumerable<IAuthorityChangeListener> listeners, ILogger<AuthorityChangeNotifier> logger)
+{
+    /// <summary>Tell every listener; one failing does not stop the rest.</summary>
+    public async Task NotifyAsync(CancellationToken ct)
+    {
+        foreach (IAuthorityChangeListener listener in listeners)
+        {
+            try
+            {
+                await listener.AuthorityChangedAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "{Listener} failed on an authority change", listener.GetType().Name);
+            }
+        }
+    }
+}
+
 /// <summary>A replicated record another record still blocks here. The bus delivers it again.</summary>
 public sealed class AuthorityDeferredException(string message) : Exception(message);
 
@@ -54,6 +88,7 @@ public sealed class AuthorityRecordHandler<T>(
     Func<T, string> describe,
     IReplicatedAuthority authority,
     ClusterStateStore clusterState,
+    AuthorityChangeNotifier notifier,
     ILogger<AuthorityRecordHandler<T>> logger) : IClusterMessageHandler
     where T : class
 {
@@ -97,6 +132,7 @@ public sealed class AuthorityRecordHandler<T>(
         {
             case AuthorityApplyOutcome.Applied:
                 logger.LogInformation("{Type} {Record} applied from {From}", type, describe(record), envelope.From);
+                await notifier.NotifyAsync(ct).ConfigureAwait(false);
                 break;
 
             case AuthorityApplyOutcome.Stale:
@@ -184,6 +220,7 @@ public static class AuthorityReplicaServiceCollectionExtensions
         Removal(services, AuthorityMessageTypes.AssignmentRemoved, AuthorityRecordKey.Assignment);
 
         services.AddSingleton<IClusterMessageHandler, AuthorityCurrentHandler>();
+        services.AddSingleton<AuthorityChangeNotifier>();
         services.AddHostedService<AuthoritySnapshotWorker>();
         return services;
     }
@@ -197,6 +234,7 @@ public static class AuthorityReplicaServiceCollectionExtensions
             type, payload, apply, describe,
             sp.GetRequiredService<IReplicatedAuthority>(),
             sp.GetRequiredService<ClusterStateStore>(),
+            sp.GetRequiredService<AuthorityChangeNotifier>(),
             sp.GetRequiredService<ILogger<AuthorityRecordHandler<T>>>()));
 
     private static void Removal(IServiceCollection services, string type, Func<string, AuthorityRecordKey> key) =>

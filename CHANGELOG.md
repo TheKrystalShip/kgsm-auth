@@ -7,7 +7,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added — a member answering `/me/access` (cluster 1.0.0-dev.12)
+### Added — a member answering `/me/access` (cluster 1.0.0-dev.12, 1.0.0-dev.13)
 
 - **`MemberAccess`** resolves the person behind a session a member has already verified — the
   session's subject looked up as a credential handle in the member's own replica — and answers
@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`AuthorityReplicaFile`** is the replica in the member's own account store file, opened once that
   file is at schema version 2 and reported unavailable, with the reason, until then. It never creates
   the file.
+- **`IAuthorityChangeListener`** is told every time the replica takes a change — a record from the
+  stream or a snapshot — so a surface refreshes what depends on somebody's access then, not on a timer.
+  `MemberAccess.ReportForAccountAsync` is the report it pushes to an account's open connections.
 
 ### Added — administering access (2.5.0, access 1.0.0-dev.4)
 

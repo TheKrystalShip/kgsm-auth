@@ -111,10 +111,12 @@ public sealed class ReplicationBusTests : IAsyncLifetime
         await EditAsync(new Assign(_alice, role, Terraria));
         await BusCluster.EventuallyAsync(() => AllowsAsync(walter, _alice, Start, Terraria), "alice's grant on walter");
 
+        int heard = _walter.Resolve<RecordingListener>().Changes;
         await EditAsync(new SetRolePermissions(role, new HashSet<string>()));
         await BusCluster.EventuallyAsync(async () => !await AllowsAsync(walter, _alice, Start, Terraria), "the role emptied on walter");
 
         Assert.True(await sessions.IsAliveAsync("sid"));
+        Assert.True(_walter.Resolve<RecordingListener>().Changes > heard, "walter's listeners were not told of the change");
     }
 
     [Fact]

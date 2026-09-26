@@ -35,6 +35,7 @@ public sealed class AuthoritySnapshotWorker(
     IHttpClientFactory httpClientFactory,
     ClusterOptions cluster,
     IReplicatedAuthority authority,
+    AuthorityChangeNotifier notifier,
     ILogger<AuthoritySnapshotWorker> logger) : BackgroundService
 {
     /// <summary>How often to look. A snapshot is taken only when one is owed.</summary>
@@ -99,6 +100,7 @@ public sealed class AuthoritySnapshotWorker(
             logger.LogInformation(
                 "took the cluster's authority from '{Holder}' at version {Version} ({Deferred} record(s) left to the stream)",
                 holder, snapshot.Version, deferred);
+            await notifier.NotifyAsync(ct).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

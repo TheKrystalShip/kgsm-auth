@@ -171,9 +171,23 @@ public sealed class MemberAccess(IReplicatedAuthority authority, TimeProvider? c
         return (caller, AccessReport.For(caller.Evaluator!, caller.AccountId!, targets, include, _clock.GetUtcNow()));
     }
 
-    /// <summary>The generation of what the replica holds, for a surface that pushes a fresh report on change.</summary>
-    public async Task<long?> GenerationAsync(CancellationToken ct = default) =>
-        Source() is { } source ? await source.Store.GenerationAsync(ct).ConfigureAwait(false) : null;
+    /// <summary>
+    /// The <c>/me/access</c> answer for an account already known — what a surface pushes to that
+    /// account's open connections when the replica changes. Null when the replica is unavailable or the
+    /// account is gone or switched off.
+    /// </summary>
+    public async Task<AccessReport?> ReportForAccountAsync(
+        string accountId, IEnumerable<AccessScope> targets, Func<string, bool> include, CancellationToken ct = default)
+    {
+        if (Source() is not { } source)
+            return null;
+
+        AuthoritySnapshot snapshot = await source.CurrentAsync(ct).ConfigureAwait(false);
+        if (!snapshot.Accounts.TryGetValue(accountId, out AccessAccount? account) || account.Status == AccountStatus.Disabled)
+            return null;
+
+        return AccessReport.For(new AccessEvaluator(snapshot, _clock), accountId, targets, include, _clock.GetUtcNow());
+    }
 
     private AuthoritySource? Source()
     {

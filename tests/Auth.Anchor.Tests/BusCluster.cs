@@ -163,6 +163,8 @@ internal sealed class BusCluster : IAsyncDisposable
             builder.Services.AddSingleton<IMemberCardSource>(sp => new NodeCardSource(sp));
             builder.Services.AddSingleton<IReplicatedAuthority>(new FileReplica(Path.Combine(dir, "users.db")));
             builder.Services.AddAuthorityReplica();
+            builder.Services.AddSingleton<RecordingListener>();
+            builder.Services.AddSingleton<IAuthorityChangeListener>(sp => sp.GetRequiredService<RecordingListener>());
         }
 
         builder.Services.AddSingleton<AuthorityReporter>();
@@ -220,6 +222,20 @@ internal sealed class BusCluster : IAsyncDisposable
 
             return base.SendAsync(request, ct);
         }
+    }
+}
+
+/// <summary>Counts the changes a node's replica told its listeners about.</summary>
+internal sealed class RecordingListener : IAuthorityChangeListener
+{
+    private int _changes;
+
+    public int Changes => Volatile.Read(ref _changes);
+
+    public Task AuthorityChangedAsync(CancellationToken ct)
+    {
+        Interlocked.Increment(ref _changes);
+        return Task.CompletedTask;
     }
 }
 
