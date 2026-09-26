@@ -120,10 +120,10 @@
       "key": "userStorePath",
       "env": "Anchor__UserStorePath",
       "label": "Account store",
-      "description": "The file the accounts live in. It is the same file every other KGSM surface on this machine reads.",
+      "description": "The file the cluster's accounts and access live in — this anchor's alone. Every other member, this machine's node included, holds a replica in a file of its own.",
       "group": "storage",
       "type": "path",
-      "default": "/var/lib/kgsm/auth/users.db",
+      "default": "/var/lib/kgsm-auth-anchor/accounts.db",
       "risk": "destructive"
     },
     {

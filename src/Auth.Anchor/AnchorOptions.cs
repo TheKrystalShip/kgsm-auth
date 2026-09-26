@@ -60,9 +60,8 @@ internal sealed record AnchorOptions(
     /// was empty when it first started.
     /// </summary>
     /// <remarks>
-    /// Beside the session store rather than beside the accounts: the accounts may be a file shared
-    /// with every other KGSM service on the machine, and a credential belongs to the daemon that
-    /// minted it, in the directory only that daemon writes.
+    /// Beside the session store, in the directory only this daemon writes: a credential belongs to the
+    /// daemon that minted it, wherever the account store has been configured to live.
     /// </remarks>
     public string InitialAdminPasswordPath =>
         Path.Combine(
@@ -103,7 +102,7 @@ internal sealed record AnchorOptions(
             // A URL loses the trailing slash a person naturally types, so the discovery document, every
             // token's iss and the gossiped fact all state the one string a client compares them by.
             Issuer: Text(s.Issuer, "kgsm").TrimEnd('/'),
-            UserStorePath: Text(s.UserStorePath, UserStoreOptions.DefaultPath),
+            UserStorePath: Text(s.UserStorePath, "/var/lib/kgsm-auth-anchor/accounts.db"),
             SessionStorePath: Text(s.SessionStorePath, "/var/lib/kgsm-auth-anchor/sessions.db"),
             SigningKeyPath: Text(s.SigningKeyPath, "/var/lib/kgsm-auth-anchor/session-signing.pem"),
             ConfigDescriptorPath: s.ConfigDescriptorPath.Trim(),

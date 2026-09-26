@@ -22,8 +22,7 @@ license=('GPL-3.0-or-later')
 # that founded its cluster — a cluster has one anchor, and a fresh one anywhere else would claim the
 # accounts before gossip told it who holds them.
 groups=('kgsm-node')
-# kgsm-base carries the kgsm service account this unit runs as, the /var/lib/kgsm/auth directory the
-# account store lives in, the /etc/kgsm/cluster-founded record saying whether this machine founded its
+# kgsm-base carries the kgsm service account this unit runs as, the /etc/kgsm/cluster-founded record saying whether this machine founded its
 # cluster, and the preset policy deciding whether this runs here.
 depends=('kgsm-base' 'systemd')
 backup=('etc/kgsm-auth-anchor/kgsm-auth-anchor.env')

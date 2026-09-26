@@ -10,9 +10,9 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <remarks>
 /// <para>
 /// Its own file rather than a table in the account store, because the two have different lifetimes
-/// and different readers. Accounts are shared with every surface on the machine and must survive
-/// anything; sessions belong to this daemon alone, and a member joining a cluster replicates the
-/// accounts and never the sign-ins.
+/// and different readers. Accounts are replicated to every member and must survive anything; sessions
+/// belong to this daemon alone, and a member joining a cluster replicates the accounts and never the
+/// sign-ins.
 /// </para>
 /// <para>
 /// A row on disk is what makes a sign-out mean something: a session held only in memory dies with the

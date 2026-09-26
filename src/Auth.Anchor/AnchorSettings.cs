@@ -152,11 +152,11 @@ internal sealed class AnchorSettings
     public string Issuer { get; set; } = "kgsm";
 
     /// <summary>The account store this anchor is the writer of.</summary>
-    /// <panel>The file the accounts live in. It is the same file every other KGSM surface on this
-    /// machine reads.</panel>
+    /// <panel>The file the cluster's accounts and access live in — this anchor's alone. Every other
+    /// member, this machine's node included, holds a replica in a file of its own.</panel>
     [ConfigField("userStorePath", "Account store", Group = "storage", Type = ConfigType.Path,
         Risk = ConfigRisk.Destructive)]
-    public string UserStorePath { get; set; } = "/var/lib/kgsm/auth/users.db";
+    public string UserStorePath { get; set; } = "/var/lib/kgsm-auth-anchor/accounts.db";
 
     /// <summary>Where live sessions are recorded.</summary>
     /// <panel>Where live sign-ins are recorded, so a sign-out outlives the process that issued the

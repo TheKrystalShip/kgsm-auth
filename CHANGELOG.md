@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the anchor's store is its own file (3.2.2)
+
+- **`Anchor__UserStorePath` defaults to `/var/lib/kgsm-auth-anchor/accounts.db`**, in the unit's state
+  directory, and the unit sets it there. `/var/lib/kgsm/auth/users.db` is the node's replica on the same
+  machine. A machine moving from a build that shared the file copies it to the new path before the new
+  anchor first starts.
+
 ### Removed — the tier model (3.2.1, auth 4.0.0-dev.3, users 2.0.0-dev.6, cluster 1.0.0-dev.16, testing 1.0.0-dev.3)
 
 - **`Auth`**: `KgsmTier`, `KgsmTiers`, `KgsmTierCache`, `IAuthorityProvider`, `ResolvedPrincipal` and

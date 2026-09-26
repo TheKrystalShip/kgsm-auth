@@ -23,8 +23,9 @@ Environment=Anchor__ListenAddress=http://127.0.0.1:8098
 # roster carries and what a panel redirects a person to when they sign in.
 # Environment=Anchor__PublicBaseUrl=https://auth.example
 
-# The account store — the same file every other KGSM surface on this host reads.
-Environment=Anchor__UserStorePath=/var/lib/kgsm/auth/users.db
+# The account store — this anchor's own, in its state directory. The node on this machine keeps its
+# replica in a file of its own.
+Environment=Anchor__UserStorePath=/var/lib/kgsm-auth-anchor/accounts.db
 
 # Sessions and the private signing key live in the state directory below, which systemd creates
 # owned by this user.

@@ -24,6 +24,10 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   it ends every session (`auth.session.revoked`, scope `upgrade`), so no token minted by a build that
   read version 1 outlives the upgrade. `SqliteAuthorityStore` is both the authority and the `IUserStore`
   every door reads.
+- **The anchor's store is its own file**, `/var/lib/kgsm-auth-anchor/accounts.db` in its state
+  directory, and never the node's replica on the same machine (`/var/lib/kgsm/auth/users.db`). A node
+  applying the anchor's snapshot to the file the anchor writes would be the authority rewritten by its
+  own echo.
 - **A token proves who, never what.** A session carries no claim about access. Every route decides its caller
   by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and, for
   `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
