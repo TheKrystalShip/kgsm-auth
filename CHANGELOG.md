@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the evaluator over a member's replica (cluster 1.0.0-dev.18)
+
+- **`MemberAccess.EvaluatorAsync`** hands out the evaluator over the replica as it stands, for a caller
+  that already knows the account — a service a member-acting call named — and
+  `MemberAccess.UnavailableReason` says why there is none.
+
 ### Added — the replica a member keeps (cluster 1.0.0-dev.17)
 
 - **`OwnedReplicaFile`**, the `IReplicatedAuthority` of the process that keeps a machine's replica:

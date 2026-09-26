@@ -204,6 +204,29 @@ public sealed class MemberAccess(IReplicatedAuthority authority, TimeProvider? c
         return AccessReport.For(new AccessEvaluator(snapshot, _clock), accountId, targets, include, _clock.GetUtcNow());
     }
 
+    /// <summary>
+    /// The evaluator over this member's replica as it stands, or <see langword="null"/> when the replica
+    /// is unavailable — for a caller that already knows the account, such as a service a member-acting
+    /// call named, and asks about it directly.
+    /// </summary>
+    public async Task<AccessEvaluator?> EvaluatorAsync(CancellationToken ct = default)
+    {
+        if (Source() is not { } source)
+            return null;
+
+        try
+        {
+            return new AccessEvaluator(await source.CurrentAsync(ct).ConfigureAwait(false), _clock);
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Why the replica is unavailable, when it is.</summary>
+    public string? UnavailableReason => authority.UnavailableReason;
+
     private AuthoritySource? Source()
     {
         if (authority.Replica is not { } replica)
