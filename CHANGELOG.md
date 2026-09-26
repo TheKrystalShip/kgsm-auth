@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the replica a member keeps (cluster 1.0.0-dev.17)
+
+- **`OwnedReplicaFile`**, the `IReplicatedAuthority` of the process that keeps a machine's replica:
+  it creates the file, sets a version 1 file aside as `<path>.v1-discarded-<utc>` and starts a fresh
+  one for the holder's snapshot, and leaves a newer file alone, reporting it unavailable.
+
 ### Changed — the anchor's store is its own file (3.2.2)
 
 - **`Anchor__UserStorePath` defaults to `/var/lib/kgsm-auth-anchor/accounts.db`**, in the unit's state

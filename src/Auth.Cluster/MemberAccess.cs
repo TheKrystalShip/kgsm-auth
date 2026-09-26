@@ -12,10 +12,10 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>It never creates the file.</b> The account store is the member's own, opened by its own code; a
-/// replica created here beside a store that code has not opened yet would be a second answer to whose
-/// file it is. A file that does not exist, or one at schema version 1, is reported unavailable with the
-/// reason, and asked again at most once a minute.
+/// <b>It never creates the file.</b> The replica belongs to the one process on the machine that keeps
+/// it (<see cref="OwnedReplicaFile"/>); every other process reads it through this, and a reader that
+/// created the file would be a second answer to whose file it is. A file that does not exist, or one at
+/// schema version 1, is reported unavailable with the reason, and asked again at most once a minute.
 /// </para>
 /// <para>
 /// Every surface that reads this answers <c>authority_unavailable</c> while it is unavailable, which is

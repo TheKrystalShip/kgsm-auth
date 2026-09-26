@@ -54,9 +54,12 @@ implementation each.
   accepts `svc:<component>@<member>` from `<member>` alone, and like every member-acting call it asserts
   who, never what: the receiver evaluates the account from its own replica.
 - **A member answers for a person from its own replica, and says so when it cannot.** `MemberAccess`
-  reads nothing about access off a token; `AuthorityReplicaFile` opens the member's account store only
-  once it is at schema version 2 and never creates it, and until then every answer is
+  reads nothing about access off a token; `AuthorityReplicaFile` opens the machine's replica only once
+  it is at schema version 2 and never creates it, and until then every answer is
   `authority_unavailable` — an outage, never a denial.
+- **One writer of a machine's replica: `OwnedReplicaFile`,** used by the process that joins the
+  cluster and applies what the holder sends. It creates the file, and a version 1 file is set aside
+  (`.v1-discarded-<utc>`) and replaced — never converted, because the snapshot rebuilds it whole.
 - **Two seams, and the package owns neither:** `IReplicatedAuthority` is the member's authority
   replica — accounts and who may do what in one file — and `IClusterSessionDenyList` its own record of
   ended sessions. Opening a file and serving a route stay the member's business.

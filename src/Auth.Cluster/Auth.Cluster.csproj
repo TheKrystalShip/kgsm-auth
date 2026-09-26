@@ -9,7 +9,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Cluster</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0-dev.16</Version>
+    <Version>1.0.0-dev.17</Version>
     <Description>
       Everything a cluster member or a leaf does about identity, as a resource server of the auth
       anchor: verify a session it cannot mint against the key the anchor publishes, read who is asking
