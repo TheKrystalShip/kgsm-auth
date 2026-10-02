@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — author ∩ service for a leaf's automations (cluster 1.0.0-dev.20)
+
+`AutomationAccess` answers whether a leaf may do something it was switched on to do: its service
+account `svc:<component>@<node>` — the node read from the host file — and the person recorded as the
+automation's author must both hold every action at the server's install, evaluated from the node's
+replica at that moment. A refusal is an `AutomationVerdict` carrying a sentence naming whose access and
+which action; no author, an unreadable replica, a node that has not named itself and a service account
+not yet created each block and say so. The scheduler and the reactor evaluate with it.
+
 ### Added — the node a machine's leaves serve (cluster 1.0.0-dev.19)
 
 - **`HostProviderFile.Node`**: the host file names the member that wrote it, and
