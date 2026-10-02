@@ -82,6 +82,9 @@ public sealed class HostProviderFileTests : IDisposable
             member.Keys.Select(k => k.KeyId),
             leaf.Keys.Select(k => k.KeyId));
 
+        // The node the leaf's grants are scoped by is the member that wrote the file.
+        Assert.Equal("node-a", leaf.Node);
+
         // World-readable: every leaf on the machine runs as some user, and nothing in it is secret.
         Assert.True(File.GetUnixFileMode(FilePath).HasFlag(UnixFileMode.OtherRead));
         Assert.False(File.Exists(FilePath + ".tmp"));

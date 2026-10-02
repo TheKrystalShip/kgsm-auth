@@ -32,11 +32,16 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// <param name="Audience">The <c>aud</c> a cluster session carries.</param>
 /// <param name="Keys">Every key a cluster session may currently be signed with.</param>
 /// <param name="ClientOrigins">The origins the provider's registered clients live at.</param>
+/// <param name="Node">
+/// The member that wrote the file — the node this machine is, and so the one a leaf's grants are
+/// scoped by. A leaf reads it rather than being configured with it, so the two cannot disagree.
+/// </param>
 public sealed record HostProviderFile(
     [property: JsonPropertyName("issuer")] string Issuer,
     [property: JsonPropertyName("audience")] string Audience,
     [property: JsonPropertyName("keys")] IReadOnlyList<SessionJwk> Keys,
-    [property: JsonPropertyName("clientOrigins")] IReadOnlyList<string>? ClientOrigins = null)
+    [property: JsonPropertyName("clientOrigins")] IReadOnlyList<string>? ClientOrigins = null,
+    [property: JsonPropertyName("node")] string? Node = null)
 {
     /// <summary>Where the file lives: the directory the members and leaves on a machine share.</summary>
     public const string DefaultPath = "/var/lib/kgsm/cluster/auth-provider.json";
@@ -184,7 +189,8 @@ public sealed class HostProviderFileWriter(
 
         return keys.PublishedKeySet is { } published
             && SessionKeys.Read(published) is { Keys.Count: > 0 } set
-                ? new HostProviderFile(issuer, audience, set.Keys, keys.ClientOrigins)
+                ? new HostProviderFile(issuer, audience, set.Keys, keys.ClientOrigins,
+                    string.IsNullOrWhiteSpace(cluster.MemberId) ? null : cluster.MemberId)
                 : null;
     }
 }
@@ -222,6 +228,12 @@ public sealed class HostSessionKeys(string path, ILogger<HostSessionKeys> logger
 
     /// <inheritdoc />
     public IReadOnlyList<SecurityKey> Keys => Current().Keys;
+
+    /// <summary>
+    /// The node this machine is, as its member wrote it, or <see langword="null"/> while there is no
+    /// file or it names none.
+    /// </summary>
+    public string? Node => Current().File?.Node;
 
     /// <inheritdoc />
     public bool Admits(string? origin) =>

@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the node a machine's leaves serve (cluster 1.0.0-dev.19)
+
+- **`HostProviderFile.Node`**: the host file names the member that wrote it, and
+  `HostSessionKeys.Node` reads it back. A leaf scopes its grants by the node it sits on, and takes
+  that from the node itself rather than from a setting of its own that could disagree with it.
+
 ### Added — the evaluator over a member's replica (cluster 1.0.0-dev.18)
 
 - **`MemberAccess.EvaluatorAsync`** hands out the evaluator over the replica as it stands, for a caller
