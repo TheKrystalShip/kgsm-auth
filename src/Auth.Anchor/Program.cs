@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 
 using TheKrystalShip.KGSM.Auth;
+using TheKrystalShip.KGSM.Auth.Access;
 using TheKrystalShip.KGSM.Auth.Anchor;
 using TheKrystalShip.KGSM.Auth.Cluster;
 using TheKrystalShip.KGSM.Auth.Minting;
@@ -324,11 +325,17 @@ app.MapGet("/auth/{provider}/callback", ProviderEndpoints.Callback);
 // The routes are the shared library's, identical to the ones every other component serves, so one
 // Control Panel page renders any of them and a node's relay needs no knowledge of which component it
 // is forwarding to. What is this anchor's own is the gate in front of them.
-app.MapGroup("/auth").AddEndpointFilter<OwnSurfaceFilter>().MapComponentSurface();
+app.MapGroup("/auth").AddEndpointFilter<OwnSurfaceFilter>().WithMetadata(OwnSurfaceFilter.Marker).MapComponentSurface();
 
+// Each gated route declares its action on itself (`AuthAction`); the handler enforces that entry and
+// `GET /auth/cluster/operations` publishes it. Approving and switching off share a route, told apart
+// by the status asked for.
 app.MapGet("/auth/cluster/users", Endpoints.Accounts);
-app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount);
-app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount);
+app.MapPost("/auth/cluster/users", AccountEndpoints.CreateAccount)
+    .WithMetadata(new AuthAction(AuthActions.AccountsCreate));
+app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount)
+    .WithMetadata(new AuthAction(AuthActions.AccountsApprove, "status", "active"))
+    .WithMetadata(new AuthAction(AuthActions.AccountsDisable, "status", "disabled"));
 
 // Where a provider sends the browser back after the account page began attaching an identity. A
 // different address from the sign-in callback: one attaches whoever comes back to an account already
@@ -337,17 +344,22 @@ app.MapGet("/auth/identities/{provider}/callback", IdentityEndpoints.CompleteLin
 
 // What an administrator may do to somebody else's account. Setting a password knows no current one,
 // because the case it exists for is a person who has lost theirs.
-app.MapPost("/auth/cluster/users/{userId}/password", AccountEndpoints.SetPassword);
-app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount);
+app.MapPost("/auth/cluster/users/{userId}/password", AccountEndpoints.SetPassword)
+    .WithMetadata(new AuthAction(AuthActions.AccountsCreate));
+app.MapDelete("/auth/cluster/users/{userId}", AccountEndpoints.DeleteAccount)
+    .WithMetadata(new AuthAction(AuthActions.AccountsDelete));
 
 // The devices somebody is signed in on, and ending them. Listed here because they exist ONLY here: a
 // member verifies a cluster session offline against a published key and stores nothing, so a member
 // asked what devices somebody holds answers honestly with none — an empty card rather than a wrong
 // question. Ending one is never gated on holding the capability, because revoking takes authority
 // away and a member that has stood down still holds the rows for what it minted.
-app.MapGet("/auth/cluster/users/{userId}/sessions", SessionEndpoints.List);
-app.MapPost("/auth/cluster/users/{userId}/sessions/revoke-all", SessionEndpoints.RevokeAll);
-app.MapPost("/auth/cluster/users/{userId}/sessions/{sid}/revoke", SessionEndpoints.RevokeOne);
+app.MapGet("/auth/cluster/users/{userId}/sessions", SessionEndpoints.List)
+    .WithMetadata(new AuthAction(AuthActions.AccountsDisable));
+app.MapPost("/auth/cluster/users/{userId}/sessions/revoke-all", SessionEndpoints.RevokeAll)
+    .WithMetadata(new AuthAction(AuthActions.AccountsDisable));
+app.MapPost("/auth/cluster/users/{userId}/sessions/{sid}/revoke", SessionEndpoints.RevokeOne)
+    .WithMetadata(new AuthAction(AuthActions.AccountsDisable));
 
 // What this anchor serves to other MEMBERS: the accounts, so each can answer for itself who somebody
 // is and what they may do. Authenticated by a member service token, never by a person's session.
@@ -356,9 +368,14 @@ app.MapGet("/auth/cluster/snapshot", MemberEndpoints.Snapshot);
 // Who may do what: the authority for the pages that administer it, one change at a time, whether the
 // rules would allow a change without making it, and the caller's own actions here. Served from a store at schema version 2, and 503 from one that is not.
 app.MapGet("/auth/cluster/authority", AuthorityEndpoints.Read);
-app.MapPost("/auth/cluster/authority/edits", AuthorityEndpoints.Edit);
-app.MapPost("/auth/cluster/authority/checks", AuthorityEndpoints.Check);
+app.MapPost(AnchorOperations.EditsRoute, AuthorityEndpoints.Edit);
+app.MapPost(AnchorOperations.ChecksRoute, AuthorityEndpoints.Check);
 app.MapGet("/me/access", AuthorityEndpoints.MeAccess);
+
+// Every gated route here and the action it requires, built from the routes themselves. Public: it is
+// a description of this build, and a client reads it to know which action a request it is about to
+// make needs, without holding a list of its own.
+app.MapGet("/auth/cluster/operations", AnchorOperations.Serve);
 
 // The verification key, unauthenticated because publishing it is the point: every member has to hold
 // it to check a session, and holding it grants nothing — it verifies a signature and cannot produce

@@ -34,5 +34,13 @@ extend them before the code.
   every member and version declaring an action, and takes the wording from the highest version, then
   the member id that sorts first. A member's report carries a sequence because the bus does not order
   delivery.
+- **An edit's action is written once, in `EditKind`.** Each edit carries its kind; `AuthorityRules.Check`
+  enforces the kind's action before any other rule, at the assignment's scope for an assignment edit,
+  and the anchor publishes the same table as its operations. A rule that names an `auth:*` action of
+  its own is a second answer to "what does this edit need".
+- **`OperationManifest` is the one shape every member publishes its operations in** — method, route,
+  action, scope and an optional discriminating body field — so a client gates on a request rather than
+  holding a list of actions. `OperationManifest.Of` normalizes it, so two builds of one member serve
+  the same bytes.
 - **Names are compared through `AuthorityRules.NameKey`** — trimmed, lower-case — everywhere a role or
   permission name is checked for uniqueness, including the store's `name_key` column.

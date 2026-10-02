@@ -38,7 +38,7 @@ internal static class AccountEndpoints
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
 
-        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthActions.AccountsCreate);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
         if (maybe is not { } caller)
             return;
 
@@ -149,7 +149,7 @@ internal static class AccountEndpoints
             return;
 
         // Setting somebody's credential by hand is making their account by hand.
-        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthActions.AccountsCreate);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
         if (maybe is not { } caller)
             return;
 
@@ -212,7 +212,7 @@ internal static class AccountEndpoints
         if (!await Endpoints.RequireAuthorityAsync(ctx))
             return;
 
-        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthActions.AccountsDelete);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
         if (maybe is not { } caller)
             return;
 

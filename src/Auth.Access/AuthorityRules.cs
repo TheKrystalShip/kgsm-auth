@@ -44,6 +44,19 @@ public static class AuthorityRules
 
         Context c = new(snapshot, new AccessEvaluator(snapshot, clock), actorId);
 
+        // The action first, from the edit's kind — the same entry the anchor publishes as the operation's
+        // action, so what a client is told an edit needs is what is checked here. An edit about an
+        // assignment is checked at that assignment's scope; one naming an assignment that does not
+        // exist, cluster-wide, so an unknown id tells a caller nothing they could not already ask.
+        AccessScope scope = edit switch
+        {
+            Assign a => a.Scope,
+            Revoke r => snapshot.Assignments.FirstOrDefault(x => x.AssignmentId == r.AssignmentId)?.Scope ?? AccessScope.Cluster,
+            _ => AccessScope.Cluster,
+        };
+        if (c.Lacks(edit.Kind.Action, scope) is { } refused)
+            return refused;
+
         return edit switch
         {
             CreateRole e => CheckCreateRole(c, e),
@@ -60,8 +73,8 @@ public static class AuthorityRules
             ApproveRequirement e => CheckApproveRequirement(c, e),
             NarrowRequirement e => CheckNarrowRequirement(c, e),
             RevokeRequirement e => CheckRevokeRequirement(c, e),
-            DisableAccount e => CheckAccountRemoval(c, e.AccountId, AuthActions.AccountsDisable),
-            DeleteAccount e => CheckAccountRemoval(c, e.AccountId, AuthActions.AccountsDelete),
+            DisableAccount e => CheckAccountRemoval(c, e.AccountId, deleting: false),
+            DeleteAccount e => CheckAccountRemoval(c, e.AccountId, deleting: true),
             _ => throw new ArgumentOutOfRangeException(nameof(edit), edit.GetType().Name, "Not an authority edit."),
         };
     }
@@ -99,9 +112,6 @@ public static class AuthorityRules
 
     private static AuthorityRefusal? CheckCreateRole(Context c, CreateRole e)
     {
-        if (c.Lacks(AuthActions.RolesEdit, AccessScope.Cluster) is { } refused)
-            return refused;
-
         if (NameProblem(e.Name, c.Snapshot.Roles.Values.Select(r => (r.RoleId, r.Name)), except: null) is { } bad)
             return bad;
 
@@ -123,15 +133,12 @@ public static class AuthorityRules
     }
 
     /// <summary>
-    /// The checks every change to one role shares: the action, that it exists, that it is not a
-    /// built-in, and that it ranks below the caller.
+    /// The checks every change to one role shares: that it exists, that it is not a built-in, and that
+    /// it ranks below the caller.
     /// </summary>
     private static AuthorityRefusal? CheckRoleChange(Context c, string roleId, out Role? role, bool everyoneEditable = false)
     {
         role = null;
-        if (c.Lacks(AuthActions.RolesEdit, AccessScope.Cluster) is { } refused)
-            return refused;
-
         if (!c.Snapshot.Roles.TryGetValue(roleId, out role))
             return NotFound("role", roleId);
 
@@ -181,9 +188,6 @@ public static class AuthorityRules
 
     private static AuthorityRefusal? CheckCreatePermission(Context c, CreatePermission e)
     {
-        if (c.Lacks(AuthActions.PermissionsEdit, AccessScope.Cluster) is { } refused)
-            return refused;
-
         return NameProblem(e.Name, c.Snapshot.Permissions.Values.Select(p => (p.PermissionId, p.Name)), except: null);
     }
 
@@ -196,15 +200,12 @@ public static class AuthorityRules
     }
 
     /// <summary>
-    /// The checks every change to one permission shares: the action, that it exists, and that every
-    /// role holding it ranks below the caller.
+    /// The checks every change to one permission shares: that it exists, and that every role holding it
+    /// ranks below the caller.
     /// </summary>
     private static AuthorityRefusal? CheckPermissionChange(Context c, string permissionId, out Permission? permission)
     {
         permission = null;
-        if (c.Lacks(AuthActions.PermissionsEdit, AccessScope.Cluster) is { } refused)
-            return refused;
-
         if (!c.Snapshot.Permissions.TryGetValue(permissionId, out permission))
             return NotFound("permission", permissionId);
 
@@ -246,9 +247,6 @@ public static class AuthorityRules
 
     private static AuthorityRefusal? CheckAssign(Context c, Assign e)
     {
-        if (c.Lacks(AuthActions.RolesAssign, e.Scope) is { } refused)
-            return refused;
-
         if (!c.Snapshot.Accounts.TryGetValue(e.AccountId, out AccessAccount? account))
             return NotFound("account", e.AccountId);
 
@@ -290,14 +288,7 @@ public static class AuthorityRules
     {
         Assignment? assignment = c.Snapshot.Assignments.FirstOrDefault(a => a.AssignmentId == e.AssignmentId);
         if (assignment is null)
-        {
-            // The action is checked cluster-wide when there is no assignment to read a scope from, so
-            // an unknown id tells a caller nothing they could not already ask.
-            return c.Lacks(AuthActions.RolesAssign, AccessScope.Cluster) ?? NotFound("assignment", e.AssignmentId);
-        }
-
-        if (c.Lacks(AuthActions.RolesAssign, assignment.Scope) is { } refused)
-            return refused;
+            return NotFound("assignment", e.AssignmentId);
 
         if (!c.Snapshot.Roles.TryGetValue(assignment.RoleId, out Role? role))
             return NotFound("role", assignment.RoleId);
@@ -318,9 +309,6 @@ public static class AuthorityRules
     private static AuthorityRefusal? RequirementChange(Context c, string accountId, string action, out ServiceRequirement? requirement)
     {
         requirement = null;
-        if (c.Lacks(AuthActions.ServicesManage, AccessScope.Cluster) is { } refused)
-            return refused;
-
         if (!c.Snapshot.Accounts.TryGetValue(accountId, out AccessAccount? account))
             return NotFound("account", accountId);
 
@@ -368,15 +356,12 @@ public static class AuthorityRules
 
     // ── accounts ──────────────────────────────────────────────────────────────────────────────
 
-    private static AuthorityRefusal? CheckAccountRemoval(Context c, string accountId, string action)
+    private static AuthorityRefusal? CheckAccountRemoval(Context c, string accountId, bool deleting)
     {
-        if (c.Lacks(action, AccessScope.Cluster) is { } refused)
-            return refused;
-
         if (!c.Snapshot.Accounts.TryGetValue(accountId, out AccessAccount? account))
             return NotFound("account", accountId);
 
-        if (action == AuthActions.AccountsDelete && account.Kind == AccountKind.Service)
+        if (deleting && account.Kind == AccountKind.Service)
         {
             return new AuthorityRefusal(RefusalCode.WrongAccountKind,
                 "A service account is forgotten when its component stops being reported, never by hand.");

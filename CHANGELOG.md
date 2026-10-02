@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — members publish their operations (access 1.0.0-dev.6, anchor 3.3.0)
+
+- **`OperationManifest`** is the shape a member publishes its gated operations in: method, route,
+  action, scope (`cluster`, `node`, `instance`, or `request` for a scope the request names) and an
+  optional discriminating body field. A client gates a control on the request it is about to make and
+  names no action of its own.
+- **An authority edit's kind carries its action.** `EditKind` is the one table of edit names and the
+  `auth:*` action each needs; every `AuthorityEdit` names its kind, and `AuthorityRules.Check` enforces
+  the kind's action first — at the assignment's scope for `assign` and `revoke`, cluster-wide otherwise.
+- **The anchor serves `GET /auth/cluster/operations`**, built from its routes: each gated route's
+  `AuthAction` metadata, which its handler reads to enforce (`PATCH /auth/cluster/users/{userId}`
+  carries one entry per `status`), its own configuration and journal surface, and the edits and checks
+  routes from `EditKind`.
+
 ### Added — author ∩ service for a leaf's automations (cluster 1.0.0-dev.20)
 
 `AutomationAccess` answers whether a leaf may do something it was switched on to do: its service

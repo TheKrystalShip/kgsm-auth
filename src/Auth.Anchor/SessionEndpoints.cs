@@ -31,7 +31,7 @@ internal static class SessionEndpoints
     /// <summary>Every live session an account holds — an administrator's door.</summary>
     internal static async Task List(HttpContext ctx)
     {
-        Caller? maybe = await Endpoints.RequireCaller(ctx, Access.AuthActions.AccountsDisable);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
         if (maybe is not { } caller)
             return;
 
@@ -71,7 +71,7 @@ internal static class SessionEndpoints
     /// </remarks>
     internal static async Task RevokeAll(HttpContext ctx)
     {
-        Caller? maybe = await Endpoints.RequireCaller(ctx, Access.AuthActions.AccountsDisable);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
         if (maybe is not { } caller)
             return;
 
@@ -110,7 +110,7 @@ internal static class SessionEndpoints
     /// </remarks>
     internal static async Task RevokeOne(HttpContext ctx)
     {
-        Caller? maybe = await Endpoints.RequireCaller(ctx, Access.AuthActions.AccountsDisable);
+        Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
         if (maybe is not { } caller)
             return;
 

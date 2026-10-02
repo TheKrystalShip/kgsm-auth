@@ -407,10 +407,10 @@ internal static class Endpoints
             return;
         }
 
-        // Which action the change is: approving, or switching off and back on.
-        string action = status == UserStatus.Disabled || user.Status == UserStatus.Disabled
-            ? AuthActions.AccountsDisable
-            : AuthActions.AccountsApprove;
+        // Which action the change is, from the route's own entries: approving a pending account is the
+        // `active` entry; switching one off — and back on, which undoes that — is the `disabled` entry.
+        string action = AuthAction.Of(ctx,
+            status == UserStatus.Disabled || user.Status == UserStatus.Disabled ? "disabled" : "active");
 
         if (await RequireCaller(ctx, action) is not { } caller)
             return;

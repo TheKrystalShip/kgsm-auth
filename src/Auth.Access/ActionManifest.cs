@@ -130,4 +130,5 @@ public static class ActionManifests
 [JsonSerializable(typeof(MemberCatalogReport))]
 [JsonSerializable(typeof(InstanceUninstalledReport))]
 [JsonSerializable(typeof(AccessReport))]
+[JsonSerializable(typeof(OperationManifest))]
 public sealed partial class AccessJsonContext : JsonSerializerContext;

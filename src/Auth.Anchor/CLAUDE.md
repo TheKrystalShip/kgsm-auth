@@ -32,6 +32,13 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and, for
   `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
   withdrawn account has its session revoked rather than left to run out its bearer's lifetime.
+- **A gated route declares its action on itself, and that declaration is both enforced and
+  published.** `AuthAction` metadata on the route is what the handler reads (`AuthAction.Of`), the
+  own-surface group is marked for `OwnSurfaceFilter`, and authority edits take their action from
+  `EditKind` — the table `AuthorityRules.Check` enforces. `GET /auth/cluster/operations` is built from
+  exactly those (`AnchorOperations`), so a client gates a control on the request it is about to make
+  and names no action itself. A handler that checks an action it does not read from its route is an
+  operation this document does not describe.
 - **Disabling or deleting an account goes through the administration rules.** Those are what keep the
   last active Owner and let only an Owner act on another; approving and re-enabling are gated by their
   own actions. The first account an empty store gets is granted Owner.

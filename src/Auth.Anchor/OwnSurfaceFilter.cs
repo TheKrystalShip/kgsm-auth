@@ -27,6 +27,12 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 internal sealed class OwnSurfaceFilter : IEndpointFilter
 {
+    /// <summary>Carried by every route this filter guards, which is how the published operations find them.</summary>
+    internal sealed record OwnSurface;
+
+    /// <summary>The one marker instance the group is tagged with.</summary>
+    internal static readonly OwnSurface Marker = new();
+
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         HttpContext ctx = context.HttpContext;
@@ -46,11 +52,13 @@ internal sealed class OwnSurfaceFilter : IEndpointFilter
     /// The standard surface action a request to this anchor's own surface is: its journal, a change to
     /// its configuration, or reading the rest.
     /// </summary>
-    internal static string ActionFor(HttpRequest request)
+    internal static string ActionFor(HttpRequest request) => ActionFor(request.Method, request.Path.Value ?? "");
+
+    /// <summary>The same answer for a method and a route — what the anchor's operations publish.</summary>
+    internal static string ActionFor(string method, string path)
     {
-        string path = request.Path.Value ?? "";
         string name = path.Contains("/logs", StringComparison.Ordinal) ? "journal.read"
-            : HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method) ? "config.read"
+            : HttpMethods.IsGet(method) || HttpMethods.IsHead(method) ? "config.read"
             : "config.write";
         return Access.ActionIds.Format(Access.ActionIds.AuthComponent, name);
     }
