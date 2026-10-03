@@ -12,11 +12,9 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// <para>
 /// A host with no accounts has nobody who can sign in to make one, so the first one has to come from
 /// somewhere that is not a browser. It is created on the first start that finds the account store
-/// empty, and its password — generated, never chosen — is written to
-/// <see cref="ApiOptions.InitialAdminPasswordPath"/> for whoever has a shell on the host to read.
-/// <c>kgsm-api user bootstrap</c> does the same thing from a terminal and prints the password instead.
-/// The account holds nothing until whoever made it grants it Owner, which the anchor does in the same
-/// start from the store that holds the authority.
+/// empty, and its password — generated, never chosen — is written to the path the caller names for
+/// whoever has a shell on the host to read. The account holds nothing until whoever made it grants it
+/// Owner, which the anchor does in the same start from the store that holds the authority.
 /// </para>
 /// <para>
 /// <b>The file is written once and never rewritten.</b> It is removed the first time the account it
