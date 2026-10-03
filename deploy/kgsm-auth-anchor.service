@@ -37,11 +37,10 @@ Environment=Anchor__SigningKeyPath=/var/lib/kgsm-auth-anchor/session-signing.pem
 # misconfiguration.
 EnvironmentFile=-/etc/kgsm/kgsm-cluster.env
 
-# The host's OAuth applications, shared with every other KGSM surface on the machine so a person
-# signing in here and signing in beside it goes through one application rather than two. Loaded
-# before this anchor's own file, so a deliberate override is still possible and is visible where the
-# overrides live. Nothing in it grants anything: an application proves who somebody is, and what
-# they may do is on their account.
+# The OAuth applications people sign in through, keyed by provider. Loaded before this anchor's own
+# file, so a deliberate override is still possible and is visible where the overrides live. Nothing
+# in it grants anything: an application proves who somebody is, and what they may do is on their
+# account.
 EnvironmentFile=-/etc/kgsm/kgsm-auth.env
 
 # Host-specific overrides — optional, and they win over everything above. Every key here must exist

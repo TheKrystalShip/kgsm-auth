@@ -379,8 +379,8 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
         HttpResponseMessage response = await anchor.Client.SendAsync(
             session.AtTheAccountPage(HttpMethod.Delete, $"/account/identities/{credentialId}"));
 
-        // An account with nothing attached is one its own holder cannot sign in to, and only an admin
-        // can rescue.
+        // An account with nothing attached is one its own holder cannot sign in to, and only somebody
+        // else can rescue.
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.NotEmpty(await anchor.Store.ListCredentialsAsync(user.UserId));
     }

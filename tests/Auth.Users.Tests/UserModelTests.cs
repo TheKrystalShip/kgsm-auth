@@ -140,8 +140,8 @@ public class UserWireTests
     [Fact]
     public void AStatusThisBuildDoesNotKnowReadsAsDisabled()
     {
-        // Fail closed, the same rule KgsmTiers.Parse follows: an unreadable account is one nobody
-        // can sign in to, never one that defaults to working.
+        // Fail closed: an unreadable account is one nobody can sign in to, never one that defaults to
+        // working.
         Assert.Equal(UserStatus.Disabled, UserStatuses.Parse("suspended-pending-review"));
         Assert.Equal(UserStatus.Disabled, UserStatuses.Parse(""));
         Assert.Equal(UserStatus.Disabled, UserStatuses.Parse(null));

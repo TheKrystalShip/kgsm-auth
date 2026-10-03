@@ -54,20 +54,20 @@ public sealed class OwnedReplicaFileTests : IDisposable
     }
 
     [Fact]
-    public void AVersionOneFileIsSetAsideAndReplaced()
+    public void AnOlderFileIsSetAsideAndReplaced()
     {
         Raw("""
             CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             INSERT INTO schema_meta (key, value) VALUES ('schema_version', '1');
-            CREATE TABLE users (user_id TEXT PRIMARY KEY, tier TEXT NOT NULL);
-            INSERT INTO users VALUES ('usr_old', 'admin');
+            CREATE TABLE users (user_id TEXT PRIMARY KEY);
+            INSERT INTO users VALUES ('usr_old');
             """);
 
         OwnedReplicaFile owned = Owned();
 
         Assert.NotNull(owned.Replica);
         Assert.Null(owned.UnavailableReason);
-        string aside = Assert.Single(Directory.GetFiles(_dir, "users.db.v1-discarded-*"));
+        string aside = Assert.Single(Directory.GetFiles(_dir, "users.db.discarded-*"));
         using SqliteConnection old = new($"Data Source={aside};Pooling=False;Mode=ReadOnly");
         old.Open();
         using SqliteCommand count = old.CreateCommand();
@@ -87,7 +87,7 @@ public sealed class OwnedReplicaFileTests : IDisposable
 
         Assert.Null(owned.Replica);
         Assert.NotNull(owned.UnavailableReason);
-        Assert.Empty(Directory.GetFiles(_dir, "users.db.v1-discarded-*"));
+        Assert.Empty(Directory.GetFiles(_dir, "users.db.discarded-*"));
     }
 
     [Fact]

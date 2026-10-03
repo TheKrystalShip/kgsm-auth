@@ -65,12 +65,10 @@ The account store: one file per host, holding the accounts and the authority ove
   a password is set: an account somebody created or approved carries `AccountOrigin.Admitted` and is
   spared however long it waits, while a self-registered one holds a password and must still expire,
   or the cap fills with a queue nobody can drain.
-- **A store with no accounts gets one account, the Owner, and `FirstAdmin` is where that lives.** Both a
-  host's API and a cluster's anchor open account stores, and both must agree on what the first account
-  is called, what the one-time password file holds and when it is removed — so there is one
-  implementation and whichever opens an empty store first wins. It reports failures rather than
-  logging them: this package holds no logger and should not, or every surface that opens a store takes
-  one too.
+- **A store with no accounts gets one account, the Owner, and `FirstAdmin` is where that lives:** what
+  the first account is called, what the one-time password file holds and when it is removed. It
+  reports failures rather than logging them: this package holds no logger and should not, or every
+  surface that opens a store takes one too.
 - **A password is at least `Passwords.MinLength` characters, and length is the whole rule.** Every
   door that sets one — registration, a reset on somebody's behalf, a holder changing their own — reads the same
   constant, because a floor checked in three callers is three places for it to drift low.
@@ -79,17 +77,11 @@ The account store: one file per host, holding the accounts and the authority ove
 
 - **One reader, `SqliteAuthorityStore`, for version 2.** Accounts carry `origin` and `kind`, and the
   file also holds permissions, roles, assignments, service accounts, requirements, the catalog, member
-  reports and the authority version. It refuses a version 1 file — accounts that carried a tier — and
-  `UserStoreUpgrade.ToVersion2` is the only thing that opens one. The tests write version 1 files with
-  `VersionOneFile`, the layout those builds created.
+  reports and the authority version. A file at any other version is refused.
 - **`SqliteAuthorityStore` is the account store too.** It implements `IUserStore` for person accounts,
   so sign-in, provisioning and linking read it. Every account write goes through the authority's write
   path — versioned, owed to the cluster — and a failed sign-in or a touched credential is bookkeeping
   that moves no version.
-- **The upgrade is the one destructive change this file takes, and it copies the file first.** It drops
-  `tier` and `tier_source` after assigning Owner to every `admin` and taking `origin` from the
-  provenance, in one transaction, and writes an owner-only `VACUUM INTO` copy beside the file before
-  touching it. The copy's target is created `0600` and empty before SQLite writes, never chmod'd after.
 - **Every authority write is checked and applied in one immediate transaction.** The snapshot
   `AuthorityRules` judges is loaded under the write lock, so no second writer moves the state between
   the check and the change. A write names the version it was made against and is refused with

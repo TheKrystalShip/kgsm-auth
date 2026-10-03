@@ -36,31 +36,26 @@ public static class AuthEventPayloads
     /// </param>
     /// <param name="username">What the account was called when this happened.</param>
     /// <param name="identity">The identity that arrived, as <c>provider:name</c>.</param>
-    /// <param name="provider">The provider that vouched, or null.</param>
-    /// <param name="tier">The authority the account store resolved, or null.</param>
+    /// <param name="provider">The provider that proved who they are, or null.</param>
     /// <param name="sid">The session id, so a sign-in and its sign-out pair up.</param>
     /// <param name="userAgent">The calling device, or null when it sent none.</param>
-    /// <param name="peerNode">The node that vouched, on a cluster vouch only.</param>
     /// <returns>The payload writer.</returns>
     public static Action<Utf8JsonWriter> Session(
-        string? userId, string username, string identity, string? provider, string? tier,
-        string? sid, string? userAgent, string? peerNode) =>
+        string? userId, string username, string identity, string? provider, string? sid, string? userAgent) =>
         w =>
         {
             Nullable(w, "UserId", userId);
             w.WriteString("Username", username ?? string.Empty);
             w.WriteString("Identity", identity ?? string.Empty);
             Nullable(w, "Provider", provider);
-            Nullable(w, "Tier", tier);
             Nullable(w, "Sid", sid);
             Nullable(w, "UserAgent", userAgent);
-            Nullable(w, "PeerNode", peerNode);
         };
 
     /// <summary>
     /// Sessions torn down before they expired.
     /// </summary>
-    /// <param name="scope">How far it reached — <c>self</c>, <c>all</c> or <c>admin</c>.</param>
+    /// <param name="scope">How far it reached — one of <see cref="SessionRevokeScopes"/>.</param>
     /// <param name="userId">Whose sessions they were.</param>
     /// <param name="username">What that account was called.</param>
     /// <param name="sid">The single session ended, or null when it was a sweep.</param>
@@ -106,12 +101,10 @@ public static class AuthEventPayloads
         };
 
     /// <summary>
-    /// An account provisioned, approved, disabled, deleted, or having its authority or password changed.
+    /// An account provisioned, approved, disabled, deleted, or having its password changed.
     /// </summary>
     /// <param name="userId">The account.</param>
     /// <param name="username">What it was called when this happened.</param>
-    /// <param name="fromTier">The authority it held before, or null when the event did not move it.</param>
-    /// <param name="toTier">The authority it holds after, or null.</param>
     /// <param name="fromStatus">The status it held before, or null.</param>
     /// <param name="toStatus">The status it holds after, or null.</param>
     /// <param name="byHolder">
@@ -125,14 +118,11 @@ public static class AuthEventPayloads
     /// whom — the only signal an account takeover leaves — and the credential is not part of that fact.
     /// </remarks>
     public static Action<Utf8JsonWriter> Account(
-        string userId, string username, string? fromTier, string? toTier,
-        string? fromStatus, string? toStatus, bool? byHolder) =>
+        string userId, string username, string? fromStatus, string? toStatus, bool? byHolder) =>
         w =>
         {
             w.WriteString("UserId", userId ?? string.Empty);
             w.WriteString("Username", username ?? string.Empty);
-            Nullable(w, "FromTier", fromTier);
-            Nullable(w, "ToTier", toTier);
             Nullable(w, "FromStatus", fromStatus);
             Nullable(w, "ToStatus", toStatus);
 

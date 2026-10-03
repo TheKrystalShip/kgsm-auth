@@ -91,7 +91,7 @@ internal static class SessionEndpoints
         }
 
         await EndAllAsync(
-            ctx, subject, await HandlesOf(ctx, subject), SessionRevokeScopes.Admin, caller);
+            ctx, subject, await HandlesOf(ctx, subject), SessionRevokeScopes.Other, caller);
     }
 
     /// <summary>End one of somebody else's sessions.</summary>
@@ -144,7 +144,7 @@ internal static class SessionEndpoints
         }
 
         await EndAsync(ctx, sid);
-        await RecordAsync(ctx, SessionRevokeScopes.Admin, subject, sid, 1, caller);
+        await RecordAsync(ctx, SessionRevokeScopes.Other, subject, sid, 1, caller);
 
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new RevokeResult(1),
             AnchorJsonContext.Default.RevokeResult);

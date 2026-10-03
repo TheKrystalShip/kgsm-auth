@@ -212,7 +212,6 @@ internal static class Endpoints
             username: user.Username,
             identity: identity.Handle,
             provider: identity.Provider,
-            tier: null,
             sid: sessionId,
             userAgent: UserAgentOf(ctx),
             actor: identity.ActorString,

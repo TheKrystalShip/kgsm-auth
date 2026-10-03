@@ -114,7 +114,7 @@ public sealed class OwnerCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task AVersionOneStoreIsRefusedRatherThanUpgraded()
+    public async Task AStoreAtAnotherSchemaVersionIsRefused()
     {
         using (Microsoft.Data.Sqlite.SqliteConnection connection = new($"Data Source={_options.UserStorePath};Pooling=False"))
         {

@@ -1,8 +1,7 @@
 namespace TheKrystalShip.KGSM.Auth.Users;
 
 /// <summary>
-/// Schema version 2 of the account store: accounts without tiers, and everything that decides access
-/// beside them.
+/// Schema version 2 of the account store: accounts, and everything that decides access beside them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -10,10 +9,7 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// requirements, the catalog of declared actions, each member's last report and the authority version.
 /// What an account may do is its assignments. <c>origin</c> says whether it arrived
 /// by itself or was admitted by somebody, and <c>kind</c> whether it is a person or a service.
-/// </para>
-/// <para>
-/// <see cref="SqliteAuthorityStore"/> reads and writes version 2, and <see cref="UserStoreUpgrade"/>
-/// brings a version 1 file — accounts that carried a tier — to version 2 in one transaction.
+/// <see cref="SqliteAuthorityStore"/> reads and writes it.
 /// </para>
 /// <para>
 /// Every authority row, and every account, carries the authority version it was written at, which is
@@ -91,7 +87,7 @@ public static class AuthoritySchema
         """;
 
     /// <summary>
-    /// Everything that decides access. Created by a fresh version 2 file and by the upgrade alike.
+    /// Everything that decides access, created with the accounts in a fresh file.
     /// </summary>
     /// <remarks>
     /// <para>

@@ -44,7 +44,7 @@ public class SessionTokenServiceTests
         foreach (string token in new[] { svc.MintRefresh(Identity, "sid_1").Token, svc.MintAccess(Identity, "sid_1").Token })
         {
             var parsed = new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(token);
-            Assert.DoesNotContain(parsed.Claims, c => c.Type is "tier" or "role" or "roles" or "actions");
+            Assert.DoesNotContain(parsed.Claims, c => c.Type is "role" or "roles" or "actions");
         }
     }
 

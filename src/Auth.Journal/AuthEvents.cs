@@ -25,12 +25,6 @@ public static class AuthEvents
     /// <summary>A session ended because its holder ended it.</summary>
     public const string SignedOut = "auth.signed_out";
 
-    /// <summary>
-    /// A peer node asserted an already-authenticated identity, which this host minted its own session
-    /// for. Same shape as a sign-in, with <c>PeerNode</c> saying the proof was somebody else's.
-    /// </summary>
-    public const string ClusterVouched = "auth.cluster.vouched";
-
     /// <summary>Sessions were torn down before they expired.</summary>
     public const string SessionRevoked = "auth.session.revoked";
 
@@ -52,9 +46,6 @@ public static class AuthEvents
 
     /// <summary>An account was switched off.</summary>
     public const string UserDisabled = "user.disabled";
-
-    /// <summary>An account's authority moved.</summary>
-    public const string UserTierChanged = "user.tier_changed";
 
     /// <summary>An account is gone.</summary>
     public const string UserDeleted = "user.deleted";
@@ -115,7 +106,7 @@ public static class SessionRevokeScopes
     public const string All = "all";
 
     /// <summary>Somebody else's, ended on <c>auth:accounts.disable</c>.</summary>
-    public const string Admin = "admin";
+    public const string Other = "other";
 
     /// <summary>
     /// Ended because the account behind it was switched off.
@@ -127,10 +118,4 @@ public static class SessionRevokeScopes
     /// there.
     /// </remarks>
     public const string Withdrawn = "withdrawn";
-
-    /// <summary>
-    /// Every session there was, ended when the account store was brought to schema version 2: no token
-    /// minted under the tiers outlives them.
-    /// </summary>
-    public const string Upgrade = "upgrade";
 }

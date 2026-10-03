@@ -204,8 +204,7 @@ public sealed partial class SqliteAuthorityStore
         {
             throw new UserStoreSchemaException(
                 $"The account store at '{path}' is at schema version {found}; the authority store reads " +
-                $"version {AuthoritySchema.Version}. A version 1 file is brought forward by " +
-                $"{nameof(UserStoreUpgrade)}.{nameof(UserStoreUpgrade.ToVersion2)}.");
+                $"version {AuthoritySchema.Version} and nothing else.");
         }
 
         transaction.Commit();

@@ -71,16 +71,9 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         Assert.Equal($"local:{user.UserId}", Text(data, "Identity"));
         Assert.Equal("local", Text(data, "Provider"));
 
-        // A session proves who, never what: no tier is minted, so none is recorded.
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("Tier").ValueKind);
-
         // The sid pairs a sign-in with its sign-out. A row that could not be paired would leave a
         // reader unable to say how long anybody was signed in for.
         Assert.False(string.IsNullOrEmpty(Text(data, "Sid")));
-
-        // A vouch is one node asserting an identity to another, and an anchor is the thing that
-        // makes vouching unnecessary. Written as a real null, never as an empty string.
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("PeerNode").ValueKind);
 
         // The identity that arrived, not the daemon that minted the token. Naming the component
         // would hide who came through the door.
@@ -129,10 +122,6 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         // as a person who never signed out rather than as a query that cannot answer.
         string userId = Text(Line(AuthEvents.SignedIn, username).GetProperty("Data"), "UserId")!;
         Assert.Equal(userId, Text(data, "UserId"));
-
-        // The tier belongs to the session as it was minted, and the sign-in row this pairs with
-        // already carries it. On two rows it would mean two different things.
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("Tier").ValueKind);
     }
 
     [Fact]
@@ -178,7 +167,7 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         Assert.Equal(JsonValueKind.Null, data.GetProperty("FromStatus").ValueKind);
 
         // Pending is what a Control Panel raises an approval request from. A provisioning that landed
-        // anywhere else is not somebody waiting on an administrator.
+        // anywhere else is not somebody waiting to be approved.
         Assert.Equal("pending", Text(data, "ToStatus"));
 
         // An account nobody has approved waits and is handed nothing, so there is no sign-in to record.
@@ -205,9 +194,9 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
     [Fact]
     public async Task An_approval_is_recorded_with_who_approved_it()
     {
-        string admin = Unique("mover-");
-        await anchor.SeedAsync(admin, "correct horse battery", owner: true);
-        string bearer = await BearerAsync(admin, "correct horse battery");
+        string approver = Unique("mover-");
+        await anchor.SeedAsync(approver, "correct horse battery", owner: true);
+        string bearer = await BearerAsync(approver, "correct horse battery");
 
         string subject = Unique("moved-");
         KgsmUser user = await anchor.SeedAsync(
@@ -219,17 +208,17 @@ public sealed class AnchorJournalTests(AnchorFixture anchor)
         Assert.Equal("pending", Text(approved, "FromStatus"));
         Assert.Equal("active", Text(approved, "ToStatus"));
 
-        // The admin who acted is the actor; the account acted upon is in the payload. "Who did this"
+        // Whoever acted is the actor; the account acted upon is in the payload. "Who did this"
         // and "to whom" never have to be told apart by reading a sentence.
-        Assert.Equal($"local:{admin}", Line(AuthEvents.UserApproved, subject).GetProperty("Actor").GetString());
+        Assert.Equal($"local:{approver}", Line(AuthEvents.UserApproved, subject).GetProperty("Actor").GetString());
     }
 
     [Fact]
     public async Task A_patch_that_changes_nothing_records_nothing()
     {
-        string admin = Unique("still-");
-        await anchor.SeedAsync(admin, "correct horse battery", owner: true);
-        string bearer = await BearerAsync(admin, "correct horse battery");
+        string approver = Unique("still-");
+        await anchor.SeedAsync(approver, "correct horse battery", owner: true);
+        string bearer = await BearerAsync(approver, "correct horse battery");
 
         string subject = Unique("unchanged-");
         KgsmUser user = await anchor.SeedAsync(subject, "correct horse battery", owner: false);

@@ -17,6 +17,8 @@
 #                                     unprivileged.
 #   2. ${ENV_DIR}/…env              — operator config, seeded from the repo template if absent.
 #                                     NEVER overwritten: your secrets survive every redeploy.
+#      ${PROVIDERS_FILE}            — the sign-in providers' applications, seeded blank on the
+#                                     same terms.
 #   3. ${UNIT_DIR}                  — a directory YOU own that holds the real systemd unit files.
 #   4. /etc/systemd/system/<unit>   — a symlink into ${UNIT_DIR}. systemd resolves and enables
 #                                     units through symlinks, so this is what lets deploy.sh
@@ -102,6 +104,33 @@ if [[ -n "${ENV_EXAMPLE:-}" && ! -f "$ENV_FILE" ]]; then
 else
     [[ -d "$ENV_DIR" ]] || $SUDO install -d -m 0755 "$ENV_DIR"
     ENV_SEEDED=0
+fi
+
+# ── 2a. The sign-in providers file ────────────────────────────────────────────
+# Seeded blank and NEVER overwritten: a re-run on a configured host must not wipe the values set in
+# it. Owned by the deploying user so it can be edited without privilege; 0600 because it holds the
+# application secrets.
+if [[ ! -f "$PROVIDERS_FILE" ]]; then
+    log "seeding ${PROVIDERS_FILE} — fill it in to offer a provider's sign-in beside passwords"
+    $SUDO install -d -m 0755 "$(dirname "$PROVIDERS_FILE")"
+    $SUDO install -m 0600 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" /dev/null "$PROVIDERS_FILE"
+    $SUDO tee "$PROVIDERS_FILE" >/dev/null <<'PROVIDERS'
+# ── KGSM sign-in providers — read by the auth anchor ──────────────────────────
+# The OAuth applications people sign in through, keyed by provider. A provider is offered on the
+# sign-in page once both of its keys are set; wiring another is a pair of keys and no rebuild:
+#   KgsmAuth__Providers__github__ClientId=
+#   KgsmAuth__Providers__github__ClientSecret=
+# Each one also needs BOTH of its callbacks registered on the application — the sign-in
+# (/auth/<provider>/callback) and the account-linking one (/auth/identities/<provider>/callback) —
+# or linking is refused at the provider, before anything here sees it.
+#
+# Nothing here grants anything. A sign-in establishes who someone is; what they may do is the roles
+# their KGSM account holds.
+
+KgsmAuth__Providers__discord__ClientId=
+KgsmAuth__Providers__discord__ClientSecret=
+PROVIDERS
+    $SUDO chown "${DEPLOY_USER}:${DEPLOY_GROUP}" "$PROVIDERS_FILE"
 fi
 
 # ── 2b. The shared leaf-descriptor directory ──────────────────────────────────

@@ -14,14 +14,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// behind an account nobody exists to approve.
 /// </para>
 /// <para>
-/// It goes unnoticed wherever an anchor shares a machine with a Control Panel, because they share
-/// one account store and the panel bootstrapped it first. An anchor on a machine of its own — which
-/// nothing prevents and which is the deployment a small cluster wants — starts with nothing.
-/// </para>
-/// <para>
-/// The same bootstrap a host's own API performs, from the same code, so the two cannot disagree about
-/// what the first account is called, what the file holds, or when it is removed. Whichever of them
-/// opens an empty store first creates the account; the other finds accounts and does nothing.
+/// So the first start on an empty store creates one account and assigns it Owner, and every later
+/// start finds accounts and does nothing.
 /// </para>
 /// </remarks>
 internal sealed class AnchorBootstrapper(
@@ -30,14 +24,10 @@ internal sealed class AnchorBootstrapper(
     AnchorOptions options,
     AnchorAuthority authority,
     AnchorJournal journal,
-    SqliteSessionRegistry sessions,
-    UpgradeReport upgrade,
     ILogger<AnchorBootstrapper> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken ct)
     {
-        await EndSessionsAfterUpgradeAsync(ct).ConfigureAwait(false);
-
         string? password;
         try
         {
@@ -82,27 +72,6 @@ internal sealed class AnchorBootstrapper(
             "the first account's password could not be written to {Path}. It is '{Password}' for "
             + "the account '{Username}', and is not recoverable once this line is gone.",
             path, password, FirstAdmin.DefaultUsername);
-    }
-
-    /// <summary>
-    /// The start that brought the store to schema version 2 ends every session there is, once, so no
-    /// token minted under the tiers outlives them. Passwords and identity links are untouched; everybody
-    /// signs in again.
-    /// </summary>
-    private async Task EndSessionsAfterUpgradeAsync(CancellationToken ct)
-    {
-        if (!upgrade.Upgraded)
-            return;
-
-        int ended = await sessions.RevokeEverythingAsync(ct).ConfigureAwait(false);
-        logger.LogWarning(
-            "the account store was brought to schema version 2 (a copy of the old file is at {Backup}); {Owners} "
-            + "became Owner and every other account holds only everyone. {Count} session(s) were ended.",
-            upgrade.Backup, string.Join(", ", upgrade.Owners), ended);
-
-        await journal.SessionRevokedAsync(
-            SessionRevokeScopes.Upgrade, userId: "", username: "", sid: null, count: ended,
-            actor: KgsmActor.Format(KgsmActorProvider.System, options.MemberId), origin: null, ct).ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;

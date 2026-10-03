@@ -30,9 +30,7 @@ anything else.
 
 **The access model is `Auth.Access`** — actions declared by components, permissions, ranked roles,
 assignments scoped to the cluster, a node or an instance, and service accounts — with its authority
-`kgsm-docs/plans/permissions.md`. The account store holds it at schema version 2
-(`SqliteAuthorityStore`), and `UserStoreUpgrade` brings a version 1 file, whose accounts carried a
-tier, there.
+`kgsm-docs/systems/authorization/`. The account store holds it (`SqliteAuthorityStore`).
 
 **Each package's locked decisions live in a `CLAUDE.md` beside it**: `src/Auth.Access/`,
 `src/Auth.Users/`, `src/Auth.Journal/`, `src/Auth.Cluster/`, `src/Auth.Anchor/` (the daemon, the Discord

@@ -12,9 +12,9 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// This anchor's authority store, opened on first use.
 /// </summary>
 /// <remarks>
-/// The authority lives in the account store at schema version 2. A store still at version 1 cannot
-/// hold it, and says so once through <see cref="UnavailableReason"/> rather than stopping the daemon:
-/// everything else the anchor does reads accounts, not authority.
+/// The authority lives in the account store. A store at a schema version this build does not read
+/// says so once through <see cref="UnavailableReason"/> rather than stopping the daemon, which is the
+/// surface that reports it.
 /// </remarks>
 internal sealed class AnchorAuthority(AnchorOptions options, ILogger<AnchorAuthority> logger)
 {

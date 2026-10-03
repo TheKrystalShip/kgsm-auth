@@ -19,11 +19,8 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   leave every member checking against something nothing signs with. A file that exists and cannot be
   read stops the daemon; it is never a reason to generate. It is created with mode `0600` rather than
   chmod'd after — the gap between write and chmod is exactly what the mode exists to close.
-- **The anchor runs on the account store at schema version 2, and brings a version 1 file there on
-  start.** `UserStoreUpgrade.ToVersion2` runs before anything opens the file; the start that upgraded
-  it ends every session (`auth.session.revoked`, scope `upgrade`), so no token minted by a build that
-  read version 1 outlives the upgrade. `SqliteAuthorityStore` is both the authority and the `IUserStore`
-  every door reads.
+- **The anchor runs on the account store at schema version 2.** `SqliteAuthorityStore` is both the
+  authority and the `IUserStore` every door reads.
 - **The anchor's store is its own file**, `/var/lib/kgsm-auth-anchor/accounts.db` in its state
   directory, and never the node's replica on the same machine (`/var/lib/kgsm/auth/users.db`). A node
   applying the anchor's snapshot to the file the anchor writes would be the authority rewritten by its
@@ -190,8 +187,8 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   binary rather than a tool beside it.** It reads the daemon's own settings, so it opens the store and
   writes the journal the daemon does, and is run as the anchor's service account. It bypasses the
   administration rules — whoever can run it already holds the file — and journals
-  `auth.assignment.granted` with `local:<user>` as the actor. It opens the store at schema version 2
-  only; a version 1 file is refused, never upgraded from here.
+  `auth.assignment.granted` with `local:<user>` as the actor. It opens the store the way the daemon
+  does, refusing a file at any other schema version.
 
 ## The Discord round trip (`DiscordDirectory`, `OAuthHandshake`)
 

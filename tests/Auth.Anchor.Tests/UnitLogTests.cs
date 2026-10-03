@@ -10,7 +10,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
 /// </summary>
 /// <remarks>
 /// An anchor on the ordinary topology has no Control Panel on its machine, so the daemon that would
-/// be read <i>about</i> is the one being asked. Both halves are therefore admin-only and both refuse
+/// be read <i>about</i> is the one being asked. Both halves are therefore gated on its own actions and refuse
 /// by name when the host cannot produce a journal at all: a surface that hangs instead is one a
 /// person watches waiting for lines that were never coming.
 /// </remarks>

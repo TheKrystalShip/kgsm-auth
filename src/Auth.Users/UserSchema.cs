@@ -12,19 +12,9 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// </remarks>
 public sealed class UserStoreSchemaException(string message) : Exception(message);
 
-/// <summary>
-/// Where a store file states its schema version, and the one earlier version this build still reads.
-/// </summary>
-/// <remarks>
-/// Version 1 held a tier on each account. Nothing opens a version 1 file except
-/// <see cref="UserStoreUpgrade.ToVersion2"/>, which brings it to <see cref="AuthoritySchema.Version"/>
-/// in place; <see cref="SqliteAuthorityStore"/> refuses one.
-/// </remarks>
+/// <summary>Where a store file states its schema version.</summary>
 public static class UserSchema
 {
-    /// <summary>The version whose files <see cref="UserStoreUpgrade.ToVersion2"/> upgrades.</summary>
-    public const int VersionOne = 1;
-
-    /// <summary>The key the version is filed under in <c>schema_meta</c>, in every version.</summary>
+    /// <summary>The key the version is filed under in <c>schema_meta</c>.</summary>
     public const string VersionKey = "schema_version";
 }

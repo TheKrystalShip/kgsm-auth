@@ -80,14 +80,11 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
     /// and naming the component that minted the token would hide who came through the door.
     /// </remarks>
     internal Task SessionAsync(
-        string type, string? userId, string username, string identity, string? provider, string? tier,
+        string type, string? userId, string username, string identity, string? provider,
         string? sid, string? userAgent, string actor, string? origin, CancellationToken ct = default) =>
         WriteAsync(
             type, actor, origin,
-            AuthEventPayloads.Session(userId, username, identity, provider, tier, sid, userAgent,
-                // Never set here. A vouch is one node asserting an identity to another, and an anchor
-                // is the thing that makes vouching unnecessary.
-                peerNode: null),
+            AuthEventPayloads.Session(userId, username, identity, provider, sid, userAgent),
             ct);
 
     /// <summary>Record sessions being torn down before they expired.</summary>
@@ -112,8 +109,7 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
             AuthEventPayloads.LockedOut(userId, username, identity, failedCount, until), ct);
 
     /// <summary>
-    /// Record an account being provisioned, approved, disabled, deleted, or having its authority or
-    /// password changed.
+    /// Record an account being provisioned, approved, disabled, deleted, or having its password changed.
     /// </summary>
     /// <remarks>
     /// Takes no password parameter and never will. What is recorded is that a credential was set and
@@ -121,12 +117,12 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
     /// fact.
     /// </remarks>
     internal Task AccountAsync(
-        string type, string userId, string username, string? fromTier = null, string? toTier = null,
+        string type, string userId, string username,
         string? fromStatus = null, string? toStatus = null, bool? byHolder = null,
         string actor = "", string? origin = null, CancellationToken ct = default) =>
         WriteAsync(
             type, actor, origin,
-            AuthEventPayloads.Account(userId, username, fromTier, toTier, fromStatus, toStatus, byHolder),
+            AuthEventPayloads.Account(userId, username, fromStatus, toStatus, byHolder),
             ct);
 
     /// <summary>Record an external identity being attached to or detached from an account.</summary>

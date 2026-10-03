@@ -76,23 +76,6 @@ catch (Exception ex)
 
 builder.Services.AddSingleton(signer);
 
-// The account store is at schema version 2: accounts, and everything that decides what they may do.
-// A version 1 file is brought forward here, once, before anything opens it — every session is ended
-// once the daemon is up, so no token minted under the tiers outlives them.
-UpgradeReport upgrade;
-try
-{
-    upgrade = File.Exists(options.UserStorePath)
-        ? UserStoreUpgrade.ToVersion2(options.UserStorePath, DateTimeOffset.UtcNow)
-        : new UpgradeReport(AuthoritySchema.Version, null, []);
-}
-catch (Exception ex)
-{
-    Console.Error.WriteLine($"<2>the account store at {options.UserStorePath} could not be brought to schema version 2: {ex.Message}");
-    return 1;
-}
-
-builder.Services.AddSingleton(upgrade);
 builder.Services.AddSingleton<IUserStore>(sp => sp.GetRequiredService<AnchorAuthority>().Store
     ?? throw new InvalidOperationException(sp.GetRequiredService<AnchorAuthority>().UnavailableReason));
 builder.Services.AddSingleton<IUserPasswordHasher, IdentityPasswordHasher>();

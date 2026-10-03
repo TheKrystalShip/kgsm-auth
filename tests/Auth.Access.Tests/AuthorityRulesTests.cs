@@ -7,7 +7,7 @@ namespace TheKrystalShip.KGSM.Auth.Access.Tests;
 public class AuthorityRulesTests
 {
     /// <summary>
-    /// A cluster with an Owner, a moderator at rank 1 holding the admin actions and some operational
+    /// A cluster with an Owner, a moderator at rank 1 holding the authority actions and some operational
     /// ones, a helper at rank 2 below them, and a plain person.
     /// </summary>
     private sealed class Cluster

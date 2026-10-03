@@ -46,6 +46,11 @@ ENV_EXAMPLE="${REPO_DIR}/deploy/${PROJECT}.env.example"
 
 HEALTH_TRIES="${HEALTH_TRIES:-30}"
 
+# The OAuth applications people sign in through, keyed by provider. The unit loads it before this
+# anchor's own env file; setup.sh seeds it blank on a host provisioned from a checkout, and a package
+# host gets it from kgsm-base.
+PROVIDERS_FILE="${KGSM_PROVIDERS_FILE:-/etc/kgsm/kgsm-auth.env}"
+
 # What this anchor can be configured with, generated from AnchorSettings on every build. The
 # `.anchor.json` suffix is what routes it: setup.sh creates the anchors directory and deploy.sh
 # installs the file there unprivileged, so the descriptor can never be older than the binary it

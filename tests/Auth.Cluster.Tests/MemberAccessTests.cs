@@ -70,7 +70,7 @@ public sealed class MemberAccessTests : IDisposable
     }
 
     [Fact]
-    public async Task AVersionOneStore_IsUnavailable_NamingWhy()
+    public async Task AStoreAtAnotherSchemaVersion_IsUnavailable_NamingWhy()
     {
         using (SqliteConnection connection = new($"Data Source={_path};Pooling=False"))
         {

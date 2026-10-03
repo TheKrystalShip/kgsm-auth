@@ -814,13 +814,13 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
 
     // ── Clients ───────────────────────────────────────────────────────────────
 
-    private async Task<string> AdminBearerAsync() =>
-        (await anchor.SignedInAsync(owner: true, "oidc-admin")).Session.Access;
+    private async Task<string> OwnerBearerAsync() =>
+        (await anchor.SignedInAsync(owner: true, "oidc-owner")).Session.Access;
 
     [Fact]
-    public async Task An_administrator_registers_lists_and_removes_a_client()
+    public async Task A_client_is_registered_listed_and_removed_by_hand()
     {
-        string bearer = await AdminBearerAsync();
+        string bearer = await OwnerBearerAsync();
         string id = "hand-" + Guid.NewGuid().ToString("N")[..8];
 
         using var create = new HttpRequestMessage(HttpMethod.Post, "/auth/cluster/clients")
@@ -949,7 +949,7 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         Assert.True(await registry.SyncMembersAsync([], DateTimeOffset.UtcNow, CancellationToken.None));
         Assert.Null(registry.Find(id));
 
-        // And an administrator's client of the same id is never taken over by an announcement.
+        // And a client registered by hand under the same id is never taken over by an announcement.
         await registry.RegisterAsync(new ClientRegistration(id, "By hand", ["https://hand.test/"], []),
             DateTimeOffset.UtcNow, CancellationToken.None);
         await registry.SyncMembersAsync([row], DateTimeOffset.UtcNow, CancellationToken.None);
@@ -1024,7 +1024,7 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         var publications = anchor.Service<SelfPublications>();
 
         // Read by every member through the holder, which is what admits a client across origins on a
-        // machine nobody configured: an administrator's client and a declared panel exist only here.
+        // machine nobody configured: a client registered by hand and a declared panel exist only here.
         IReadOnlyList<string> stated = [];
         for (int attempt = 0; attempt < 50; attempt++)
         {

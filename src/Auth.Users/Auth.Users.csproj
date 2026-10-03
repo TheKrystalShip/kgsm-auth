@@ -9,15 +9,14 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Users</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>2.0.0-dev.7</Version>
+    <Version>2.0.0-dev.8</Version>
     <Description>
-      The KGSM user store: local accounts with passwords, the credentials that prove them (a local
-      password, a linked external identity), and the tier each account holds. A user exists on its
-      own — an external provider is one way to prove you are a user KGSM already knows about, never
-      the source of one. Backed by a host-level SQLite file both the Control Panel API and the
-      assistant read directly, so neither depends on the other to authenticate anyone. At schema
-      version 2 the same file holds the access model — permissions, roles, scoped assignments, service
-      accounts and the catalog — read into an Auth.Access snapshot and written only through its rules.
+      The KGSM account store: accounts, the credentials that prove them (a local password, a linked
+      external identity), and the access model beside them — permissions, roles, scoped assignments,
+      service accounts and the catalog — read into an Auth.Access snapshot and written only through its
+      rules. A user exists on its own: an external provider is one way to prove you are a user KGSM
+      already knows about, never the source of one. One SQLite file, held by the auth anchor and
+      replicated read-only to every member.
     </Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>

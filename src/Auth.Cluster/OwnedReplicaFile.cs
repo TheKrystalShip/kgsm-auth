@@ -13,11 +13,11 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>It creates the file, and it discards a version 1 file rather than converting it.</b> A replica is
-/// whatever the holder of the accounts last said, so there is nothing in an old one worth carrying: the
-/// snapshot rebuilds it whole. A version 1 file — accounts that carried a tier — is moved aside as
-/// <c>&lt;path&gt;.v1-discarded-&lt;utc&gt;</c>, owner-only like the file it was, and a fresh version 2
-/// store is created in its place.
+/// <b>It creates the file, and it discards a file at an older schema version rather than converting
+/// it.</b> A replica is whatever the holder of the accounts last said, so there is nothing in an old one
+/// worth carrying: the snapshot rebuilds it whole. An older file is moved aside as
+/// <c>&lt;path&gt;.discarded-&lt;utc&gt;</c>, owner-only like the file it was, and a fresh store is
+/// created in its place.
 /// </para>
 /// <para>
 /// A file newer than this build understands is left alone and reported unavailable, asked again at most
@@ -52,8 +52,8 @@ public sealed class OwnedReplicaFile(string path, ILogger<OwnedReplicaFile> logg
                 _nextTry = _clock.GetUtcNow() + Retry;
                 try
                 {
-                    if (VersionOf(path) == UserSchema.VersionOne)
-                        Discard();
+                    if (VersionOf(path) is { } version && version < AuthoritySchema.Version)
+                        Discard(version);
 
                     _replica = new SqliteAuthorityStore(new UserStoreOptions { Path = path });
                     _unavailable = null;
@@ -108,9 +108,9 @@ public sealed class OwnedReplicaFile(string path, ILogger<OwnedReplicaFile> logg
             : null;
     }
 
-    private void Discard()
+    private void Discard(int version)
     {
-        string aside = path + ".v1-discarded-" + _clock.GetUtcNow().UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
+        string aside = path + ".discarded-" + _clock.GetUtcNow().UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
         SqliteConnection.ClearAllPools();
         File.Move(path, aside);
         foreach (string suffix in new[] { "-wal", "-shm" })
@@ -120,7 +120,7 @@ public sealed class OwnedReplicaFile(string path, ILogger<OwnedReplicaFile> logg
         }
 
         logger.LogWarning(
-            "the replica at {Path} was at schema version 1; moved it to {Aside} and started a fresh one for the holder's snapshot",
-            path, aside);
+            "the replica at {Path} was at schema version {Version}; moved it to {Aside} and started a fresh one for the holder's snapshot",
+            path, version, aside);
     }
 }

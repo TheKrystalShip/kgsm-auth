@@ -174,7 +174,6 @@ internal sealed class ProviderSessions(
                 username: username,
                 identity: handle,
                 provider: providerName,
-                tier: null,
                 sid: sid,
                 userAgent: Endpoints.UserAgentOf(ctx),
                 actor: KgsmActor.Format(providerName, username),

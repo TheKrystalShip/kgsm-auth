@@ -10,8 +10,8 @@
     <!--
       Zero package dependencies, by design. Every KGSM surface takes this assembly — including the
       Discord bot, whose deploy is tuned for footprint, and the CLI, whose startup a consumer feels
-      directly. Anything this referenced would reach all of them, so the tier model stays a pure
-      library: no HTTP, no configuration binder, no ORM. The transports that DO need those live in
+      directly. Anything this referenced would reach all of them, so it stays a pure library: no HTTP,
+      no configuration binder, no ORM. The transports that DO need those live in
       the sibling packages, which only the surfaces that need them take.
     -->
     <IsAotCompatible>true</IsAotCompatible>
@@ -19,13 +19,12 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>4.0.0-dev.3</Version>
+    <Version>4.0.0-dev.4</Version>
     <Description>
-      The KGSM authorization model: the ordered viewer/operator/admin tier, the provider-agnostic
-      KgsmIdentity, the IAuthorityProvider seam and its failure, the session claim names, and the
-      provider:name actor convention. One definition of who may do what, shared by every surface, so
-      the same person gets the same authority through the Control Panel, the assistant and the Discord
-      bot alike. Dependency-free and AOT-safe.
+      KGSM identity: the provider-agnostic KgsmIdentity, the failure a provider or the account store
+      reports when it cannot answer, the session claim names, and the provider:name actor convention.
+      A session proves who somebody is and nothing more; what they may do is Auth.Access's.
+      Dependency-free and AOT-safe.
     </Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>

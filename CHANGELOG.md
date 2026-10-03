@@ -7,6 +7,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed — what served the tier model (anchor 3.4.0, journal 2.0.0-dev.1, users 2.0.0-dev.8, cluster 1.0.0-dev.21, auth 4.0.0-dev.4)
+
+- **The anchor opens a schema version 2 store and nothing else.** `UserStoreUpgrade`, the start that
+  upgraded a version 1 file and ended every session, and the `upgrade` revoke scope are gone; a file at
+  any other version leaves the authority unavailable with the reason. Converting a live version 1 store
+  is a one-shot host step, done outside the repo before the new anchor first starts.
+- **`OwnedReplicaFile` sets aside any file at an older schema version** (`<path>.discarded-<utc>`) and
+  takes the snapshot, rather than naming version 1.
+- **`Auth.Journal`** drops `auth.cluster.vouched` and `user.tier_changed`, the session payload's
+  `Tier` and `PeerNode` and the account payload's `FromTier`/`ToTier`. A session ended on somebody
+  else's behalf is scope `other`.
+- **Setup seeds `/etc/kgsm/kgsm-auth.env`**, the sign-in providers' applications, since the anchor is
+  the one reader; it is seeded blank and never overwritten.
+- The `Auth` and `Auth.Users` package descriptions describe identity and the account store.
+
 ### Changed — access is described as actions (anchor 3.3.1, users 2.0.0-dev.7)
 
 The sign-in pages, refusals and logs name no administrator: an account waiting reads "needs to be

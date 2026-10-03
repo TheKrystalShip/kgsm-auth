@@ -98,7 +98,7 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable(
             JournalServiceCollectionExtensions.StateRootVariable, Path.Combine(Root, "state"));
 
-        // The host's shared OAuth application, as /etc/kgsm/kgsm-auth.env supplies it on a real
+        // A provider's OAuth application, as /etc/kgsm/kgsm-auth.env supplies it on a real
         // machine. Present so the provider door is wired at all — nothing here reaches a provider,
         // because every case under test is decided before an exchange is attempted.
         Environment.SetEnvironmentVariable("KgsmAuth__Providers__discord__ClientId", "test-client-id");

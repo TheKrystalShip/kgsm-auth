@@ -394,9 +394,7 @@ Two services also deploy separately, so at any moment one may be a version ahead
 
 So changes are **additive only** — add tables, add nullable columns, add indexes; never drop, rename,
 or change what a stored value means. The file carries a `schema_version`, and a store written by a
-build newer than the one opening it is **refused outright** rather than half read. The one change that
-drops anything is `UserStoreUpgrade.ToVersion2`, which takes a version 1 file's tiers away in place and
-copies the file, owner-only, before it touches it.
+build newer than the one opening it is **refused outright** rather than half read.
 
 ### What a password costs
 

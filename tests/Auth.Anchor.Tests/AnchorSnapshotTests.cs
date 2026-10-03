@@ -33,7 +33,7 @@ public sealed class AnchorSnapshotTests(AnchorFixture anchor)
         using var request = new HttpRequestMessage(HttpMethod.Get, "/auth/cluster/snapshot");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
 
-        // Two different kinds of caller and two different doors. An admin is a person; this answers
+        // Two different kinds of caller and two different doors. An Owner is a person; this answers
         // to members, and a person's session — however privileged — is not one.
         Assert.Equal(HttpStatusCode.Unauthorized, (await anchor.Client.SendAsync(request)).StatusCode);
     }

@@ -199,21 +199,6 @@ internal sealed partial class SqliteSessionRegistry : ISessionRegistry
     }
 
     /// <summary>
-    /// End every session there is — each browser's sign-in here and every session minted under one — and
-    /// say how many were live.
-    /// </summary>
-    internal Task<int> RevokeEverythingAsync(CancellationToken ct = default)
-    {
-        lock (_writeGate)
-        {
-            using SqliteConnection connection = Open();
-            using SqliteCommand cmd = connection.CreateCommand();
-            cmd.CommandText = "UPDATE sessions SET revoked = 1, current_jti = NULL WHERE revoked = 0;";
-            return Task.FromResult(cmd.ExecuteNonQuery());
-        }
-    }
-
-    /// <summary>
     /// Every live session belonging to one account.
     /// </summary>
     /// <remarks>

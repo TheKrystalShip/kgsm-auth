@@ -330,7 +330,7 @@ public sealed class RegisterTests(AnchorFixture anchor)
         Assert.Empty((await anchor.Store.LoadAsync()).AssignmentsOf(stored.UserId));
 
         // Arrived, not admitted: nobody made it, and expiry reads that difference to tell an account
-        // that arrived on its own from one an admin made.
+        // that arrived on its own from one somebody made.
         Assert.Equal(AccountOrigin.Arrived, stored.Origin);
     }
 
