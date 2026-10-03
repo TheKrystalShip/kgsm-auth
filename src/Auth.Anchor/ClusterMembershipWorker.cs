@@ -23,8 +23,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </para>
 /// <para>
 /// <b>Nothing here promotes anything.</b> The claim only ever writes into an empty assignment; a
-/// capability somebody already holds is left alone however unreachable that member is. Failover is an
-/// admin reassigning, because an anchor that promoted itself during a partition would produce two
+/// capability somebody already holds is left alone however unreachable that member is. Failover is a
+/// reassignment under <c>api:members.manage</c>, because an anchor that promoted itself during a partition would produce two
 /// members issuing conflicting statements about who may do what.
 /// </para>
 /// </remarks>
@@ -116,8 +116,8 @@ internal sealed class ClusterMembershipWorker(
             // Only there. An anchor anywhere else sees an empty assignment for exactly as long as gossip
             // has not reached it yet — a joining machine, or a founding one that has taken another
             // cluster's secret — and a claim made in that window competes with the real holder, where
-            // the tie-break can hand it the cluster's accounts. Such an anchor holds them only when an
-            // administrator assigns them to it.
+            // the tie-break can hand it the cluster's accounts. Such an anchor holds them only when
+            // somebody assigns them to it.
             if (assignment is null || !assignment.IsHeld)
             {
                 if (_foundedHere)
@@ -129,7 +129,7 @@ internal sealed class ClusterMembershipWorker(
                 {
                     logger.LogInformation(
                         "this machine did not found the cluster it is in, so this anchor never claims its "
-                        + "accounts; it holds them only when an administrator assigns them to it");
+                        + "accounts; it holds them only when somebody assigns them to it");
                     _saidNotFounder = true;
                 }
             }
@@ -145,7 +145,7 @@ internal sealed class ClusterMembershipWorker(
             // moment it was promoted.
             //
             // Where those clients live is then stated for every member to read through the holder,
-            // which is what admits them across origins everywhere — an administrator's registration and
+            // which is what admits them across origins everywhere — a registered client and
             // a declared panel included, since those exist only here.
             if (isHolder)
             {

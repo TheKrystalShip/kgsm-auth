@@ -38,7 +38,7 @@ public interface IUserStore
     /// </summary>
     Task<KgsmUser?> FindByCredentialAsync(string handle, CancellationToken ct = default);
 
-    /// <summary>Every account, oldest first. The admin screen's list; there is no paging.</summary>
+    /// <summary>Every account, oldest first. The accounts page's list; there is no paging.</summary>
     Task<IReadOnlyList<KgsmUser>> ListAsync(CancellationToken ct = default);
 
     /// <summary>
@@ -58,7 +58,7 @@ public interface IUserStore
     /// was nothing to erase.
     /// </summary>
     /// <remarks>
-    /// Disabling is what an admin normally wants and is what keeps the audit trail legible — this
+    /// Disabling is what is normally wanted and is what keeps the audit trail legible — this
     /// exists for a pending row that should never have been created, where there is nothing worth
     /// keeping.
     /// </remarks>
@@ -106,6 +106,6 @@ public interface IUserStore
     /// </summary>
     Task<LoginLockout> RecordFailureAsync(string userId, LockoutPolicy policy, DateTimeOffset now, CancellationToken ct = default);
 
-    /// <summary>Forget an account's failures, on a successful sign-in or an admin's reset.</summary>
+    /// <summary>Forget an account's failures, on a successful sign-in or a reset on the account's behalf.</summary>
     Task ClearLockoutAsync(string userId, CancellationToken ct = default);
 }

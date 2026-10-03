@@ -6,7 +6,7 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// <remarks>
 /// <para>
 /// The rule lives here, beside the store that holds the hash, because every door that sets a
-/// password has to agree on it: somebody registering, an admin resetting one for a person locked
+/// password has to agree on it: somebody registering, somebody resetting one for a person locked
 /// out, and that person changing their own. Three separate checks in three separate callers is
 /// three places for the floor to drift, and the one that drifts low is the one an attacker finds.
 /// </para>

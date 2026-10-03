@@ -26,7 +26,7 @@ internal static class AccountEndpoints
     // ── An account arriving ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Create an account, as an administrator.
+    /// Create an account, on <c>auth:accounts.create</c>.
     /// </summary>
     /// <remarks>
     /// The counterpart to registration: somebody who will never register themselves, or who arrives
@@ -53,8 +53,8 @@ internal static class AccountEndpoints
             return;
         }
 
-        // Only the two states an admin can mean. Creating one already disabled is a shape with no
-        // use — an admin wanting that creates it and disables it, and the trail then says both
+        // Only the two states a creation can mean. Creating one already disabled is a shape with no
+        // use — somebody wanting that creates it and disables it, and the trail then says both
         // things happened.
         if (!Endpoints.TryReadStatus(body.Status ?? UserStatuses.Active, out UserStatus status)
             || status == UserStatus.Disabled)
@@ -136,11 +136,11 @@ internal static class AccountEndpoints
     // ── Somebody else's password ──────────────────────────────────────────────
 
     /// <summary>
-    /// Set somebody's password as an administrator.
+    /// Set somebody's password, on <c>auth:accounts.create</c>.
     /// </summary>
     /// <remarks>
     /// Knows no current password, because the case it exists for is somebody who has lost theirs. It
-    /// clears the lockout with it — an admin resetting a password for a person locked out of their own
+    /// clears the lockout with it — somebody resetting a password for a person locked out of their own
     /// account has plainly resolved what the lockout existed for.
     /// </remarks>
     internal static async Task SetPassword(HttpContext ctx)

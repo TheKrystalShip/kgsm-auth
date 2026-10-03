@@ -11,7 +11,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <para>
 /// State is deliberately not filtered on. A member that is unreachable right now is exactly what the
 /// outbox exists for — dropping it here would turn "deliver when it returns" into "never", which is
-/// the failure durable withdrawal is meant to prevent. A member an admin has <em>disabled</em> is a
+/// the failure durable withdrawal is meant to prevent. A member somebody has <em>disabled</em> is a
 /// different thing and is left out: it is not part of this cluster's answer to anything until
 /// somebody turns it back on.
 /// </para>

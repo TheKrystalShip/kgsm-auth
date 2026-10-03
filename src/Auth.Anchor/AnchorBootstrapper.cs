@@ -4,13 +4,13 @@ using TheKrystalShip.KGSM.Auth.Users;
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
-/// The administrator an anchor with no accounts creates for itself.
+/// The Owner account an anchor with no accounts creates for itself.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>An anchor holding an empty store is a door nobody can open.</b> Registration is off unless a
-/// cluster turns it on, and an account made through it holds <c>none</c> and waits for an approval
-/// that only an administrator can give — so the first person to arrive at a fresh anchor is stuck
+/// cluster turns it on, and an account made through it holds nothing and waits for an approval
+/// that only somebody holding <c>auth:accounts.approve</c> can give — so the first person to arrive at a fresh anchor is stuck
 /// behind an account nobody exists to approve.
 /// </para>
 /// <para>
@@ -48,7 +48,7 @@ internal sealed class AnchorBootstrapper(
         {
             // An anchor nobody can administer is worth an error and is not worth refusing to start:
             // the surface that would report the problem is this same daemon.
-            logger.LogError(e, "the first administrator could not be created in the account store");
+            logger.LogError(e, "the first account could not be created in the account store");
             return;
         }
 
@@ -70,16 +70,16 @@ internal sealed class AnchorBootstrapper(
         if (FirstAdmin.TryWritePasswordFile(path, FirstAdmin.DefaultUsername, password, out Exception? error))
         {
             logger.LogInformation(
-                "this cluster had no accounts, so the administrator '{Username}' was created. Its "
+                "this cluster had no accounts, so the Owner account '{Username}' was created. Its "
                 + "one-time password is in {Path} — read it, sign in, and change it; the file is "
                 + "removed on that first sign-in.", FirstAdmin.DefaultUsername, path);
             return;
         }
 
         // The account exists either way and it is the account that matters, so the password is said
-        // out loud here rather than leaving a cluster with an administrator nobody can be.
+        // out loud here rather than leaving a cluster with an Owner nobody can be.
         logger.LogWarning(error,
-            "the first administrator's password could not be written to {Path}. It is '{Password}' for "
+            "the first account's password could not be written to {Path}. It is '{Password}' for "
             + "the account '{Username}', and is not recoverable once this line is gone.",
             path, password, FirstAdmin.DefaultUsername);
     }

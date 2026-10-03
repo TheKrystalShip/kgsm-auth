@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — access is described as actions (anchor 3.3.1, users 2.0.0-dev.7)
+
+The sign-in pages, refusals and logs name no administrator: an account waiting reads "needs to be
+approved before you can continue", a closed registration says to ask whoever manages accounts on this
+cluster, and the bootstrap account is logged and labelled in its password file as the Owner account.
+The README, the package `CLAUDE.md`s and the comments name the action each door asks —
+`auth:accounts.create` for creating an account and setting a password, `auth:accounts.disable` for
+somebody else's sessions, any `auth:*` action for the account and client lists.
+
 ### Added — members publish their operations (access 1.0.0-dev.6, anchor 3.3.0)
 
 - **`OperationManifest`** is the shape a member publishes its gated operations in: method, route,

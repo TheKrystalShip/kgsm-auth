@@ -43,7 +43,7 @@ internal static class MemberEndpoints
     {
         // The cluster package's own check, not a second copy of it: the token's signature, then the
         // enabled-member gate. The gate matters as much as the signature, because members share one
-        // secret — a member an admin removed can still mint a token that validates perfectly, and
+        // secret — a member somebody removed can still mint a token that validates perfectly, and
         // only the roster says it is still welcome. A null answer has already written the refusal.
         if (await ClusterRequest.AuthenticateAsync(ctx) is null)
             return;

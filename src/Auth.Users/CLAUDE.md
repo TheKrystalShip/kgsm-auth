@@ -40,7 +40,8 @@ The account store: one file per host, holding the accounts and the authority ove
   and its own store. The seam plus the rehash-on-upgrade path is what lets the format be replaced
   with no forced reset.
 - **No SMTP, and no password reset by email.** A mail dependency in the package whose purpose is
-  removing outside dependencies would be self-defeating. Resets are admin-initiated.
+  removing outside dependencies would be self-defeating. A reset is set by somebody holding
+  `auth:accounts.create`.
 - **An external provider proves you are an account this host already has and contributes nothing
   else.** Neither does a password: `LocalSignInService` answers who, and access is evaluated wherever a
   request is decided.
@@ -64,14 +65,14 @@ The account store: one file per host, holding the accounts and the authority ove
   a password is set: an account somebody created or approved carries `AccountOrigin.Admitted` and is
   spared however long it waits, while a self-registered one holds a password and must still expire,
   or the cap fills with a queue nobody can drain.
-- **A store with no accounts gets one administrator, and `FirstAdmin` is where that lives.** Both a
+- **A store with no accounts gets one account, the Owner, and `FirstAdmin` is where that lives.** Both a
   host's API and a cluster's anchor open account stores, and both must agree on what the first account
   is called, what the one-time password file holds and when it is removed — so there is one
   implementation and whichever opens an empty store first wins. It reports failures rather than
   logging them: this package holds no logger and should not, or every surface that opens a store takes
   one too.
 - **A password is at least `Passwords.MinLength` characters, and length is the whole rule.** Every
-  door that sets one — registration, an admin reset, a holder changing their own — reads the same
+  door that sets one — registration, a reset on somebody's behalf, a holder changing their own — reads the same
   constant, because a floor checked in three callers is three places for it to drift low.
 
 ## Schema version 2 — the access model

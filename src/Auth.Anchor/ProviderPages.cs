@@ -22,7 +22,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </para>
 /// <para>
 /// Every value written into a document is encoded. Most come from this provider, but a client's name is
-/// an administrator's text and a username is whatever somebody registered.
+/// whatever its registration said and a username is whatever somebody registered.
 /// </para>
 /// </remarks>
 internal static class ProviderPages
@@ -69,12 +69,12 @@ internal static class ProviderPages
         return WriteAsync(ctx, status, "Sign in", body.ToString(), clientOrigin);
     }
 
-    /// <summary>An account waiting for an administrator, polled without script.</summary>
+    /// <summary>An account waiting for approval, polled without script.</summary>
     public static Task WaitAsync(HttpContext ctx, string username, string clientOrigin)
     {
         string body =
             "<h1>Waiting for approval</h1>"
-            + $"<p class=\"lead\"><strong>{Encode(username)}</strong> needs an administrator's approval before you can continue.</p>"
+            + $"<p class=\"lead\"><strong>{Encode(username)}</strong> needs to be approved before you can continue.</p>"
             + "<p><a href=\"/authorize/wait\">Check now</a></p>";
 
         // A refresh rather than a stream: the wait is minutes, and on a page with no script a refresh is

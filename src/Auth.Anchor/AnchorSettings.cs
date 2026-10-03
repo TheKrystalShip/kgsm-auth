@@ -53,7 +53,7 @@ internal sealed class AnchorSettings
 
     /// <summary>Whether somebody with no account may make one.</summary>
     /// <panel>Whether a person with no account can create one from the sign-in page. The account they
-    /// get holds nothing until an administrator grants it something, and the limit below bounds how
+    /// get holds nothing until somebody grants it something, and the limit below bounds how
     /// many can be waiting at once.</panel>
     [ConfigField("allowSelfRegistration", "Let people register", Group = "sessions", Risk = ConfigRisk.Wiring)]
     public bool? AllowSelfRegistration { get; set; }

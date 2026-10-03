@@ -11,7 +11,7 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   sign-in valid on every member, and changing `Anchor__ClusterId` on a running cluster invalidates
   every token at once. It reaches the minter as `SessionTokenOptions.Audience`.
 - **Signing is asymmetric and the verification key is published.** A member must be able to check a
-  session it cannot mint — one that could mint what it verifies could mint itself an admin session.
+  session it cannot mint — one that could mint what it verifies could mint itself an Owner's session.
   `ValidAlgorithms` is pinned for the same reason: a public key offered as an HMAC secret would make
   the key everybody holds the key everybody can sign with.
 - **The private key is generated exactly once, on a machine that has none.** Every member in the
@@ -44,7 +44,7 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   own actions. The first account an empty store gets is granted Owner.
 - **A store that cannot be read is `503`, never `403`.** "We could not find out what this person may
   do" is a different fact from "they may do nothing", and reporting the first as the second locks out
-  an admin mid-incident. It is the same rule `Auth.Users` states for the store itself.
+  the Owner mid-incident. It is the same rule `Auth.Users` states for the store itself.
 - **Every endpoint is a plain `RequestDelegate` and every wire shape has source-generated metadata.**
   The routing overloads that bind an arbitrary delegate reflect over its parameters, which no
   Native-AOT service can do, and the failure appears at publish time rather than at build time. The
@@ -54,8 +54,8 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   `/token`, `/userinfo`, `/auth/identity`, `/auth/cluster/*` and this anchor's own surface — and never
   on anything that reads the provider's cookie. This is a surface that mints credentials; a wildcard
   invites any page to drive somebody's sign-in from their own browser.
-- **The package is preset-disabled.** A cluster has one anchor and which machine holds it is an
-  administrator's decision. A second machine with the package installed and the unit stopped is a
+- **The package is preset-disabled.** A cluster has one anchor and which machine holds it is a
+  decision made under `api:members.manage`. A second machine with the package installed and the unit stopped is a
   promotion candidate, not a second authority.
 - **Three standings, and collapsing the first into the third breaks every standalone install.** A
   machine with no cluster secret is not "not the holder" — there is no assignment to read, its
@@ -119,14 +119,14 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   account holds answers honestly with none — an empty card rather than a wrong question. They are
   looked up under **every credential handle the account holds**: a session is keyed by the handle
   somebody arrived with, so one account signed in with a password and with Discord has two keys.
-  A person reads and ends their own on the account page; an administrator reads and ends somebody's
-  under `/auth/cluster/users/{id}/sessions`. Ending one is never gated on holding the capability, for
+  A person reads and ends their own on the account page; somebody holding `auth:accounts.disable`
+  reads and ends anybody's under `/auth/cluster/users/{id}/sessions`. Ending one is never gated on holding the capability, for
   the same reason sign-out is not.
 - **Ending one session and ending all of them are separate doors, and both exist.** They are different
-  decisions with different costs, and an admin left only the wide one reaches for it because it is
-  what exists. A session an admin acts on is addressed under the account it belongs to, so the check
-  is whether the sid is that person's — an admin ending a session without knowing whose it was could
-  not be recorded honestly.
+  decisions with different costs, and somebody left only the wide one reaches for it because it is
+  what exists. A session ended on somebody else's behalf is addressed under the account it belongs to,
+  so the check is whether the sid is that person's — ending a session without knowing whose it was
+  could not be recorded honestly.
 - **The session registry is the anchor's own, on its own file.** Sessions are not accounts: a member
   replicating the cluster's accounts replicates none of the sign-ins.
 
@@ -136,7 +136,8 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   leaf is configured and read through the node that runs it; an anchor is a peer of every node rather
   than something one of them hosts, and the machine it sits on need run no Control Panel at all. So
   `/auth/config` and `/auth/logs` are served by the daemon being configured and the daemon being read,
-  and both are admin-only — a daemon's log is the account store described from the side.
+  on the anchor's own `auth:config.*` and `auth:journal.read` — a daemon's log is the account store
+  described from the side.
 - **The unit both surfaces name is the descriptor's, never a second setting.** One name in one place
   cannot disagree with itself, and a log surface reading the wrong unit reports somebody else's
   silence as this one's. The unit carries `SupplementaryGroups=systemd-journal`, without which
@@ -245,14 +246,13 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   application and it also serves the provider door's own sign-in; matching on the cookie alone would let
   an abandoned request capture that sign-in.
 - **A member's client is paths joined to its roster address, never URLs it names.** A member announcing
-  full URLs could make any origin a place codes are sent. An administrator's client of the same id
-  wins.
+  full URLs could make any origin a place codes are sent. A registered client of the same id wins.
 - **A surface's client id is its origin's host** (`ClusterClientAnnouncement.ClientIdFor`), for an
   announced surface and a declared panel alike, so a surface derives its own from where it was loaded
   and is told nothing — which is what lets a panel on a static host sign in through a member that
   never served it.
 - **Where the clients live is published, as `auth.origins`, while this anchor holds the accounts.**
-  Every member reads it through the holder to admit those origins, so an administrator's client and a
+  Every member reads it through the holder to admit those origins, so a registered client and a
   declared panel — which exist only here — are admitted everywhere without anybody configuring a
   member.
 - **A panel on a static host is declared, not stored.** `Anchor__PanelOrigins` is what the deploy said

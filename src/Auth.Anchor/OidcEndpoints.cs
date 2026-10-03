@@ -255,7 +255,7 @@ internal static class OidcEndpoints
     }
 
     /// <summary>
-    /// <c>GET /authorize/wait</c>: an account an administrator has not approved yet, polled until they do.
+    /// <c>GET /authorize/wait</c>: an account not approved yet, polled until it is.
     /// </summary>
     /// <remarks>
     /// The request in flight is kept alive while the page polls, because a wait for approval is minutes
@@ -330,7 +330,7 @@ internal static class OidcEndpoints
     /// The same rules as every registration — closed unless the cluster opens it, capped, the account
     /// unapproved and holding nothing — and the same-origin gate every credential post here passes. The
     /// new account's password proves this browser's provider session, so the wait that follows is theirs,
-    /// and it returns them to the client that asked once an administrator approves.
+    /// and it returns them to the client that asked once the account is approved.
     /// </remarks>
     internal static async Task Register(HttpContext ctx)
     {

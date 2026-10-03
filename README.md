@@ -201,13 +201,13 @@ machine. The identity design is `../cluster-auth-plan.md` and the sign-in's is
 |---|---|
 | `GET /health` | the ecosystem's liveness probe |
 | `GET /authorize`, `POST /token`, `GET /sign-out` | the OpenID Connect doors; the only way a session is minted, renewed or ended by its holder |
-| `GET /auth/cluster/users` | every account, admin only |
-| `GET /auth/cluster/users/{id}/sessions` | an account's live sessions, admin only |
+| `GET /auth/cluster/users` | every account, to a caller holding any `auth:*` action |
+| `GET /auth/cluster/users/{id}/sessions` | an account's live sessions, on `auth:accounts.disable` |
 | `GET /auth/cluster/public-key` | the verification key set |
 
 **Sessions are signed asymmetrically, and that is the whole point.** The anchor holds the private
 key; every member verifies with the published public one. A member that could mint what it verifies
-could mint itself an admin session, so it holds only what checks a signature.
+could mint itself an Owner's session, so it holds only what checks a signature.
 
 ```
 GET /auth/cluster/public-key
@@ -255,7 +255,7 @@ browser-facing URL (`https://auth.anchors.example.com`); with anything else ever
 | `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token` |
 | `GET /userinfo` | the account behind a bearer |
 | `GET /sign-out`, `POST /sign-out` | end a browser's sign-in and everything minted under it; asks without a hint |
-| `GET/POST /auth/cluster/clients`, `DELETE /auth/cluster/clients/{id}` | the client registry, admin only |
+| `GET/POST /auth/cluster/clients`, `DELETE /auth/cluster/clients/{id}` | the client registry, to a caller holding any `auth:*` action |
 
 **Two cookies on the anchor's own origin, both `HttpOnly; SameSite=Lax; Path=/`.** `kgsm_authz` names
 the request in flight, held here for ten minutes so the page and its form carry no request field.
@@ -273,10 +273,10 @@ only, joined to the browser address its roster row carries — and appears with 
 leaves when the member does. A Control Panel on a static host, which no member can announce, is declared
 in `Anchor__PanelOrigins`: one client per origin, id the origin's host, at the paths every panel lands on
 (`ClusterClientAnnouncement.ControlPanel`), never stored and never removable through the registry.
-Anything else is registered by an admin. Redirects are matched exactly and must be HTTPS, or HTTP where
+Anything else is registered through the registry. Redirects are matched exactly and must be HTTPS, or HTTP where
 the cluster itself accepts plaintext — this machine, a private network or a local name — so a cluster of
 one on a LAN has somewhere to send a code. A registered client's origin may read discovery, the key set,
-`/token`, `/userinfo` and the admin API across origins, without credentials; nothing that reads the
+`/token`, `/userinfo` and the account API across origins, without credentials; nothing that reads the
 anchor's cookie answers another origin.
 
 **The floor.** The sign-in page is a plain document with a working form and the provider links, under a
@@ -324,7 +324,7 @@ with no secret is not part of a cluster, which is a state rather than a misconfi
 anchor on the machine that founded the cluster claims them — the machine whose founding record,
 `/etc/kgsm/cluster-founded`, names the secret it holds. An anchor anywhere else never claims: an empty
 assignment there means gossip has not reached it yet, and a claim made in that window competes with the
-real holder. Only an admin's reassignment moves the accounts afterwards. Nothing promotes itself — an
+real holder. Only a reassignment under `api:members.manage` moves the accounts afterwards. Nothing promotes itself — an
 anchor that did so during a partition would produce two members issuing conflicting statements about
 who may do what.
 
@@ -412,5 +412,5 @@ copies the file, owner-only, before it touches it.
   `/var/lib/kgsm/`. SQLite writes `-wal` and `-shm` *beside* the database, so WAL needs write
   permission on the **directory**, not just the file — the same reason `events/` and `leaves/` are
   their own directories.
-- **No SMTP, anywhere.** A reset is admin-initiated. Adding a mail dependency to the thing whose
+- **No SMTP, anywhere.** A reset is set by somebody holding `auth:accounts.create`. Adding a mail dependency to the thing whose
   purpose is removing outside dependencies would be self-defeating.

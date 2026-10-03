@@ -77,7 +77,7 @@ internal static class ClientSources
     /// <summary>Announced over gossip by a member serving a surface; it leaves when the member does.</summary>
     public const string Member = "member";
 
-    /// <summary>Registered by an administrator on this anchor.</summary>
+    /// <summary>Registered by hand on this anchor.</summary>
     public const string Admin = "admin";
 
     /// <summary>A panel on a static host, declared in this anchor's configuration and never stored.</summary>
@@ -89,7 +89,7 @@ internal static class ClientSources
 /// <param name="Name">What a person is shown.</param>
 /// <param name="RedirectUris">The only places a code is sent, matched exactly.</param>
 /// <param name="PostLogoutRedirectUris">The only places a signed-out browser is returned to, matched exactly.</param>
-/// <param name="Source">Member or admin.</param>
+/// <param name="Source"><c>member</c>, or <c>admin</c> for a client registered by hand.</param>
 /// <param name="MemberId">The member that announced it, for a member's client.</param>
 /// <param name="Created">When it was registered.</param>
 internal sealed record RegisteredClient(
@@ -601,7 +601,7 @@ internal sealed partial class SqliteSessionRegistry
         return Task.FromResult<IReadOnlyList<RegisteredClient>>(clients);
     }
 
-    /// <summary>Register an administrator's client. False when the id is already taken.</summary>
+    /// <summary>Register a client by hand. False when the id is already taken.</summary>
     internal Task<bool> AddClientAsync(RegisteredClient client, CancellationToken ct = default)
     {
         lock (_writeGate)
@@ -619,7 +619,7 @@ internal sealed partial class SqliteSessionRegistry
         }
     }
 
-    /// <summary>Remove an administrator's client. False when there is none by that id.</summary>
+    /// <summary>Remove a client registered by hand. False when there is none by that id.</summary>
     internal Task<bool> RemoveAdminClientAsync(string clientId, CancellationToken ct = default)
     {
         lock (_writeGate)
@@ -634,11 +634,11 @@ internal sealed partial class SqliteSessionRegistry
     }
 
     /// <summary>
-    /// Make the members' clients exactly <paramref name="announced"/>, leaving every administrator's alone.
+    /// Make the members' clients exactly <paramref name="announced"/>, leaving every one registered by hand alone.
     /// </summary>
     /// <remarks>
     /// One transaction, so a reader never sees a member's client missing between its removal and its
-    /// re-insertion. An announced id that an administrator already registered keeps the administrator's
+    /// re-insertion. An announced id already registered by hand keeps the hand-registered
     /// row: a member cannot take over a client somebody registered by hand.
     /// </remarks>
     /// <returns>Whether anything changed.</returns>

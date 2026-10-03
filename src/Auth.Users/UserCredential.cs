@@ -29,7 +29,7 @@ public enum CredentialKind
 /// </para>
 /// <para>
 /// A credential is never authority. It answers "this is that account"; what the account may do lives
-/// on <see cref="KgsmUser.Tier"/> and nowhere else. An external provider therefore contributes
+/// in its assignments in the authority and nowhere else. An external provider therefore contributes
 /// nothing beyond the identification, which is what lets a provider be added without an authority
 /// story of its own.
 /// </para>

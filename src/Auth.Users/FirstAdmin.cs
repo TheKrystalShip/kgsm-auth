@@ -6,7 +6,7 @@ using TheKrystalShip.KGSM.Auth;
 namespace TheKrystalShip.KGSM.Auth.Users;
 
 /// <summary>
-/// The administrator a host begins with, and the file its password is left in.
+/// The account a host begins with, and the file its password is left in.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,7 +21,7 @@ namespace TheKrystalShip.KGSM.Auth.Users;
 /// <para>
 /// <b>The file is written once and never rewritten.</b> It is removed the first time the account it
 /// names signs in with a password, which is the moment its contents stop being the only copy of
-/// anything; an admin may also just delete it. A host where the first sign-in comes through an
+/// anything; whoever has the shell may also just delete it. A host where the first sign-in comes through an
 /// identity provider instead keeps it until somebody does.
 /// </para>
 /// </remarks>
@@ -36,7 +36,7 @@ public static class FirstAdmin
     private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
     /// <summary>
-    /// Create the first administrator, if and only if this host has no accounts at all.
+    /// Create the first account, if and only if this host has no accounts at all.
     /// </summary>
     /// <returns>
     /// The generated password, or <see langword="null"/> when an account already exists and nothing
@@ -77,7 +77,7 @@ public static class FirstAdmin
     /// <remarks>
     /// Reports rather than logs, because what a surface says about this differs: the account exists
     /// either way and it is the account that matters, so a caller that cannot write the file should
-    /// say the password out loud in its own log rather than leave a host with an administrator nobody
+    /// say the password out loud in its own log rather than leave a host with an Owner nobody
     /// can be. This package holds no logger to say it with, and should not — an account store that
     /// took one would take it into every surface that opens the store.
     /// </remarks>
@@ -97,7 +97,7 @@ public static class FirstAdmin
                 File.SetUnixFileMode(file.SafeFileHandle, OwnerOnly);
             file.Write(Encoding.UTF8.GetBytes(
                 $"""
-                # The KGSM administrator this host was created with.
+                # The KGSM Owner account this host was created with.
                 # Sign in, change the password, then delete this file. Nothing rewrites it.
                 {UsernameField} {username}
                 {PasswordField} {password}
@@ -118,7 +118,7 @@ public static class FirstAdmin
     /// </summary>
     /// <remarks>
     /// Scoped to the account the file names, because a host can grow other accounts from the shell
-    /// before anyone signs in, and a viewer's first login is not what this file is waiting for.
+    /// before anyone signs in, and somebody else's first sign-in is not what this file is waiting for.
     /// Absent, unreadable and naming somebody else are one outcome: nothing happens.
     /// </remarks>
     /// <param name="path">The password file.</param>

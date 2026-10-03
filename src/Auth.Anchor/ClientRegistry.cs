@@ -12,7 +12,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <remarks>
 /// <para>
 /// <b>Registration is the consent.</b> There is no consent screen: a client is here because a member of
-/// the cluster announced it or an administrator put it here, and either is a decision about the whole
+/// the cluster announced it or somebody registered it here, and either is a decision about the whole
 /// cluster rather than a question for the person signing in.
 /// </para>
 /// <para>
@@ -25,8 +25,8 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// <c>Origin</c> and on every authorization, and the only writer is this process.
 /// </para>
 /// <para>
-/// <b>Three sources.</b> A member announces the panel it serves; an administrator registers anything
-/// else; and a panel on a static host, which no member can announce, is declared in this anchor's
+/// <b>Three sources.</b> A member announces the panel it serves; anything else is registered here
+/// by hand; and a panel on a static host, which no member can announce, is declared in this anchor's
 /// configuration. A declared panel is never stored — it is what the deploy said this process should
 /// serve, so it comes back with every start and goes when the setting does, and it wins over a stored
 /// client of the same id.
@@ -126,7 +126,7 @@ internal sealed partial class ClientRegistry
     /// <summary>What registering a client did.</summary>
     internal enum RegisterOutcome { Registered, Invalid, Taken }
 
-    /// <summary>Register an administrator's client.</summary>
+    /// <summary>Register a client by hand.</summary>
     public async Task<(RegisterOutcome Outcome, RegisteredClient? Client, string? Problem)> RegisterAsync(
         ClientRegistration request, DateTimeOffset now, CancellationToken ct)
     {
@@ -172,7 +172,7 @@ internal sealed partial class ClientRegistry
     internal enum RemoveOutcome { Removed, NotFound, Announced, Declared }
 
     /// <summary>
-    /// Remove an administrator's client. A member's leaves when the member stops announcing it, and a
+    /// Remove a client registered by hand. A member's leaves when the member stops announcing it, and a
     /// declared panel when the configuration stops declaring it.
     /// </summary>
     public async Task<RemoveOutcome> RemoveAsync(string clientId, CancellationToken ct)

@@ -92,7 +92,7 @@ internal sealed record UserInfoResponse(
 /// <remarks>A code at the end of a URL, or the wait — never a session. Nothing the provider's pages
 /// hold can call a member.</remarks>
 /// <param name="Redirect">Where to send the browser: the client, carrying its code.</param>
-/// <param name="Wait">The wait page, for an account an administrator has not approved.</param>
+/// <param name="Wait">The wait page, for an account not yet approved.</param>
 internal sealed record CredentialAnswer(string? Redirect, string? Wait);
 
 /// <summary>A client, as the administration surface lists one.</summary>
@@ -108,7 +108,7 @@ internal sealed record ClientRecord(
 /// <summary>Every registered client.</summary>
 internal sealed record ClientsPage(IReadOnlyList<ClientRecord> Data);
 
-/// <summary>What an administrator posts to register a client.</summary>
+/// <summary>What is posted to register a client by hand.</summary>
 /// <param name="ClientId">The id, or null to have one made.</param>
 /// <param name="Name">What a person is shown on the sign-in page.</param>
 /// <param name="RedirectUris">Where codes may be sent, each matched exactly.</param>

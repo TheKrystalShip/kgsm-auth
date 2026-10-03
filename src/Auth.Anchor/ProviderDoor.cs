@@ -137,7 +137,7 @@ internal sealed class ProviderCatalog(
 /// completing a sign-in at a configured provider provisions exactly the same unapproved account. This
 /// adds a door to a room rather than a room. It is off unless a cluster says otherwise, bounded by
 /// the same <see cref="PendingPolicy"/> that bounds the provider door, and the account it creates
-/// holds <b>nothing</b>, awaiting approval, until an administrator approves it.
+/// holds <b>nothing</b>, awaiting approval, until somebody holding <c>auth:accounts.approve</c> approves it.
 /// </para>
 /// <para>
 /// A caller names a username, a password and optionally a display name, and nothing else. A status on
@@ -145,7 +145,7 @@ internal sealed class ProviderCatalog(
 /// </para>
 /// <para>
 /// The provider's registration page is the door (<see cref="OidcEndpoints.Register"/>); it answers with
-/// the wait, and the browser returns to its client once an administrator approves the account.
+/// the wait, and the browser returns to its client once the account is approved.
 /// </para>
 /// </remarks>
 internal static class Registration
@@ -164,7 +164,7 @@ internal static class Registration
         {
             logger.LogWarning("registration refused: this cluster does not take accounts people create themselves");
             await Endpoints.Refuse(ctx, StatusCodes.Status403Forbidden, "registration_closed",
-                "This cluster does not take accounts people create for themselves. Ask an administrator for one.");
+                "This cluster does not take accounts people create for themselves. Ask whoever manages accounts on this cluster for one.");
             return null;
         }
 
@@ -224,7 +224,7 @@ internal static class Registration
                 "'{Username}' tried to register and this cluster already holds {Cap} accounts awaiting approval",
                 username, options.Pending.Cap);
             await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "not_accepting_accounts",
-                "This cluster is not accepting new accounts right now. Ask an administrator.");
+                "This cluster is not accepting new accounts right now. Ask whoever manages accounts on this cluster.");
             return null;
         }
 
@@ -268,7 +268,7 @@ internal static class Registration
         logger.LogInformation("'{Username}' registered and is awaiting approval", username);
 
         // The account exists and every member has been told. Recording it here is what puts the
-        // person in front of an administrator: the row is what a Control Panel renders and what a
+        // person in front of whoever approves accounts: the row is what a Control Panel renders and what a
         // push notification asking for approval is raised from, so an account created and unrecorded
         // is one nobody is asked about.
         //
@@ -433,7 +433,7 @@ internal static class ProviderEndpoints
         }
 
         // A verified identity is not yet an account. It matches one here, or an unapproved one is
-        // created for it — holding no tier, so the session it gets says who they are and reaches
+        // created for it — holding nothing, so the session it gets says who they are and reaches
         // nothing. It is never matched on a username or an email: providers disagree about what
         // "verified" means, and matching on one is the documented route to handing somebody another
         // person's account.
@@ -460,7 +460,7 @@ internal static class ProviderEndpoints
                 "{Handle} signed in and this cluster already holds {Cap} accounts awaiting approval",
                 verified.Handle, options.Pending.Cap);
             await Fail(ctx, options, inFlight, StatusCodes.Status503ServiceUnavailable, "not_accepting_accounts",
-                "This cluster is not accepting new accounts right now. Ask an administrator.");
+                "This cluster is not accepting new accounts right now. Ask whoever manages accounts on this cluster.");
             return;
         }
 

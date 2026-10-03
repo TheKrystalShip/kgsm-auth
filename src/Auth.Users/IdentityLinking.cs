@@ -58,7 +58,7 @@ public readonly record struct LinkResult(LinkOutcome Outcome, KgsmUser? User)
 /// <para>
 /// <see cref="Ttl"/> is what keeps the cap from becoming a lockout: without it, one burst of
 /// arrivals fills the cap permanently and the next real person is refused. Expiry only ever removes
-/// an account that arrived on its own and is still unapproved — never one an admin created or
+/// an account that arrived on its own and is still unapproved — never one somebody created or
 /// approved, which carries <see cref="AccountOrigin.Admitted"/> and is spared however long it waits.
 /// </para>
 /// </remarks>
@@ -230,7 +230,7 @@ public sealed class IdentityLinkService(IUserStore store)
     /// <para>
     /// The last credential is refused. The store itself does not refuse it (it reports what happened
     /// and nothing more), but an account with nothing attached is one its own holder cannot sign in to
-    /// and only an admin can rescue, so the rule lives here where every caller gets it.
+    /// and only somebody else can rescue, so the rule lives here where every caller gets it.
     /// </para>
     /// </remarks>
     public async Task<UnlinkOutcome> UnlinkAsync(
@@ -277,7 +277,7 @@ public sealed class IdentityLinkService(IUserStore store)
     /// </para>
     /// <para>
     /// Provenance is the discriminator rather than whether the account holds a password, because a
-    /// self-registered account has one and no admin has ever looked at it. Sparing every
+    /// self-registered account has one and nobody has ever looked at it. Sparing every
     /// password-bearing account would let self-registrations accumulate against
     /// <see cref="PendingPolicy.Cap"/> until the host refuses every new arrival — a queue nobody
     /// can drain being indistinguishable, from outside, from a host that is simply closed.
@@ -336,7 +336,7 @@ public sealed class IdentityLinkService(IUserStore store)
     }
 
     // Unique by construction, because a subject is unique within its provider and the handle is
-    // unique across the store. Ugly on purpose: it is what an admin renames.
+    // unique across the store. Ugly on purpose: it is what somebody renames.
     private static string FallbackUsername(KgsmIdentity identity)
     {
         string raw = $"{identity.Provider}-{identity.Subject}";

@@ -478,7 +478,7 @@ internal static class Endpoints
     internal static Task AnnounceAsync(HttpContext ctx) =>
         ctx.RequestServices.GetRequiredService<AuthorityBroadcast>().DrainAsync(ctx.RequestAborted);
 
-    /// <summary>The administrator who acted, as an audit trail names one.</summary>
+    /// <summary>The person who acted, as an audit trail names one.</summary>
     internal static string ActorOf(Caller caller) =>
         caller.Identity?.ActorString
         ?? (caller.User is { } self ? self.AsIdentity().ActorString : string.Empty);
@@ -495,8 +495,8 @@ internal static class Endpoints
     {
         var journal = ctx.RequestServices.GetRequiredService<AnchorJournal>();
 
-        // The admin who acted is the actor; the account acted UPON rides in the payload. It is the
-        // split every administrative action uses, so "who did this" and "to whom" never have to be
+        // The person who acted is the actor; the account acted UPON rides in the payload. It is the
+        // split every action on an account uses, so "who did this" and "to whom" never have to be
         // told apart by reading a sentence.
         string actor = ActorOf(caller);
 
@@ -531,13 +531,13 @@ internal static class Endpoints
         if (FirstAdmin.TryConsumePasswordFile(path, username, out Exception? error))
         {
             logger.LogInformation(
-                "'{Username}' has signed in, so the initial administrator password at {Path} is gone.",
+                "'{Username}' has signed in, so the initial password at {Path} is gone.",
                 username, path);
         }
         else if (error is not null)
         {
             logger.LogWarning(error,
-                "the initial administrator password at {Path} could not be removed.", path);
+                "the initial password at {Path} could not be removed.", path);
         }
     }
 
@@ -674,7 +674,7 @@ internal static class Endpoints
     /// </summary>
     /// <remarks>
     /// 503, never 403. "We could not find out what this person may do" is a different fact from "they
-    /// may do nothing", and reporting the first as the second locks out an admin mid-incident.
+    /// may do nothing", and reporting the first as the second locks out the Owner mid-incident.
     /// </remarks>
     internal static Task Unavailable(HttpContext ctx) =>
         Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",

@@ -115,7 +115,7 @@ public static class AuthEventPayloads
     /// <param name="fromStatus">The status it held before, or null.</param>
     /// <param name="toStatus">The status it holds after, or null.</param>
     /// <param name="byHolder">
-    /// Whether the account's own holder did this rather than an administrator acting on them. Null when
+    /// Whether the account's own holder did this rather than somebody else acting on them. Null when
     /// the distinction does not apply. It is the whole point of recording a password change: somebody
     /// else setting yours reads completely differently from you setting it.
     /// </param>

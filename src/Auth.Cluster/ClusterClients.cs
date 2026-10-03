@@ -21,8 +21,8 @@ namespace TheKrystalShip.KGSM.Auth.Cluster;
 /// </para>
 /// <para>
 /// The client id is <see cref="ClientIdFor"/> each such address. One member serves at most one surface,
-/// reachable at each of its names; a second surface is a second member or a client an administrator
-/// registers.
+/// reachable at each of its names; a second surface is a second member or a client registered at the
+/// anchor.
 /// </para>
 /// </remarks>
 /// <param name="Name">What a person is shown on the sign-in page: whose sign-in they are completing.</param>

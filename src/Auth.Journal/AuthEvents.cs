@@ -114,7 +114,7 @@ public static class SessionRevokeScopes
     /// <summary>Every session the caller holds.</summary>
     public const string All = "all";
 
-    /// <summary>Somebody else's, ended by an administrator.</summary>
+    /// <summary>Somebody else's, ended on <c>auth:accounts.disable</c>.</summary>
     public const string Admin = "admin";
 
     /// <summary>

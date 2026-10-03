@@ -4,7 +4,7 @@ using TheKrystalShip.KGSM.Auth.Users;
 namespace TheKrystalShip.KGSM.Auth.Anchor;
 
 /// <summary>
-/// Somebody's sessions, as an administrator reads and ends them.
+/// Somebody's sessions, read and ended on <c>auth:accounts.disable</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,7 +16,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </para>
 /// <para>
 /// A person's own sessions are the account page's (<see cref="AccountPageEndpoints"/>), authenticated
-/// by the provider's cookie. These doors are an administrator's, reached from a Control Panel with the
+/// by the provider's cookie. These doors act on somebody else's, reached from a Control Panel with the
 /// bearer it holds, and each addresses the account it acts on.
 /// </para>
 /// <para>
@@ -28,7 +28,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </remarks>
 internal static class SessionEndpoints
 {
-    /// <summary>Every live session an account holds — an administrator's door.</summary>
+    /// <summary>Every live session an account holds.</summary>
     internal static async Task List(HttpContext ctx)
     {
         Caller? maybe = await Endpoints.RequireCaller(ctx, AuthAction.Of(ctx));
@@ -56,14 +56,14 @@ internal static class SessionEndpoints
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new SessionsPage(
             [.. live.Select(s => new SessionRecord(
                 s.SessionId, s.UserId, s.Created, s.Expires, s.UserAgent, s.LastSeen,
-                // True on exactly the row the calling bearer belongs to, so an administrator reading
-                // their own account sees which device is the one they are using.
+                // True on exactly the row the calling bearer belongs to, so somebody reading
+                // their own account here sees which device is the one they are using.
                 Current: string.Equals(s.SessionId, caller.SessionId, StringComparison.Ordinal),
                 Kind: s.Provider ? SqliteSessionRegistry.ProviderKind : null))]),
             AnchorJsonContext.Default.SessionsPage);
     }
 
-    /// <summary>End every session an account holds — an administrator's door.</summary>
+    /// <summary>End every session an account holds.</summary>
     /// <remarks>
     /// The one a person cannot do for themselves and the one an incident needs: somebody's access is
     /// withdrawn and every device they are signed in on has to stop, without waiting for a bearer to
@@ -94,17 +94,17 @@ internal static class SessionEndpoints
             ctx, subject, await HandlesOf(ctx, subject), SessionRevokeScopes.Admin, caller);
     }
 
-    /// <summary>End one of somebody else's sessions — an administrator's door.</summary>
+    /// <summary>End one of somebody else's sessions.</summary>
     /// <remarks>
     /// <para>
     /// Deliberately not the same fact as ending all of them. "This one session looks wrong" and "sign
     /// this person out everywhere" are different decisions with different costs: the first ends a
-    /// device without disturbing somebody mid-task, and an admin left only the second reaches for it
+    /// device without disturbing somebody mid-task, and somebody left only the second reaches for it
     /// because it is what exists.
     /// </para>
     /// <para>
     /// The session is addressed <em>under the account it belongs to</em>, so the check is whether this
-    /// sid is that person's rather than whether it exists. An admin ending a session without knowing
+    /// sid is that person's rather than whether it exists. Ending a session without knowing
     /// whose it was could not be recorded honestly, and the row has to name the subject.
     /// </para>
     /// </remarks>
@@ -133,7 +133,7 @@ internal static class SessionEndpoints
         IReadOnlyList<string> handles = await HandlesOf(ctx, subject);
 
         // A sid that belongs to somebody else answers the same as one that does not exist: telling
-        // those apart says whether an id is real, and an admin acting on the wrong account should be
+        // those apart says whether an id is real, and somebody acting on the wrong account should be
         // told they have the wrong account rather than shown a stranger's session.
         if (await RegistryOf(ctx).OwnerAsync(sid, ctx.RequestAborted) is not { } owner
             || !handles.Contains(owner, StringComparer.Ordinal))
@@ -171,8 +171,8 @@ internal static class SessionEndpoints
             await broadcast.RevokedAsync(sid, ctx.RequestAborted);
         }
 
-        // Zero is a real answer and not a failure: an account with nothing live is exactly what an
-        // admin wanted, and reporting it as an error would invite them to try again.
+        // Zero is a real answer and not a failure: an account with nothing live is exactly what was
+        // wanted, and reporting it as an error would invite them to try again.
         if (ended.Count > 0)
             await RecordAsync(ctx, scope, subject, sid: null, ended.Count, caller);
 
@@ -210,7 +210,7 @@ internal static class SessionEndpoints
         HttpContext ctx, string scope, KgsmUser subject, string? sid, int? count, Caller caller) =>
         ctx.RequestServices.GetRequiredService<AnchorJournal>().SessionRevokedAsync(
             scope, subject.UserId, subject.Username, sid, count,
-            // Whoever acted. An admin ending somebody else's sessions is the substantial-power case,
+            // Whoever acted. Ending somebody else's sessions is the substantial-power case,
             // and the account acted upon is in the payload rather than in the actor.
             actor: caller.Identity?.ActorString
                 ?? (caller.User is { } self ? self.AsIdentity().ActorString : string.Empty),

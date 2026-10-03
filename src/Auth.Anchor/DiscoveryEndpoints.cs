@@ -51,8 +51,8 @@ internal static class DiscoveryEndpoints
     /// <remarks>
     /// <para>
     /// Authenticated at the floor: any account may see the machines it might be able to drive, and
-    /// what it may then <em>do</em> on each is that member's own answer per request. Gating this at a
-    /// higher tier would leave somebody signed in and unable to see anything, which reads as a broken
+    /// what it may then <em>do</em> on each is that member's own answer per request. Gating this on an
+    /// action would leave somebody signed in and unable to see anything, which reads as a broken
     /// panel rather than as a permission.
     /// </para>
     /// <para>

@@ -30,7 +30,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// </para>
 /// <para>
 /// <b>Best-effort, always.</b> Every method swallows its failure after logging it. The action has
-/// already happened by the time one of these is called — a session exists, a tier is already changed —
+/// already happened by the time one of these is called — a session exists, an account is already changed —
 /// so refusing it because the record could not be written would trade a missing line for a broken
 /// door.
 /// </para>
@@ -172,7 +172,7 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
         string type, string actor, string? origin, Action<Utf8JsonWriter> payload, CancellationToken ct)
     {
         // Parsed at this boundary because several of these names are chosen at run time from the
-        // catalog — which of the user.* events an admin's patch turned out to be. A name that is not a
+        // catalog — which of the user.* events an account patch turned out to be. A name that is not a
         // name is dropped loudly rather than written: a line no consumer matches fails silently
         // everywhere downstream.
         if (!EventName.TryParse(type, out EventName name))

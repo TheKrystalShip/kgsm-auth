@@ -67,16 +67,16 @@ internal sealed record SignInRequest(string? Username, string? Password);
 /// What a browser posts to make an account.
 /// </summary>
 /// <remarks>
-/// A username, a password, and optionally a name to be shown by. Deliberately nothing else — a tier
+/// A username, a password, and optionally a name to be shown by. Deliberately nothing else — a role
 /// or a status on this shape is a field somebody will try to set, and both are decided by the anchor.
 /// </remarks>
 internal sealed record RegisterRequest(string? Username, string? Password, string? DisplayName);
 
-/// <summary>What an administrator posts to set somebody's password.</summary>
+/// <summary>What is posted to set somebody's password, on <c>auth:accounts.create</c>.</summary>
 /// <param name="Password">The password the account will hold.</param>
 internal sealed record PasswordSetRequest(string? Password);
 
-/// <summary>What an administrator posts to create an account.</summary>
+/// <summary>What is posted to create an account, on <c>auth:accounts.create</c>.</summary>
 /// <remarks>
 /// A password is optional: an account can be made for somebody who will only ever arrive through a
 /// provider. One that <em>is</em> set answers to the same floor as every other, or the door with the
@@ -87,7 +87,7 @@ internal sealed record PasswordSetRequest(string? Password);
 /// <param name="DisplayName">What to show, defaulting to the username.</param>
 /// <param name="Password">Optional.</param>
 /// <param name="Status">
-/// <c>active</c> or <c>pending</c>. Creating one already disabled is a shape with no use — an admin
+/// <c>active</c> or <c>pending</c>. Creating one already disabled is a shape with no use — somebody
 /// wanting that creates it and disables it, and the trail then says both things happened.
 /// </param>
 internal sealed record CreateAccountRequest(
@@ -127,7 +127,7 @@ internal sealed record SessionsPage(IReadOnlyList<SessionRecord> Data);
 /// <summary>
 /// What the caller posts to end sessions of their own.
 /// </summary>
-/// <param name="Sid">One session, which must be theirs. Ending somebody else's is an admin's door.</param>
+/// <param name="Sid">One session, which must be theirs. Ending somebody else's is another door, on <c>auth:accounts.disable</c>.</param>
 /// <param name="All">Every session they hold, the calling one included.</param>
 internal sealed record RevokeRequest(string? Sid, bool? All);
 
@@ -153,7 +153,7 @@ internal sealed record ReauthResult(DateTimeOffset ExpiresAt);
 /// <param name="Url">The provider's authorize URL, with the one-time ticket cookie set alongside it.</param>
 internal sealed record LinkStartResponse(string Url);
 
-/// <summary>An account, as an administrator sees it. Never carries a secret in any form.</summary>
+/// <summary>An account, as the accounts list shows it. Never carries a secret in any form.</summary>
 /// <remarks>What the account may do is its assignments, which the authority lists.</remarks>
 /// <param name="Id">The opaque <c>usr_…</c> id, stable across a rename.</param>
 /// <param name="Origin">
@@ -181,7 +181,7 @@ internal sealed record AccountEntry(
 /// <summary>The account list. A page shape with no paging, because the store's own list has none.</summary>
 internal sealed record AccountsPage(IReadOnlyList<AccountEntry> Data);
 
-/// <summary>An administrator's change to an account's standing: approve it, switch it off or on.</summary>
+/// <summary>A change to an account's standing: approve it, switch it off or on.</summary>
 /// <param name="Status">The standing to set: <c>active</c>, <c>pending</c> or <c>disabled</c>.</param>
 internal sealed record AccountPatchRequest(string? Status);
 

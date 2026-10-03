@@ -116,10 +116,10 @@ builder.Services.AddSingleton(sp => new LocalSignInService(
 builder.Services.AddKgsmJournal(AnchorJournal.ProducerId, typeof(AnchorJournal).Assembly);
 builder.Services.AddSingleton<AnchorJournal>();
 
-// The administrator an empty store gets. An anchor sharing a machine with a Control Panel inherits
+// The Owner account an empty store gets. An anchor sharing a machine with a Control Panel inherits
 // the accounts that panel bootstrapped; one on a machine of its own starts with nothing, and without
 // this is a door nobody can open — registration is off unless a cluster turns it on, and an account
-// made through it waits for an approval only an administrator can give.
+// made through it waits for an approval only somebody holding auth:accounts.approve can give.
 builder.Services.AddHostedService<AnchorBootstrapper>();
 
 // The links the account page has started and a provider has not yet sent back. In memory: a restart
@@ -173,7 +173,7 @@ builder.Services.AddKgsmDnsMember(options.PublicHost, "kgsm-auth-anchor");
 // for facts an anchor does not have.
 builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>()));
 
-// This anchor's own surface — the descriptor its build wrote, the overrides an administrator has set,
+// This anchor's own surface — the descriptor its build wrote, the overrides set through it,
 // what this host's deploy files set beneath them, its journal, and the bounce that makes a change take
 // effect. All of it is TheKrystalShip.KGSM.ComponentSurface: a component owns these wherever it runs,
 // and only the way a browser reaches them differs. Here that is HTTP on this anchor's own origin.
@@ -308,8 +308,8 @@ app.MapDelete("/account/identities/{credentialId}", AccountPageEndpoints.Unlink)
 app.MapPost("/account/sessions/revoke", AccountPageEndpoints.Revoke);
 app.MapPost("/account/sign-out", AccountPageEndpoints.SignOut);
 
-// The clients it answers. Announced ones arrive over gossip; these are the ones an administrator
-// registers by hand, for whatever no member serves.
+// The clients it answers. Announced ones arrive over gossip; these are the ones registered
+// by hand, for whatever no member serves.
 app.MapGet("/auth/cluster/clients", OidcEndpoints.ListClients);
 app.MapPost("/auth/cluster/clients", OidcEndpoints.RegisterClient);
 app.MapDelete("/auth/cluster/clients/{clientId}", OidcEndpoints.RemoveClient);
@@ -342,7 +342,7 @@ app.MapPatch("/auth/cluster/users/{userId}", Endpoints.PatchAccount)
 // signed in, and sharing an address would let a link return through the sign-in door.
 app.MapGet("/auth/identities/{provider}/callback", IdentityEndpoints.CompleteLink);
 
-// What an administrator may do to somebody else's account. Setting a password knows no current one,
+// What may be done to somebody else's account, each on its own action. Setting a password knows no current one,
 // because the case it exists for is a person who has lost theirs.
 app.MapPost("/auth/cluster/users/{userId}/password", AccountEndpoints.SetPassword)
     .WithMetadata(new AuthAction(AuthActions.AccountsCreate));

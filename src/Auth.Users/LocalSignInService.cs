@@ -189,7 +189,7 @@ public sealed class LocalSignInService(
     /// Set or replace an account's password, adding the credential if it has none.
     /// </summary>
     /// <remarks>
-    /// Clears the failure count too: an admin resetting a password for someone locked out of their
+    /// Clears the failure count too: somebody resetting a password for someone locked out of their
     /// own account has plainly resolved the situation the lockout existed for, and leaving it in
     /// place would make the reset appear not to have worked.
     /// </remarks>

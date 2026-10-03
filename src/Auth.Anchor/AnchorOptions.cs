@@ -56,7 +56,7 @@ internal sealed record AnchorOptions(
     TimeSpan StalenessBound)
 {
     /// <summary>
-    /// Where the bootstrap administrator's one-time password is left, on an anchor whose account store
+    /// Where the bootstrap Owner account's one-time password is left, on an anchor whose account store
     /// was empty when it first started.
     /// </summary>
     /// <remarks>
