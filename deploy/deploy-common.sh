@@ -380,6 +380,18 @@ PY
         install -m 0644 "$LEAF_DESCRIPTOR" "$dst"
     fi
 
+    # The action manifest the build writes beside the descriptor, installed under the same name in
+    # the actions/ directory beside it: what this anchor reports to the authority as the actions it
+    # performs, and what the catalog of grantable actions is built from.
+    local manifest="${LEAF_DESCRIPTOR%.json}.actions.json"
+    if [[ -f "$manifest" ]]; then
+        install -d -m 0755 "${dir}/actions"
+        if ! cmp -s "$manifest" "${dir}/actions/${LEAF_ID}.json"; then
+            log "action manifest changed → ${dir}/actions/${LEAF_ID}.json"
+            install -m 0644 "$manifest" "${dir}/actions/${LEAF_ID}.json"
+        fi
+    fi
+
     # A component that has changed kind leaves its old file behind, and a stale descriptor in the
     # leaves directory is read as a leaf however the component now describes itself.
     local other

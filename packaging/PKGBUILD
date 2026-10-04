@@ -77,6 +77,11 @@ package() {
     install -Dm644 "${repo}/deploy/kgsm-auth-anchor.anchor.json" \
         "${pkgdir}/var/lib/kgsm/anchors/auth-anchor.json"
 
+    # The auth:* actions this anchor performs, beside the descriptor in its actions/ directory under the
+    # same name: what it reports to the catalog of grantable actions.
+    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.anchor.actions.json" \
+        "${pkgdir}/var/lib/kgsm/anchors/actions/auth-anchor.json"
+
     # What makes this anchor's own configuration page take effect: the drop-in that feeds a change
     # back to the unit, and the grant that lets the service account bounce it. The override file
     # itself is written by the daemon at runtime and belongs to no package.

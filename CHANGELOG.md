@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — the anchor's action manifest is installed (anchor 3.4.2)
+
+- `deploy/deploy.sh` and the package install `kgsm-auth-anchor.anchor.actions.json` as
+  `/var/lib/kgsm/anchors/actions/auth-anchor.json`, the file the anchor reports to its own catalog.
+  Without it the anchor declares no `auth:*` action and none can be granted.
+
 ### Changed — released (anchor 3.4.1, auth 4.0.0, access 1.0.0, users 2.0.0, journal 2.0.0, cluster 1.0.0, testing 1.0.0)
 
 - The six packages are released as their last prereleases stood. `Auth.Cluster` pins `Cluster` 1.0.0.
