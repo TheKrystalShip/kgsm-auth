@@ -10,7 +10,7 @@
 
     <PackageId>TheKrystalShip.KGSM.Auth.Journal</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>2.0.0-dev.1</Version>
+    <Version>2.0.0</Version>
     <Description>
       The wire shape of a KGSM account event — the type names and the payload writers for signing in,
       signing out, revocation, account lifecycle, identity links and lockouts. Two components record

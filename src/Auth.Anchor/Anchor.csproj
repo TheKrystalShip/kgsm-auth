@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
     <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>3.4.0</Version>
+    <Version>3.4.1</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.ComponentConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -55,27 +55,27 @@
   <ItemGroup>
     <!-- Cluster membership and durable member-to-member messaging. The anchor is a member like any
          other: it joins directly, answers the same wire, and needs no kgsm-api to do it. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0-dev.24" />
+    <PackageReference Include="TheKrystalShip.KGSM.Cluster" Version="1.0.0" />
     <!-- The member half of the cluster's names: stating where this anchor is reached, and keeping a
          certificate and a served site for the capability name it holds. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Dns" Version="0.2.0-dev.15" />
+    <PackageReference Include="TheKrystalShip.KGSM.Dns" Version="0.2.0" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Build-only: the descriptor attributes arrive as source and the generator as a tool, and the
          package declares no dependencies of its own, so none of it reaches the AOT publish. -->
-    <PackageReference Include="TheKrystalShip.KGSM.ComponentConfig" Version="3.2.0-dev.2" PrivateAssets="all" />
+    <PackageReference Include="TheKrystalShip.KGSM.ComponentConfig" Version="3.2.0" PrivateAssets="all" />
 
     <!-- The other half of the same repo: reading back the descriptor the line above generated, and
          serving what it describes. This anchor owns its own configuration and its own journal because
          it is a peer of every node rather than something one of them hosts — and every component owns
          those for the same reason, which is why the implementation is a package and not code here. -->
-    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface" Version="1.0.0-dev.8" />
-    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface.Http" Version="1.0.0-dev.5" />
+    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface" Version="1.0.0" />
+    <PackageReference Include="TheKrystalShip.KGSM.ComponentSurface.Http" Version="1.0.0" />
 
     <!-- The Control Panel's wire shapes, which the surface above answers in. Pinned directly because
          this daemon names them at its own endpoints. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Api.Contracts" Version="1.0.0-dev.12" />
+    <PackageReference Include="TheKrystalShip.KGSM.Api.Contracts" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>

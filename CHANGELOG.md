@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — released (anchor 3.4.1, auth 4.0.0, access 1.0.0, users 2.0.0, journal 2.0.0, cluster 1.0.0, testing 1.0.0)
+
+- The six packages are released as their last prereleases stood. `Auth.Cluster` pins `Cluster` 1.0.0.
+- The anchor builds on the releases of everything it takes: `Cluster` 1.0.0, `Dns` 0.2.0,
+  `ComponentConfig` 3.2.0, `ComponentSurface` and `ComponentSurface.Http` 1.0.0, and
+  `Api.Contracts` 1.0.0. No behaviour changes.
+
 ### Removed — what served the tier model (anchor 3.4.0, journal 2.0.0-dev.1, users 2.0.0-dev.8, cluster 1.0.0-dev.21, auth 4.0.0-dev.4)
 
 - **The anchor opens a schema version 2 store and nothing else.** `UserStoreUpgrade`, the start that
