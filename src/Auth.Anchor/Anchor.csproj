@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.Auth.Anchor</RootNamespace>
     <AssemblyName>tks-auth</AssemblyName>
-    <Version>4.0.0</Version>
+    <Version>4.0.1</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.ComponentConfig.
          These name the two files it works between; the attribute source, the documentation file the
@@ -49,7 +49,7 @@
          reader inverts to attribute a line. Its whole dependency surface is a logger and a service
          collection, which is what lets a Native AOT daemon record what it did without the
          engine-interop library arriving behind it. -->
-    <PackageReference Include="TheKrystalShip.KGSM.Journal" Version="2.1.0" />
+    <PackageReference Include="TheKrystalShip.KGSM.Journal" Version="2.4.0" />
   </ItemGroup>
 
   <ItemGroup>

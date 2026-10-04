@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — the journal package readers scan (daemon 4.0.1)
+
+- The daemon builds on `TheKrystalShip.KGSM.Journal` 2.4.0, whose layout rule names `tks-auth` a
+  producer every reader finds, so the writer's own check agrees with where it writes.
+
 ### Changed — the project is tks-auth (daemon 4.0.0, auth 5.0.0, access 2.0.0, users 3.0.0, journal 3.0.0, cluster 2.0.0, testing 2.0.0)
 
 - The repo is `tks-auth`. Namespaces and package ids are `TheKrystalShip.Auth*`, published at new major
