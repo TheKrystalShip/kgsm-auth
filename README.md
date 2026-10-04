@@ -30,7 +30,7 @@ them.
 Components declare the **actions** they perform (`kgsm:server.start`, `auth:roles.edit`); actions are
 filed into **permissions**, permissions into ranked **roles**, and a role is **assigned** to an account
 at a scope — the cluster, a node, or one server. Owner holds everything; `everyone` is what every active
-person holds. The full model and its rules are `kgsm-docs/plans/permissions.md`.
+person holds. The full model and its rules are `kgsm-docs/systems/authorization/`.
 
 One function decides every request, on the anchor and on every member from its own replica:
 

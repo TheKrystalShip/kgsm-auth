@@ -1,7 +1,7 @@
 # `Auth.Access` — locked decisions
 
 The access model and the one function that answers every access question. Design authority:
-`kgsm-docs/plans/permissions.md`. The tests in `tests/Auth.Access.Tests/` are the specification —
+`kgsm-docs/systems/authorization/`. The tests in `tests/Auth.Access.Tests/` are the specification —
 extend them before the code.
 
 - **ZERO package dependencies, AOT-safe, and it reads no file.** Every member evaluates with this,
