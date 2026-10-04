@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access.Tests;
+namespace TheKrystalShip.Auth.Access.Tests;
 
 /// <summary>
 /// The order of questions every evaluation asks, one step at a time.

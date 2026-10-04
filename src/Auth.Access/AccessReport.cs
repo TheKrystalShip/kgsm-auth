@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// What <c>GET /me/access</c> answers: the caller's effective actions at every target the answering

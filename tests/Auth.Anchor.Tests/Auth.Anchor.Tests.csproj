@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor.Tests</RootNamespace>
-    <AssemblyName>TheKrystalShip.KGSM.Auth.Anchor.Tests</AssemblyName>
+    <RootNamespace>TheKrystalShip.Auth.Anchor.Tests</RootNamespace>
+    <AssemblyName>TheKrystalShip.Auth.Anchor.Tests</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

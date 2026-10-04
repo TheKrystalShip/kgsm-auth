@@ -1,10 +1,10 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
+namespace TheKrystalShip.Auth.Cluster.Tests;
 
 /// <summary>
 /// A leaf firing on its own: allowed only where both its service account and the person who switched it

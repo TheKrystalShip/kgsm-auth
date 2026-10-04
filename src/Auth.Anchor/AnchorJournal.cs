@@ -1,11 +1,11 @@
 using System.Text.Json;
 
-using TheKrystalShip.KGSM.Auth.Journal;
+using TheKrystalShip.Auth.Journal;
 using TheKrystalShip.KGSM.Core.Interfaces;
 using TheKrystalShip.KGSM.Events;
 using TheKrystalShip.KGSM.Services;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Records what happened to this cluster's accounts, in this anchor's own event journal.
@@ -48,7 +48,7 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
     /// reported as misplaced, it is simply never found, and looks exactly like a daemon that recorded
     /// nothing.
     /// </remarks>
-    internal const string ProducerId = "kgsm-auth-anchor";
+    internal const string ProducerId = "tks-auth";
 
     /// <summary>
     /// This anchor attributes nothing to itself.

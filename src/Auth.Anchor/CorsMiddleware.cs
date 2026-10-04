@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The cross-origin answer for the surfaces this provider signs people in to.

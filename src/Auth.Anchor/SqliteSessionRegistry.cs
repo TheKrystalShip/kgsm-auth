@@ -2,7 +2,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The anchor's session registry, on its own SQLite file under the unit's state directory.

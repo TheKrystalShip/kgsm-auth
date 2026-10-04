@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 
-namespace TheKrystalShip.KGSM.Auth.Access.Tests;
+namespace TheKrystalShip.Auth.Access.Tests;
 
 /// <summary>
 /// A cluster's authority, built up line by line, so a test states only what it is about.

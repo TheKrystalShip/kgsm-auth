@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
-using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.Auth.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The clients this provider issues codes to, and the only places it sends a browser back.

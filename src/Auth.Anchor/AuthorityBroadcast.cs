@@ -1,9 +1,9 @@
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Tells every other member what changed about who may do what.

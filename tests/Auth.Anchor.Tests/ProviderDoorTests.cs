@@ -5,9 +5,9 @@ using System.Text.Json;
 
 using Microsoft.AspNetCore.WebUtilities;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// Plumbing shared by the suites that drive a sign-in from the provider's own page.

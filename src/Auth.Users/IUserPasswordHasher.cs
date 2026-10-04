@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>What checking a password against a stored hash concluded.</summary>
 public enum PasswordVerification

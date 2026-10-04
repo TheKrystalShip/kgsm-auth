@@ -3,9 +3,9 @@ using System.Globalization;
 
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>What a replica holds about its own freshness, read in one statement.</summary>
 /// <param name="Generation">The counter every applied change advances.</param>

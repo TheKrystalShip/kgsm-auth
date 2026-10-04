@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 using Microsoft.IdentityModel.Tokens;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// One public key as a JWK, in the shape a verifier consumes it.

@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Round trips to an external provider started to prove the person on the account page again, keyed by

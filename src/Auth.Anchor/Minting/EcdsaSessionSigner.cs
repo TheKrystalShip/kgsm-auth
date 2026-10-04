@@ -4,9 +4,9 @@ using System.Text;
 
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.Auth.Cluster;
 
-namespace TheKrystalShip.KGSM.Auth.Minting;
+namespace TheKrystalShip.Auth.Minting;
 
 /// <summary>
 /// ECDSA P-256 session signing: the holder mints with the private key, and anyone with the published

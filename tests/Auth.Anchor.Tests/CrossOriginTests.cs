@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// What a browser on another origin is allowed to read here.

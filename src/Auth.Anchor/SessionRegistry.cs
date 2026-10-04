@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// One live login — a (user × device) pair that can be revoked independently.

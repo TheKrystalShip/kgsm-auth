@@ -1,8 +1,8 @@
 using TheKrystalShip.Api.Contracts;
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>A signed-in person as the authority store knows them, or why there is none.</summary>
 /// <param name="Refusal">Why there is no caller, or <see cref="CallerRefusal.None"/>.</param>

@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// Whether an account may be used, and if not, why not.
@@ -36,7 +36,7 @@ public enum UserStatus
 /// </para>
 /// <para>
 /// What an account may do is not on it: it is the roles assigned to it, evaluated by
-/// <c>TheKrystalShip.KGSM.Auth.Access</c> from the authority the same store holds.
+/// <c>TheKrystalShip.Auth.Access</c> from the authority the same store holds.
 /// </para>
 /// </remarks>
 /// <param name="UserId">The opaque <c>usr_&lt;32 hex&gt;</c> id. Stable for the account's life.</param>

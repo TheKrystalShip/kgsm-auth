@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// The origins a browser holding one of this cluster's sessions may call a member from.

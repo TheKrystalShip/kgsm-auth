@@ -4,10 +4,10 @@ using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Primitives;
 
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The anchor as an OpenID Connect provider: every browser surface in the cluster sends a person here and
@@ -879,7 +879,7 @@ internal static class OidcEndpoints
         }
 
         ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.Clients")
+            .CreateLogger("TheKrystalShip.Auth.Anchor.Clients")
             .LogInformation("{Actor} registered client {ClientId} ({Name}) returning to {Redirects}",
                 caller.Identity?.ActorString ?? caller.User?.Username, client!.ClientId, client.Name,
                 string.Join(", ", client.RedirectUris));
@@ -915,7 +915,7 @@ internal static class OidcEndpoints
         }
 
         ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.Clients")
+            .CreateLogger("TheKrystalShip.Auth.Anchor.Clients")
             .LogInformation("{Actor} removed client {ClientId}",
                 caller.Identity?.ActorString ?? caller.User?.Username, clientId);
 

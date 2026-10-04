@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>
 /// Bringing a verified external identity to the store: what it resolves to, what gets created for

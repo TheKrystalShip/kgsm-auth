@@ -1,7 +1,7 @@
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// Which member holds this cluster's accounts, when it is not this one.

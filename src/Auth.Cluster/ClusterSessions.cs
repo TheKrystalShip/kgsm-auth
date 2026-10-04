@@ -1,6 +1,6 @@
 using Microsoft.IdentityModel.Tokens;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// The keys a cluster's auth anchor states about itself, read by every member that accepts a session

@@ -1,7 +1,7 @@
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Attaching an identity to an account: the provider's answer to a link the account page started.
@@ -49,7 +49,7 @@ internal static class IdentityEndpoints
 
         string provider = (string?)ctx.Request.RouteValues["provider"] ?? "";
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.IdentityEndpoints");
+            .CreateLogger("TheKrystalShip.Auth.Anchor.IdentityEndpoints");
 
         // Cleared whatever the outcome, so a ticket cannot be replayed from history or a log.
         string? cookie = ctx.Request.Cookies[TicketCookie];

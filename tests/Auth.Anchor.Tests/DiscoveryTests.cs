@@ -3,10 +3,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// What a client learns from one address.
@@ -68,7 +68,7 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
 
         // The name is what a client matches on: anything else answering on this path is not an anchor,
         // and treating a 200 as proof would classify a reverse proxy as the cluster's accounts.
-        Assert.Equal("kgsm-auth-anchor", identity.GetProperty("name").GetString());
+        Assert.Equal("tks-auth", identity.GetProperty("name").GetString());
         Assert.Equal(AnchorFixture.ClusterId, identity.GetProperty("cluster").GetString());
         Assert.True(identity.GetProperty("holding").GetBoolean());
     }
@@ -84,7 +84,7 @@ public sealed class DiscoveryTests(AnchorFixture anchor)
             // A second installation is a promotion candidate, not a second authority. Saying it holds
             // the accounts would send somebody to sign in at a door that refuses them.
             Assert.False(identity.GetProperty("holding").GetBoolean());
-            Assert.Equal("kgsm-auth-anchor", identity.GetProperty("name").GetString());
+            Assert.Equal("tks-auth", identity.GetProperty("name").GetString());
         });
     }
 

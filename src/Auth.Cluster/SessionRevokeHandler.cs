@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// Ends a session because the auth anchor said it is over.

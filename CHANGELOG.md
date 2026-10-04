@@ -1,11 +1,24 @@
 # Changelog
 
-All notable changes to `kgsm-auth` are documented here.
+All notable changes to `tks-auth` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed — the project is tks-auth (daemon 4.0.0, auth 5.0.0, access 2.0.0, users 3.0.0, journal 3.0.0, cluster 2.0.0, testing 2.0.0)
+
+- The repo is `tks-auth`. Namespaces and package ids are `TheKrystalShip.Auth*`, published at new major
+  versions; a consumer re-pins to the new ids.
+- The daemon's binary, unit, pacman package, settings file, producer id and DNS-served component are
+  `tks-auth`. Its paths are `/opt/tks-auth/`, `/var/lib/tks-auth/`, `/etc/tks-auth/tks-auth.env`, and
+  the sign-in providers' applications are `/etc/tks-auth/providers.env`, which this package ships blank
+  from `deploy/providers.env.example` and `setup.sh` seeds from the same file.
+- The package `provides`, `replaces` and `conflicts` with `kgsm-auth-anchor`. It moves no state: an
+  installed host's files are moved to the new paths before the new daemon first starts.
+- The identity endpoint names itself `tks-auth`. The cluster still knows the anchor as `auth-anchor`,
+  and its actions are still `auth:*`. No behaviour changes.
 
 ### Fixed — the anchor's action manifest is installed (anchor 3.4.2)
 

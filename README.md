@@ -1,10 +1,10 @@
-# kgsm-auth
+# tks-auth
 
 The shared authorization model for the KGSM ecosystem: **one definition of who may do what**, used by
 every surface onto a host, so the same person gets the same authority through the Control Panel, the
 assistant and the Discord bot alike.
 
-Five libraries, a test package and one daemon. The daemon — **`kgsm-auth-anchor`** — is the cluster's
+Five libraries, a test package and one daemon. The daemon — **`tks-auth`** — is the cluster's
 sign-in provider: it holds the accounts, signs people in, and mints every session, and every install
 runs one. The libraries are what every other component compiles against to verify those sessions and
 decide what the person holding one may do. None of them can mint a session.
@@ -13,14 +13,14 @@ decide what the person holding one may do. None of them can mint a session.
 
 | package | contents | taken by |
 |---|---|---|
-| **`TheKrystalShip.KGSM.Auth`** | the identity, the failure of an identity or account source, the session claim names, the actor convention. **No dependencies, AOT-safe.** | every surface |
-| **`TheKrystalShip.KGSM.Auth.Access`** | the access model — actions, permissions, ranked roles, assignments scoped to the cluster, a node or an instance, service accounts and their requirements — the evaluator every access question goes through (`AccessEvaluator.Allows`), the rules deciding who may change any of it (`AuthorityRules`), and what `/me/access` answers (`AccessReport`). **No dependencies, AOT-safe.** | every member |
-| **`TheKrystalShip.KGSM.Auth.Users`** | KGSM's own accounts — local passwords, the credentials that prove an account — and the authority over them, in one SQLite file (`SqliteAuthorityStore`): the anchor's authoritative copy and every member's replica. | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
-| **`TheKrystalShip.KGSM.Auth.Journal`** | the account events, named and written in one place for every writer. | the anchor, kgsm-api |
-| **`TheKrystalShip.KGSM.Auth.Cluster`** | everything a member or a leaf does about identity as a resource server of the anchor: verify a session it cannot mint (`ClusterSessionValidation`) and read who holds it (`SessionClaims`), read the published key set (`SessionKeys`), admit the provider's registered clients (`IClientOrigins`), honour a session somebody ended (`SessionRevokeHandler`, `ClusterSessionRevocations`), replicate the authority (`AddAuthorityReplica`) and answer for a person from it (`MemberAccess`), write and read the host file a machine's leaves verify against (`HostProviderFile`, `HostSessionKeys`), and name the sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
-| **`TheKrystalShip.KGSM.Auth.Testing`** | the anchor's session minter and signer, compiled from the anchor's own source, so a test presents a session exactly as the anchor would mint it. | test projects only |
+| **`TheKrystalShip.Auth`** | the identity, the failure of an identity or account source, the session claim names, the actor convention. **No dependencies, AOT-safe.** | every surface |
+| **`TheKrystalShip.Auth.Access`** | the access model — actions, permissions, ranked roles, assignments scoped to the cluster, a node or an instance, service accounts and their requirements — the evaluator every access question goes through (`AccessEvaluator.Allows`), the rules deciding who may change any of it (`AuthorityRules`), and what `/me/access` answers (`AccessReport`). **No dependencies, AOT-safe.** | every member |
+| **`TheKrystalShip.Auth.Users`** | KGSM's own accounts — local passwords, the credentials that prove an account — and the authority over them, in one SQLite file (`SqliteAuthorityStore`): the anchor's authoritative copy and every member's replica. | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.Auth.Journal`** | the account events, named and written in one place for every writer. | the anchor, kgsm-api |
+| **`TheKrystalShip.Auth.Cluster`** | everything a member or a leaf does about identity as a resource server of the anchor: verify a session it cannot mint (`ClusterSessionValidation`) and read who holds it (`SessionClaims`), read the published key set (`SessionKeys`), admit the provider's registered clients (`IClientOrigins`), honour a session somebody ended (`SessionRevokeHandler`, `ClusterSessionRevocations`), replicate the authority (`AddAuthorityReplica`) and answer for a person from it (`MemberAccess`), write and read the host file a machine's leaves verify against (`HostProviderFile`, `HostSessionKeys`), and name the sign-in provider (`ProtectedResourceMetadata`). | kgsm-api, kgsm-llm, kgsm-bot, kgsm-dns |
+| **`TheKrystalShip.Auth.Testing`** | the anchor's session minter and signer, compiled from the anchor's own source, so a test presents a session exactly as the anchor would mint it. | test projects only |
 
-The deployable is **`kgsm-auth-anchor`** (`src/Auth.Anchor`), built from those libraries and shipped
+The deployable is **`tks-auth`** (`src/Auth.Anchor`), built from those libraries and shipped
 as a pacman package and a systemd unit. It publishes nothing to NuGet: minting, the session registry,
 the Discord round trip and the OAuth handshake are its own code, so no other component can compile
 them.
@@ -76,9 +76,9 @@ surfaces needing them take.
 ## Development
 
 ```bash
-dotnet build kgsm-auth.slnx
-dotnet test kgsm-auth.slnx
-../scripts/publish-packages.sh kgsm-auth     # pack + push to the org's GitHub Packages feed
+dotnet build tks-auth.slnx
+dotnet test tks-auth.slnx
+../scripts/publish-packages.sh tks-auth     # pack + push to the org's GitHub Packages feed
 ```
 
 A consumer pins a version from that feed, so a change here needs a version bump, a publish, and then
@@ -191,7 +191,7 @@ revoked session still presenting its token is exactly what a stolen one does.
 
 ## The auth anchor
 
-`kgsm-auth-anchor` is the member of a cluster that holds the accounts. One store, one writer, one
+`tks-auth` is the member of a cluster that holds the accounts. One store, one writer, one
 address a person signs in at — an OpenID Connect provider every browser surface is a client of — and
 a session it mints is valid on **every** member, because its audience is the cluster rather than a
 machine. The identity design is `../cluster-auth-plan.md` and the sign-in's is
@@ -219,7 +219,7 @@ let every verifier pick up both, then move the signer. `kid` is the key's own RF
 so two holders of one key compute one id.
 
 **The private key is generated once and never replaced by accident.** It lives at
-`/var/lib/kgsm-auth-anchor/session-signing.pem`, `0600`, created with that mode rather than chmod'd
+`/var/lib/tks-auth/session-signing.pem`, `0600`, created with that mode rather than chmod'd
 after — the gap between the two is the window the whole mode exists to close. A file that exists and
 cannot be read stops the daemon: replacing it invalidates every session in the cluster and leaves
 every member checking against a key nothing signs with, so "this anchor has no key yet" and "this
@@ -353,8 +353,8 @@ from that same read (`Auth.Cluster`'s `HostProviderFile`).
 ./deploy/deploy.sh         # every deploy, no sudo, no prompts
 ```
 
-Its whole configurable surface is `src/Auth.Anchor/kgsm-auth-anchor.settings.json`, which the build
-generates `deploy/kgsm-auth-anchor.anchor.json` from — so the Control Panel renders the page from the
+Its whole configurable surface is `src/Auth.Anchor/tks-auth.settings.json`, which the build
+generates `deploy/tks-auth.anchor.json` from — so the Control Panel renders the page from the
 same declaration the daemon binds. Edit the settings class, never the JSON.
 
 The pacman package installs it **switched off**. A cluster has one anchor and which machine holds it

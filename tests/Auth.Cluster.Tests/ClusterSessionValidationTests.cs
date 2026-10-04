@@ -5,9 +5,9 @@ using System.Text;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Minting;
+using TheKrystalShip.Auth.Minting;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
+namespace TheKrystalShip.Auth.Cluster.Tests;
 
 /// <summary>
 /// One kind of session: the one its cluster's auth anchor mints, verified against what the anchor

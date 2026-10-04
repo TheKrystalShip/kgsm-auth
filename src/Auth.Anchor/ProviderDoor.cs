@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Configuration;
 
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// How one identity provider is built for this anchor.
@@ -158,7 +158,7 @@ internal static class Registration
     {
         var options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.Registration");
+            .CreateLogger("TheKrystalShip.Auth.Anchor.Registration");
 
         if (!options.AllowSelfRegistration)
         {
@@ -336,7 +336,7 @@ internal static class ProviderEndpoints
         string provider = (string?)ctx.Request.RouteValues["provider"] ?? "";
         var options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.ProviderEndpoints");
+            .CreateLogger("TheKrystalShip.Auth.Anchor.ProviderEndpoints");
 
         var role = ctx.RequestServices.GetRequiredService<AnchorRole>();
         if (!role.IsAuthority)
@@ -527,7 +527,7 @@ internal static class ProviderEndpoints
         // Said out loud, because a browser is the only other witness to a failed sign-in and it cannot
         // be asked afterwards.
         ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.ProviderEndpoints")
+            .CreateLogger("TheKrystalShip.Auth.Anchor.ProviderEndpoints")
             .LogWarning("provider sign-in refused: {Code} — {Message}", code, message);
 
         return inFlight is not null

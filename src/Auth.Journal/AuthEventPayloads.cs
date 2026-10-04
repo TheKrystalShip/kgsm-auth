@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace TheKrystalShip.KGSM.Auth.Journal;
+namespace TheKrystalShip.Auth.Journal;
 
 /// <summary>
 /// The bytes a KGSM account event carries.

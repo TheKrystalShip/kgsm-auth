@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// One component's action manifest, as its build writes it and a member reports it.

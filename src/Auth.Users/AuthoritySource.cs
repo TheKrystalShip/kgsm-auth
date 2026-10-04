@@ -1,6 +1,6 @@
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>Whether a store is the authority itself or a member's replica of it.</summary>
 public enum AuthorityStanding

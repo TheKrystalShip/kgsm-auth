@@ -5,12 +5,12 @@ using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// Where this member's action manifests are, and how often it tells the auth anchor about them.

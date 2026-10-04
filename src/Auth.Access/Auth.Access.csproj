@@ -4,11 +4,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>TheKrystalShip.KGSM.Auth.Access</RootNamespace>
-    <AssemblyName>TheKrystalShip.KGSM.Auth.Access</AssemblyName>
+    <RootNamespace>TheKrystalShip.Auth.Access</RootNamespace>
+    <AssemblyName>TheKrystalShip.Auth.Access</AssemblyName>
 
     <!--
-      Zero package dependencies and AOT-safe, for the same reason as TheKrystalShip.KGSM.Auth: every
+      Zero package dependencies and AOT-safe, for the same reason as TheKrystalShip.Auth: every
       member evaluates access with this, and so do the Native AOT leaves (the reactor, the scheduler)
       that check their own service accounts before acting. Reading the replica off disk is the
       account store's job, in Auth.Users; this package is the rules over what was read.
@@ -16,9 +16,9 @@
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
 
-    <PackageId>TheKrystalShip.KGSM.Auth.Access</PackageId>
+    <PackageId>TheKrystalShip.Auth.Access</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Description>
       The KGSM access model and its evaluator: actions declared by components, permissions bundling
       them, ranked roles, assignments scoped to a cluster, a node or an instance, service accounts and
@@ -31,7 +31,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="TheKrystalShip.KGSM.Auth.Access.Tests" />
+    <InternalsVisibleTo Include="TheKrystalShip.Auth.Access.Tests" />
   </ItemGroup>
 
   <ItemGroup>

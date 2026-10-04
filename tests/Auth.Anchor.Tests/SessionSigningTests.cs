@@ -3,10 +3,10 @@ using System.Security.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Cluster;
-using TheKrystalShip.KGSM.Auth.Minting;
+using TheKrystalShip.Auth.Cluster;
+using TheKrystalShip.Auth.Minting;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// Asymmetric session signing: what a holder mints, anybody with the published key can check, and

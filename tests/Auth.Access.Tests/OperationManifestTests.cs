@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace TheKrystalShip.KGSM.Auth.Access.Tests;
+namespace TheKrystalShip.Auth.Access.Tests;
 
 /// <summary>The operations document: one spelling of every route, whatever order a member found them in.</summary>
 public class OperationManifestTests

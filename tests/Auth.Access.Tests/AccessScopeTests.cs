@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access.Tests;
+namespace TheKrystalShip.Auth.Access.Tests;
 
 /// <summary>
 /// A scope's one spelling, and how scopes nest.

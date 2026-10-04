@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <RootNamespace>TheKrystalShip.KGSM.Auth.Cluster.Tests</RootNamespace>
+    <RootNamespace>TheKrystalShip.Auth.Cluster.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

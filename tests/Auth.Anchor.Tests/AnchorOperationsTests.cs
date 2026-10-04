@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// <c>GET /auth/cluster/operations</c>: every gated route the anchor serves and the action it requires,

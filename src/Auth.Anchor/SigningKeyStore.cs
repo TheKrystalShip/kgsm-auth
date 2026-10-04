@@ -1,6 +1,6 @@
-using TheKrystalShip.KGSM.Auth.Minting;
+using TheKrystalShip.Auth.Minting;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The anchor's session signing key on disk: loaded if it is there, generated once if it is not, and

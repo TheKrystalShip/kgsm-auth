@@ -1,8 +1,8 @@
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>
 /// People's accounts at schema version 2, through the account store every sign-in door reads: the same

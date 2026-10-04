@@ -23,20 +23,20 @@ founded_here() {
 }
 
 post_install() {
-    systemctl preset kgsm-auth-anchor.service > /dev/null 2>&1 || true
+    systemctl preset tks-auth.service > /dev/null 2>&1 || true
 
     if founded_here; then
-        systemctl enable kgsm-auth-anchor.service > /dev/null 2>&1 || true
+        systemctl enable tks-auth.service > /dev/null 2>&1 || true
         cat <<'MSG'
 
-  kgsm-auth-anchor is ON: this machine founded its cluster, and its anchor holds the accounts and signs
+  tks-auth is ON: this machine founded its cluster, and its anchor holds the accounts and signs
   people in. On its first start it generates the key every session in the cluster is signed with, at
-  /var/lib/kgsm-auth-anchor/session-signing.pem — never shipped by any package; back it up with the
+  /var/lib/tks-auth/session-signing.pem — never shipped by any package; back it up with the
   account store — and leaves the first administrator's one-time password, readable by nobody else, in:
 
-      /var/lib/kgsm-auth-anchor/initial-admin-password
+      /var/lib/tks-auth/initial-admin-password
 
-  What it needs from you is the address people reach it at, in /etc/kgsm-auth-anchor/kgsm-auth-anchor.env:
+  What it needs from you is the address people reach it at, in /etc/tks-auth/tks-auth.env:
 
       Anchor__Issuer   the URL a browser signs in at, e.g. http://<this machine>:8098
 
@@ -48,7 +48,7 @@ MSG
     else
         cat <<'MSG'
 
-  kgsm-auth-anchor is installed and OFF: this machine joined a cluster somebody else runs, and that
+  tks-auth is installed and OFF: this machine joined a cluster somebody else runs, and that
   cluster's anchor holds the accounts. Installed and stopped, it is a promotion candidate — an
   administrator can reassign the accounts to it — and never a second authority.
 
@@ -59,7 +59,7 @@ MSG
 post_upgrade() {
     cat <<'MSG'
 
-  If pacman wrote a .pacnew beside /etc/kgsm-auth-anchor/kgsm-auth-anchor.env, merge it — new
+  If pacman wrote a .pacnew beside /etc/tks-auth/tks-auth.env, merge it — new
   settings are declared there and a key the file never declares binds to nothing.
 
 MSG

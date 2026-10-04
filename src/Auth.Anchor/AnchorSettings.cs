@@ -1,10 +1,10 @@
 using TheKrystalShip.KGSM.ComponentConfig;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The anchor's configurable surface, shaped 1:1 with the <c>"Anchor"</c> section of
-/// <c>kgsm-auth-anchor.settings.json</c>. That file is the floor: every knob is declared there with
+/// <c>tks-auth.settings.json</c>. That file is the floor: every knob is declared there with
 /// its default, and an environment variable may only override a key that exists in it
 /// (<c>Anchor__ListenAddress</c>, <c>Anchor__ClusterId</c>). A variable naming a key this class does
 /// not declare sets nothing.
@@ -156,21 +156,21 @@ internal sealed class AnchorSettings
     /// member, this machine's node included, holds a replica in a file of its own.</panel>
     [ConfigField("userStorePath", "Account store", Group = "storage", Type = ConfigType.Path,
         Risk = ConfigRisk.Destructive)]
-    public string UserStorePath { get; set; } = "/var/lib/kgsm-auth-anchor/accounts.db";
+    public string UserStorePath { get; set; } = "/var/lib/tks-auth/accounts.db";
 
     /// <summary>Where live sessions are recorded.</summary>
     /// <panel>Where live sign-ins are recorded, so a sign-out outlives the process that issued the
     /// session and a restart does not sign everybody out.</panel>
     [ConfigField("sessionStorePath", "Session store", Group = "storage", Type = ConfigType.Path,
         Risk = ConfigRisk.Destructive)]
-    public string SessionStorePath { get; set; } = "/var/lib/kgsm-auth-anchor/sessions.db";
+    public string SessionStorePath { get; set; } = "/var/lib/tks-auth/sessions.db";
 
     /// <summary>The private key sessions are signed with.</summary>
     /// <panel>The private key every session is signed with. It is generated on first start and never
     /// leaves this machine. Replacing it invalidates every session that exists.</panel>
     [ConfigField("signingKeyPath", "Session signing key", Group = "storage", Type = ConfigType.Path,
         Risk = ConfigRisk.Destructive)]
-    public string SigningKeyPath { get; set; } = "/var/lib/kgsm-auth-anchor/session-signing.pem";
+    public string SigningKeyPath { get; set; } = "/var/lib/tks-auth/session-signing.pem";
 
     /// <summary>
     /// Where the provider's pages are installed: the <c>kgsm-web-auth</c> bundle, served at <c>/ui/</c>.
@@ -193,7 +193,7 @@ internal sealed class AnchorSettings
     /// what the deploy set, which is how this anchor is recovered if a change stops it starting.</panel>
     [ConfigField("configOverridePath", "Config overrides", Group = "storage", Type = ConfigType.Path,
         Risk = ConfigRisk.Destructive)]
-    public string ConfigOverridePath { get; set; } = "/var/lib/kgsm-auth-anchor/config-override.env";
+    public string ConfigOverridePath { get; set; } = "/var/lib/tks-auth/config-override.env";
 
     /// <summary>Access-token lifetime in minutes. Raised to <see cref="Floors.AccessLifetimeMinutes"/> if lower.</summary>
     /// <panel>How long a session's bearer lasts before it is refreshed. Short bounds how long a stolen

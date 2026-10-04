@@ -1,6 +1,6 @@
-# CLAUDE.md — kgsm-auth
+# CLAUDE.md — tks-auth
 
-Guidance for Claude Code working in **kgsm-auth**. Read `README.md` for the model itself; this file is
+Guidance for Claude Code working in **tks-auth**. Read `README.md` for the model itself; this file is
 the "what you must not break".
 
 ## What this is
@@ -23,7 +23,7 @@ which is what lets one be added with no access story of its own; a session carri
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
 its own with a password, and an external identity is a credential attached to it.
 
-**The repo also holds one deployable.** `src/Auth.Anchor` builds `kgsm-auth-anchor`, the cluster
+**The repo also holds one deployable.** `src/Auth.Anchor` builds `tks-auth`, the cluster
 member that holds the accounts and signs people in to the whole cluster at once. It is built from
 these libraries by project reference, so a change to a library is a compile break here before it is
 anything else.
@@ -40,7 +40,7 @@ account-store design is also covered by `../auth-internal-users-plan.md`, and th
 
 ## Locked decisions for the model (do not relitigate)
 
-- **`TheKrystalShip.KGSM.Auth` has ZERO package dependencies and stays AOT-safe.** Every surface takes
+- **`TheKrystalShip.Auth` has ZERO package dependencies and stays AOT-safe.** Every surface takes
   it, including the footprint-tuned bot deploy and the CLI. No `HttpClient`, no configuration binder,
   no ORM, no logging abstraction. `IsAotCompatible` and the trim analyzer are on and must stay green.
   Anything needing I/O belongs in a sibling package that only its consumers take.
@@ -69,8 +69,8 @@ account-store design is also covered by `../auth-internal-users-plan.md`, and th
 
 ## Conventions
 
-- Namespace `TheKrystalShip.KGSM.Auth`; package id matches. The daemon is
-  `TheKrystalShip.KGSM.Auth.Anchor`, and its binary and unit are `kgsm-auth-anchor`.
+- Namespace `TheKrystalShip.Auth`; package id matches. The daemon is
+  `TheKrystalShip.Auth.Anchor`, and its binary and unit are `tks-auth`.
 
 ## Version tracking
 
@@ -87,7 +87,7 @@ the daemon. Only the bare `v*` fires the release workflow, which asserts the tag
 - Bump on any user-facing change; patch for fixes, minor for additions, major for a breaking change,
   with a `CHANGELOG.md` entry under `## [Unreleased]`.
 - Consumers pin a version from the org's GitHub Packages feed, so shipping a change means **bump the
-  version, publish, then bump the pin** — `../scripts/publish-packages.sh kgsm-auth`.
+  version, publish, then bump the pin** — `../scripts/publish-packages.sh tks-auth`.
 
 ## Gotchas
 

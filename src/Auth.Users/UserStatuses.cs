@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// Wire and storage strings for <see cref="UserStatus"/>, and the parse back.

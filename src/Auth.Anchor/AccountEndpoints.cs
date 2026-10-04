@@ -1,8 +1,8 @@
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The doors that change an account rather than open one.
@@ -101,7 +101,7 @@ internal static class AccountEndpoints
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-                .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.AccountEndpoints")
+                .CreateLogger("TheKrystalShip.Auth.Anchor.AccountEndpoints")
                 .LogError(ex, "could not create the account '{Username}'", username);
             await Endpoints.Refuse(ctx, StatusCodes.Status503ServiceUnavailable, "authority_unavailable",
                 "The account store could not be written.");

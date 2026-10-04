@@ -6,16 +6,16 @@
 # packaged bytes are the tested bytes. Point KGSM_STAGE at that publish output, or leave it unset to
 # use ../artifacts/publish, which is where deploy.sh leaves one.
 #
-# The repo is kgsm-auth and the package is kgsm-auth-anchor: this repo's other output is a set of
-# libraries every surface compiles against, published to NuGet on their own versions. The daemon is
-# the one deployable built from them, and it is what this ships.
+# The daemon is the one deployable built from this repo, and it is what this ships. The repo's other
+# output is a set of libraries every surface compiles against, published to NuGet on their own
+# versions.
 
-pkgname=kgsm-auth-anchor
+pkgname=tks-auth
 pkgver=1.4.0
 pkgrel=1
-pkgdesc="KGSM auth anchor — the cluster's account store and its one sign-in"
+pkgdesc="tks-auth — the account store and the one sign-in"
 arch=('x86_64')
-url="https://github.com/TheKrystalShip/kgsm-auth"
+url="https://github.com/TheKrystalShip/tks-auth"
 license=('GPL-3.0-or-later')
 # Every node carries it: kgsm-api depends on it, because a node signs nobody in and every session it
 # accepts is an anchor's. It is preset-DISABLED, and the install hook switches it on only on the machine
@@ -25,8 +25,13 @@ groups=('kgsm-node')
 # kgsm-base carries the kgsm service account this unit runs as, the /etc/kgsm/cluster-founded record saying whether this machine founded its
 # cluster, and the preset policy deciding whether this runs here.
 depends=('kgsm-base' 'systemd')
-backup=('etc/kgsm-auth-anchor/kgsm-auth-anchor.env')
-install="kgsm-auth-anchor.install"
+# The daemon's earlier package name, so a node that has it installed upgrades to this one.
+provides=('kgsm-auth-anchor')
+replaces=('kgsm-auth-anchor')
+conflicts=('kgsm-auth-anchor')
+backup=('etc/tks-auth/tks-auth.env'
+        'etc/tks-auth/providers.env')
+install="tks-auth.install"
 optdepends=(
     'kgsm-api: the node whose Control Panel people sign in to through this anchor'
     'kgsm-web-auth: the sign-in, registration and account pages; without it a plain sign-in form'
@@ -42,7 +47,7 @@ pkgver() {
 
 build() {
     local stage; stage="$(_stage)"
-    [[ -f "${stage}/kgsm-auth-anchor" ]] || {
+    [[ -f "${stage}/tks-auth" ]] || {
         printf '\n  no publish output at %s\n' "$stage" >&2
         printf '  build it first:  dotnet publish src/Auth.Anchor/Anchor.csproj -c Release -r linux-x64 -o artifacts/publish\n' >&2
         printf '  or point KGSM_STAGE at an existing one.\n\n' >&2
@@ -60,57 +65,62 @@ package() {
     # A published tree carries build leftovers a package should not.
     rm -f "${prefix}"/*.pdb "${prefix}"/*.dbg "${prefix}"/*.xml
 
-    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.service" \
-        "${pkgdir}/usr/lib/systemd/system/kgsm-auth-anchor.service"
+    install -Dm644 "${repo}/deploy/tks-auth.service" \
+        "${pkgdir}/usr/lib/systemd/system/tks-auth.service"
 
     # Operator overrides. Seeded from the committed example — every knob commented — and listed in
     # backup=(), so an upgrade writes .pacnew beside an edited file rather than over it. Root-owned
     # 0640 is correct rather than strict: systemd reads EnvironmentFile= as root before dropping to
     # User=, so nothing reads this as the service account.
-    install -Dm640 "${repo}/deploy/kgsm-auth-anchor.env.example" \
+    install -Dm640 "${repo}/deploy/tks-auth.env.example" \
         "${pkgdir}/etc/${pkgname}/${pkgname}.env"
+
+    # The sign-in providers' applications, on the same terms: a real file with blank keys, since no
+    # package may carry a credential, kept across upgrades by backup=().
+    install -Dm640 "${repo}/deploy/providers.env.example" \
+        "${pkgdir}/etc/${pkgname}/providers.env"
 
     # The config descriptor, in the ANCHORS directory — not where a node's leaves are scanned for.
     # This daemon serves one capability to the whole cluster and is a peer of every node in it, so it
     # belongs on no node's service board. Packaged rather than installed by a script, so it can never
     # describe a different build than the one beside it.
-    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.anchor.json" \
+    install -Dm644 "${repo}/deploy/tks-auth.anchor.json" \
         "${pkgdir}/var/lib/kgsm/anchors/auth-anchor.json"
 
     # The auth:* actions this anchor performs, beside the descriptor in its actions/ directory under the
     # same name: what it reports to the catalog of grantable actions.
-    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.anchor.actions.json" \
+    install -Dm644 "${repo}/deploy/tks-auth.anchor.actions.json" \
         "${pkgdir}/var/lib/kgsm/anchors/actions/auth-anchor.json"
 
     # What makes this anchor's own configuration page take effect: the drop-in that feeds a change
     # back to the unit, and the grant that lets the service account bounce it. The override file
     # itself is written by the daemon at runtime and belongs to no package.
-    install -Dm644 "${repo}/deploy/config/50-kgsm-auth-anchor-config.conf" \
-        "${pkgdir}/usr/lib/systemd/system/kgsm-auth-anchor.service.d/50-kgsm-auth-anchor-config.conf"
-    sed -i "s|@OVERRIDE_FILE@|/var/lib/kgsm-auth-anchor/config-override.env|" \
-        "${pkgdir}/usr/lib/systemd/system/kgsm-auth-anchor.service.d/50-kgsm-auth-anchor-config.conf"
+    install -Dm644 "${repo}/deploy/config/50-tks-auth-config.conf" \
+        "${pkgdir}/usr/lib/systemd/system/tks-auth.service.d/50-tks-auth-config.conf"
+    sed -i "s|@OVERRIDE_FILE@|/var/lib/tks-auth/config-override.env|" \
+        "${pkgdir}/usr/lib/systemd/system/tks-auth.service.d/50-tks-auth-config.conf"
 
-    sed -e "s|@SVC_USER@|kgsm|" -e "s|@UNIT@|kgsm-auth-anchor.service|" \
-        "${repo}/deploy/config/49-kgsm-auth-anchor-self-restart.rules.in" \
-        > "${srcdir}/49-kgsm-auth-anchor-self-restart.rules"
-    install -Dm644 "${srcdir}/49-kgsm-auth-anchor-self-restart.rules" \
-        "${pkgdir}/usr/share/polkit-1/rules.d/49-kgsm-auth-anchor-self-restart.rules"
+    sed -e "s|@SVC_USER@|kgsm|" -e "s|@UNIT@|tks-auth.service|" \
+        "${repo}/deploy/config/49-tks-auth-self-restart.rules.in" \
+        > "${srcdir}/49-tks-auth-self-restart.rules"
+    install -Dm644 "${srcdir}/49-tks-auth-self-restart.rules" \
+        "${pkgdir}/usr/share/polkit-1/rules.d/49-tks-auth-self-restart.rules"
 
     # Serving the name the cluster's DNS anchor gives the accounts capability: the proxy rules every
     # server block for this anchor includes, the include that loads the site it generates, its key and
     # site directories, and the grant to reload the web server after writing the site — reload and
     # nothing else. Inert on a machine with no nginx.
-    install -Dm644 "${repo}/deploy/nginx/kgsm-auth-anchor.locations" \
-        "${pkgdir}/etc/nginx/kgsm/kgsm-auth-anchor.locations"
-    install -Dm644 "${repo}/deploy/nginx/kgsm-auth-anchor.sites.conf" \
-        "${pkgdir}/etc/nginx/conf.d/00-kgsm-auth-anchor-sites.conf"
-    install -Dm644 "${repo}/deploy/kgsm-auth-anchor.serving.tmpfiles" \
-        "${pkgdir}/usr/lib/tmpfiles.d/kgsm-auth-anchor-serving.conf"
-    sed -e "s|@PROJECT@|kgsm-auth-anchor|g" -e "s|@SVC_USER@|kgsm|g" \
-        "${repo}/deploy/polkit/47-kgsm-auth-anchor-nginx-reload.rules.in" \
-        > "${srcdir}/47-kgsm-auth-anchor-nginx-reload.rules"
-    install -Dm644 "${srcdir}/47-kgsm-auth-anchor-nginx-reload.rules" \
-        "${pkgdir}/usr/share/polkit-1/rules.d/47-kgsm-auth-anchor-nginx-reload.rules"
+    install -Dm644 "${repo}/deploy/nginx/tks-auth.locations" \
+        "${pkgdir}/etc/nginx/kgsm/tks-auth.locations"
+    install -Dm644 "${repo}/deploy/nginx/tks-auth.sites.conf" \
+        "${pkgdir}/etc/nginx/conf.d/00-tks-auth-sites.conf"
+    install -Dm644 "${repo}/deploy/tks-auth.serving.tmpfiles" \
+        "${pkgdir}/usr/lib/tmpfiles.d/tks-auth-serving.conf"
+    sed -e "s|@PROJECT@|tks-auth|g" -e "s|@SVC_USER@|kgsm|g" \
+        "${repo}/deploy/polkit/47-tks-auth-nginx-reload.rules.in" \
+        > "${srcdir}/47-tks-auth-nginx-reload.rules"
+    install -Dm644 "${srcdir}/47-tks-auth-nginx-reload.rules" \
+        "${pkgdir}/usr/share/polkit-1/rules.d/47-tks-auth-nginx-reload.rules"
 
     install -Dm644 "${repo}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth;
+namespace TheKrystalShip.Auth;
 
 /// <summary>
 /// A person, as an identity provider verified them at login. The provider is named alongside the

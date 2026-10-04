@@ -2,7 +2,7 @@ using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Who a durable announcement goes to: every member of the cluster except this one.

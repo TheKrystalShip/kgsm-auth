@@ -4,12 +4,12 @@ using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// This member's read-only copy of the cluster's authority, and whether it can be reached at all.

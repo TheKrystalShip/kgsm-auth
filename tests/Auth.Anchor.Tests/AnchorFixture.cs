@@ -2,12 +2,12 @@ using System.Text.Json;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Identity;
 using TheKrystalShip.KGSM.Extensions;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// One anchor, standing on its own account store in a temporary directory.
@@ -62,7 +62,7 @@ public sealed class AnchorFixture : IDisposable
 
     public AnchorFixture()
     {
-        Root = Path.Combine(Path.GetTempPath(), "kgsm-auth-anchor-tests", Guid.NewGuid().ToString("N"));
+        Root = Path.Combine(Path.GetTempPath(), "tks-auth-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Root);
 
         Environment.SetEnvironmentVariable("Anchor__UserStorePath", Path.Combine(Root, "users.db"));
@@ -76,7 +76,7 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__AllowSelfRegistration", "true");
 
         // This anchor's own configuration surface, likewise relocated. Left at its default, a test
-        // run reads the descriptor the REAL kgsm-auth-anchor is deployed with — so the log surface
+        // run reads the descriptor the REAL tks-auth is deployed with — so the log surface
         // names the live unit and follows its journal, and a suite passes on a host where the daemon
         // is installed and fails on one where it is not. The override is where an applied change is
         // written and is pointed inside the fixture for the blunter reason: nothing under test may
@@ -92,13 +92,13 @@ public sealed class AnchorFixture : IDisposable
         Environment.SetEnvironmentVariable("Anchor__UiPath", Path.Combine(Root, "ui"));
 
         // The journal's state root, relocated into the fixture. Left at its default, a test run
-        // appends to the REAL /var/lib/kgsm-auth-anchor/events — where a Control Panel on this
+        // appends to the REAL /var/lib/tks-auth/events — where a Control Panel on this
         // machine scans for journals, so a suite that signs people in would put invented sign-ins on
         // a live audit page.
         Environment.SetEnvironmentVariable(
             JournalServiceCollectionExtensions.StateRootVariable, Path.Combine(Root, "state"));
 
-        // A provider's OAuth application, as /etc/kgsm/kgsm-auth.env supplies it on a real
+        // A provider's OAuth application, as /etc/tks-auth/providers.env supplies it on a real
         // machine. Present so the provider door is wired at all — nothing here reaches a provider,
         // because every case under test is decided before an exchange is attempted.
         Environment.SetEnvironmentVariable("KgsmAuth__Providers__discord__ClientId", "test-client-id");
@@ -234,7 +234,7 @@ public sealed class AnchorFixture : IDisposable
     public async Task<Session> SignInAsync(KgsmUser user, string device = "anchor-tests", KgsmIdentity? arrivedAs = null)
     {
         var registry = Service<SqliteSessionRegistry>();
-        var tokens = Service<TheKrystalShip.KGSM.Auth.Minting.ISessionTokenService>();
+        var tokens = Service<TheKrystalShip.Auth.Minting.ISessionTokenService>();
         KgsmIdentity identity = arrivedAs ?? user.AsIdentity();
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
@@ -286,7 +286,7 @@ public sealed class AnchorFixture : IDisposable
     /// </remarks>
     public IReadOnlyList<JsonElement> Journal()
     {
-        string directory = Path.Combine(Root, "state", "kgsm-auth-anchor", "events");
+        string directory = Path.Combine(Root, "state", "tks-auth", "events");
         if (!Directory.Exists(directory))
             return [];
 

@@ -1,8 +1,8 @@
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>
 /// The authority moving from the anchor's store to a replica: what a write owes, each record applied on

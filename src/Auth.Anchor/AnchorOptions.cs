@@ -1,6 +1,6 @@
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The validated form of <see cref="AnchorSettings"/>: what the daemon actually runs on, with every
@@ -102,9 +102,9 @@ internal sealed record AnchorOptions(
             // A URL loses the trailing slash a person naturally types, so the discovery document, every
             // token's iss and the gossiped fact all state the one string a client compares them by.
             Issuer: Text(s.Issuer, "kgsm").TrimEnd('/'),
-            UserStorePath: Text(s.UserStorePath, "/var/lib/kgsm-auth-anchor/accounts.db"),
-            SessionStorePath: Text(s.SessionStorePath, "/var/lib/kgsm-auth-anchor/sessions.db"),
-            SigningKeyPath: Text(s.SigningKeyPath, "/var/lib/kgsm-auth-anchor/session-signing.pem"),
+            UserStorePath: Text(s.UserStorePath, "/var/lib/tks-auth/accounts.db"),
+            SessionStorePath: Text(s.SessionStorePath, "/var/lib/tks-auth/sessions.db"),
+            SigningKeyPath: Text(s.SigningKeyPath, "/var/lib/tks-auth/session-signing.pem"),
             ConfigDescriptorPath: s.ConfigDescriptorPath.Trim(),
             ConfigOverridePath: s.ConfigOverridePath.Trim(),
             AccessLifetime: TimeSpan.FromMinutes(

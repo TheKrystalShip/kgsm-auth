@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// What a KGSM password may be.

@@ -1,7 +1,7 @@
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// The first account an anchor with an empty store makes for itself is an Owner.

@@ -6,9 +6,9 @@ using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// What the provider's own pages stand on: the documents the anchor serves them in, the calls they make
@@ -319,7 +319,7 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
         // differently from you setting it, and a line that could not tell them apart would report a
         // takeover and a routine rotation identically.
         JsonElement data = Assert.Single(
-            anchor.Journal(TheKrystalShip.KGSM.Auth.Journal.AuthEvents.UserPasswordChanged),
+            anchor.Journal(TheKrystalShip.Auth.Journal.AuthEvents.UserPasswordChanged),
             e => e.GetProperty("Data").GetProperty("Username").GetString() == user.Username)
             .GetProperty("Data");
         Assert.True(data.GetProperty("ByHolder").GetBoolean());
@@ -353,7 +353,7 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
             (await browser.SendAsync(Json(HttpMethod.Delete, $"/account/identities/{credentialId}"))).StatusCode);
 
         JsonElement data = Assert.Single(
-            anchor.Journal(TheKrystalShip.KGSM.Auth.Journal.AuthEvents.IdentityUnlinked),
+            anchor.Journal(TheKrystalShip.Auth.Journal.AuthEvents.IdentityUnlinked),
             e => e.GetProperty("Data").GetProperty("Username").GetString() == user.Username)
             .GetProperty("Data");
 

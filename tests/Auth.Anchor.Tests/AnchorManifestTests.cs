@@ -1,6 +1,6 @@
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// The anchor's action manifest, as its build wrote it, against <see cref="AuthActions"/>, which names
@@ -13,12 +13,12 @@ public class AnchorManifestTests
     {
         for (DirectoryInfo? dir = new(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            string path = Path.Combine(dir.FullName, "deploy", "kgsm-auth-anchor.anchor.actions.json");
+            string path = Path.Combine(dir.FullName, "deploy", "tks-auth.anchor.actions.json");
             if (File.Exists(path))
                 return ActionManifests.TryRead(path, out string? problem) ?? throw new InvalidOperationException(problem);
         }
 
-        throw new FileNotFoundException("deploy/kgsm-auth-anchor.anchor.actions.json was not found above the test output");
+        throw new FileNotFoundException("deploy/tks-auth.anchor.actions.json was not found above the test output");
     }
 
     [Fact]

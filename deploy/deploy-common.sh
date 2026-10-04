@@ -27,9 +27,9 @@ DEPLOY_USER="${KGSM_DEPLOY_USER:-$(id -un)}"
 DEPLOY_GROUP="${KGSM_DEPLOY_GROUP:-$(id -gn)}"
 
 # ── PROJECT BLOCK — the only part that changes per repo ───────────────────────
-# The repo is kgsm-auth and the unit is kgsm-auth-anchor: this repo's other output is a set of
-# libraries every surface compiles against, and the daemon is one thing built from them.
-PROJECT="kgsm-auth-anchor"
+# The daemon is one thing built from this repo; its other output is a set of libraries every surface
+# compiles against.
+PROJECT="tks-auth"
 
 UNITS=("${PROJECT}.service")
 ENABLE_UNITS=("${PROJECT}.service")
@@ -47,9 +47,9 @@ ENV_EXAMPLE="${REPO_DIR}/deploy/${PROJECT}.env.example"
 HEALTH_TRIES="${HEALTH_TRIES:-30}"
 
 # The OAuth applications people sign in through, keyed by provider. The unit loads it before this
-# anchor's own env file; setup.sh seeds it blank on a host provisioned from a checkout, and a package
-# host gets it from kgsm-base.
-PROVIDERS_FILE="${KGSM_PROVIDERS_FILE:-/etc/kgsm/kgsm-auth.env}"
+# anchor's own env file; setup.sh seeds it blank from the committed example, as the package does.
+PROVIDERS_FILE="${KGSM_PROVIDERS_FILE:-${ENV_DIR}/providers.env}"
+PROVIDERS_EXAMPLE="${REPO_DIR}/deploy/providers.env.example"
 
 # What this anchor can be configured with, generated from AnchorSettings on every build. The
 # `.anchor.json` suffix is what routes it: setup.sh creates the anchors directory and deploy.sh

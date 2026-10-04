@@ -2,7 +2,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// A browser's sign-in at the anchor itself: the row its <c>kgsm_anchor</c> cookie names.

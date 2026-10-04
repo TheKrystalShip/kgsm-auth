@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
+namespace TheKrystalShip.Auth.Cluster.Tests;
 
 /// <summary>
 /// The two statements a provider and its surfaces must spell identically: what a surface's client id

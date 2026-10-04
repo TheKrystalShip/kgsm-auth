@@ -3,10 +3,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// The devices somebody is signed in on, as another person managing accounts reads and ends them.

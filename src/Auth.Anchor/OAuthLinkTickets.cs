@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>A link in flight: which account started it, and the handshake it must come back with.</summary>
 /// <param name="UserId">The account the arriving identity will be attached to.</param>

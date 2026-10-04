@@ -3,10 +3,10 @@ using System.Security.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>What an <c>id_token_hint</c> says, once its signature is checked.</summary>
 /// <param name="ProviderSession">The provider session it was minted under.</param>

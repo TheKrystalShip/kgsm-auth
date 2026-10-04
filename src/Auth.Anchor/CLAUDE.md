@@ -1,4 +1,4 @@
-# `Auth.Anchor` (`kgsm-auth-anchor`) — locked decisions
+# `Auth.Anchor` (`tks-auth`) — locked decisions
 
 The cluster member that holds the accounts and signs people in to the whole cluster at once. Built from
 this repo's libraries by project reference. Its own design authority is `../cluster-auth-plan.md`,
@@ -21,7 +21,7 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   chmod'd after — the gap between write and chmod is exactly what the mode exists to close.
 - **The anchor runs on the account store at schema version 2.** `SqliteAuthorityStore` is both the
   authority and the `IUserStore` every door reads.
-- **The anchor's store is its own file**, `/var/lib/kgsm-auth-anchor/accounts.db` in its state
+- **The anchor's store is its own file**, `/var/lib/tks-auth/accounts.db` in its state
   directory, and never the node's replica on the same machine (`/var/lib/kgsm/auth/users.db`). A node
   applying the anchor's snapshot to the file the anchor writes would be the authority rewritten by its
   own echo.
@@ -183,7 +183,7 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
 - **Every `auth:*` action needs a recent sign-in, and only after the evaluator allows it.**
   `AnchorAccess` reads when the session's provider sign-in last proved a credential; nobody is sent to
   type a password for something they would be refused anyway.
-- **`kgsm-auth-anchor owner grant <username>` is the Owner recovery path, and it is a mode of this
+- **`tks-auth owner grant <username>` is the Owner recovery path, and it is a mode of this
   binary rather than a tool beside it.** It reads the daemon's own settings, so it opens the store and
   writes the journal the daemon does, and is run as the anchor's service account. It bypasses the
   administration rules — whoever can run it already holds the file — and journals

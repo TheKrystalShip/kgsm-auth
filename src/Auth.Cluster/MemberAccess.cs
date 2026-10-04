@@ -2,10 +2,10 @@ using System.Security.Claims;
 
 using Microsoft.Extensions.Logging;
 
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// A member's authority replica in its account store's file, opened once the file holds one.

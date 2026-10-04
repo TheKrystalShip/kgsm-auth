@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The gate in front of what this anchor answers about <b>itself</b> — its configuration, its unit,

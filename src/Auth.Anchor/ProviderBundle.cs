@@ -3,7 +3,7 @@ using System.Text;
 
 using Microsoft.AspNetCore.StaticFiles;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The provider's pages as <c>kgsm-web</c> builds them — the <c>kgsm-web-auth</c> package — served from

@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// The account store's schema is written by a build that does not know which other build will read

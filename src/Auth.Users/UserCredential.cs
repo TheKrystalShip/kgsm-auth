@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// What kind of proof a credential is. The column is typed from the first schema version so a second

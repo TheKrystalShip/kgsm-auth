@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Discord could not be reached, or answered in a way that leaves authority unknown. The caller

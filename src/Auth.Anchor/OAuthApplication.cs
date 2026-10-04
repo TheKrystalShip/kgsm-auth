@@ -1,10 +1,10 @@
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// One OAuth application, at one identity provider.
 /// <para>
 /// It carries the application and nothing else. What a person may do is the account store's answer
-/// (<c>TheKrystalShip.KGSM.Auth.Users</c>), so a login proves one fact — that the caller holds a
+/// (<c>TheKrystalShip.Auth.Users</c>), so a login proves one fact — that the caller holds a
 /// subject at this provider — and contributes nothing to their authority. That is what lets a
 /// provider be wired up with no authority story of its own.
 /// </para>

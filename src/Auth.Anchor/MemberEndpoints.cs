@@ -1,10 +1,10 @@
 using System.Text.Json;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.Api.Contracts;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// What this anchor serves to other <em>members</em>, as opposed to what it serves to people.

@@ -1,6 +1,6 @@
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Where a browser reaches this anchor, and the provider callbacks built from it.

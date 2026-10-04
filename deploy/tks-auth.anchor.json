@@ -2,22 +2,22 @@
   "schemaVersion": 1,
   "id": "auth-anchor",
   "displayName": "Auth anchor",
-  "unit": "kgsm-auth-anchor.service",
+  "unit": "tks-auth.service",
   "role": "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.",
   "onDemand": false,
   "applyMode": "restart",
   "floorSources": [
     {
       "kind": "appsettings",
-      "path": "/opt/kgsm-auth-anchor/kgsm-auth-anchor.settings.json"
+      "path": "/opt/tks-auth/tks-auth.settings.json"
     },
     {
       "kind": "systemd-unit",
-      "path": "kgsm-auth-anchor.service"
+      "path": "tks-auth.service"
     },
     {
       "kind": "env-file",
-      "path": "/etc/kgsm-auth-anchor/kgsm-auth-anchor.env"
+      "path": "/etc/tks-auth/tks-auth.env"
     }
   ],
   "groups": [
@@ -123,7 +123,7 @@
       "description": "The file the cluster's accounts and access live in — this anchor's alone. Every other member, this machine's node included, holds a replica in a file of its own.",
       "group": "storage",
       "type": "path",
-      "default": "/var/lib/kgsm-auth-anchor/accounts.db",
+      "default": "/var/lib/tks-auth/accounts.db",
       "risk": "destructive"
     },
     {
@@ -133,7 +133,7 @@
       "description": "Where live sign-ins are recorded, so a sign-out outlives the process that issued the session and a restart does not sign everybody out.",
       "group": "storage",
       "type": "path",
-      "default": "/var/lib/kgsm-auth-anchor/sessions.db",
+      "default": "/var/lib/tks-auth/sessions.db",
       "risk": "destructive"
     },
     {
@@ -143,7 +143,7 @@
       "description": "The private key every session is signed with. It is generated on first start and never leaves this machine. Replacing it invalidates every session that exists.",
       "group": "storage",
       "type": "path",
-      "default": "/var/lib/kgsm-auth-anchor/session-signing.pem",
+      "default": "/var/lib/tks-auth/session-signing.pem",
       "risk": "destructive"
     },
     {
@@ -173,7 +173,7 @@
       "description": "Where a change made on this page is written. A systemd drop-in feeds the file back to this daemon, so it wins over everything the deploy set. Deleting it returns every knob to what the deploy set, which is how this anchor is recovered if a change stops it starting.",
       "group": "storage",
       "type": "path",
-      "default": "/var/lib/kgsm-auth-anchor/config-override.env",
+      "default": "/var/lib/tks-auth/config-override.env",
       "risk": "destructive"
     },
     {

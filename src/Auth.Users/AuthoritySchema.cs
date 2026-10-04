@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// Schema version 2 of the account store: accounts, and everything that decides access beside them.

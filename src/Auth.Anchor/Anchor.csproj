@@ -12,15 +12,15 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <IsAotCompatible>true</IsAotCompatible>
 
-    <RootNamespace>TheKrystalShip.KGSM.Auth.Anchor</RootNamespace>
-    <AssemblyName>kgsm-auth-anchor</AssemblyName>
-    <Version>3.4.2</Version>
+    <RootNamespace>TheKrystalShip.Auth.Anchor</RootNamespace>
+    <AssemblyName>tks-auth</AssemblyName>
+    <Version>4.0.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.ComponentConfig.
          These name the two files it works between; the attribute source, the documentation file the
          <panel> tags travel in and the build step all come with the package. -->
-    <ComponentSettingsFile>kgsm-auth-anchor.settings.json</ComponentSettingsFile>
-    <ComponentDescriptorFile>$(MSBuildProjectDirectory)/../../deploy/kgsm-auth-anchor.anchor.json</ComponentDescriptorFile>
+    <ComponentSettingsFile>tks-auth.settings.json</ComponentSettingsFile>
+    <ComponentDescriptorFile>$(MSBuildProjectDirectory)/../../deploy/tks-auth.anchor.json</ComponentDescriptorFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,7 +28,7 @@
          with a sibling's config if they ever share a directory. The Web SDK only auto-copies the
          literal "appsettings.json", so the renamed file needs an explicit item to reach bin/ and
          publish/. Program.cs loads it from AppContext.BaseDirectory, where deploy installs it. -->
-    <Content Update="kgsm-auth-anchor.settings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="tks-auth.settings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -87,7 +87,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="TheKrystalShip.KGSM.Auth.Anchor.Tests" />
+    <InternalsVisibleTo Include="TheKrystalShip.Auth.Anchor.Tests" />
   </ItemGroup>
 
 </Project>

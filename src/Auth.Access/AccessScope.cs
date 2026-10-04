@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// How wide a scope is. The ordinal runs from widest to narrowest, so a larger value is narrower.

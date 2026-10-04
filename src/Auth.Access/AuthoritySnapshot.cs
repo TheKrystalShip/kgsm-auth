@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// Everything that decides access, at one authority version: accounts, the catalog, permissions,

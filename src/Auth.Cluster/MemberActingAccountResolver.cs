@@ -1,7 +1,7 @@
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 using TheKrystalShip.KGSM.Cluster.Identity;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// Why a member-acting call was refused, as something a surface can branch on.

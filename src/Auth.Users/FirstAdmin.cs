@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 
-using TheKrystalShip.KGSM.Auth;
+using TheKrystalShip.Auth;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// The account a host begins with, and the file its password is left in.

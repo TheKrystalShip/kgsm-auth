@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// Which changes to access a caller may make.

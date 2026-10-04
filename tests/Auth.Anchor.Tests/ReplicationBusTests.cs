@@ -2,12 +2,12 @@ using System.Text.Json;
 
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Cluster;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Cluster;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster.Identity;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// The authority over a real cluster: an anchor writing, nodes following it over the bus from a

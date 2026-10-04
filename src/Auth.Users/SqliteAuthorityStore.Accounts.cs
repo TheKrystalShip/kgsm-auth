@@ -1,8 +1,8 @@
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 // People's accounts at schema version 2: the account store every sign-in door reads, over the same file
 // and the same write path as the authority, so an account change is versioned, owed to the cluster and

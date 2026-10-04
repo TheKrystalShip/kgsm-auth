@@ -1,5 +1,5 @@
 [Unit]
-Description=KGSM Auth Anchor
+Description=tks-auth
 Documentation=https://github.com/TheKrystalShip
 After=network.target
 
@@ -11,7 +11,7 @@ User=kgsm
 Group=kgsm
 
 # Native-AOT single-file binary (publish: dotnet publish src/Auth.Anchor -c Release -r linux-x64).
-ExecStart=/opt/kgsm-auth-anchor/kgsm-auth-anchor
+ExecStart=/opt/tks-auth/tks-auth
 
 # Loopback only. A person signs in here directly, so this is a public surface — but it is published
 # by the reverse proxy in front of it, which terminates TLS and is where the certificate lives.
@@ -25,12 +25,12 @@ Environment=Anchor__ListenAddress=http://127.0.0.1:8098
 
 # The account store — this anchor's own, in its state directory. The node on this machine keeps its
 # replica in a file of its own.
-Environment=Anchor__UserStorePath=/var/lib/kgsm-auth-anchor/accounts.db
+Environment=Anchor__UserStorePath=/var/lib/tks-auth/accounts.db
 
 # Sessions and the private signing key live in the state directory below, which systemd creates
 # owned by this user.
-Environment=Anchor__SessionStorePath=/var/lib/kgsm-auth-anchor/sessions.db
-Environment=Anchor__SigningKeyPath=/var/lib/kgsm-auth-anchor/session-signing.pem
+Environment=Anchor__SessionStorePath=/var/lib/tks-auth/sessions.db
+Environment=Anchor__SigningKeyPath=/var/lib/tks-auth/session-signing.pem
 
 # The shared cluster secret, loaded before this anchor's own env file so one file serves every
 # member on the machine. Blank means this host is not part of a cluster, which is a state and not a
@@ -41,21 +41,21 @@ EnvironmentFile=-/etc/kgsm/kgsm-cluster.env
 # file, so a deliberate override is still possible and is visible where the overrides live. Nothing
 # in it grants anything: an application proves who somebody is, and what they may do is on their
 # account.
-EnvironmentFile=-/etc/kgsm/kgsm-auth.env
+EnvironmentFile=-/etc/tks-auth/providers.env
 
 # Host-specific overrides — optional, and they win over everything above. Every key here must exist
-# in kgsm-auth-anchor.settings.json, which declares the daemon's whole configurable surface; a
+# in tks-auth.settings.json, which declares the daemon's whole configurable surface; a
 # variable naming an undeclared key binds to nothing and sets nothing.
-EnvironmentFile=-/etc/kgsm-auth-anchor/kgsm-auth-anchor.env
+EnvironmentFile=-/etc/tks-auth/tks-auth.env
 
-# systemd creates /var/lib/kgsm-auth-anchor owned by this user. 0700 because the private signing
+# systemd creates /var/lib/tks-auth owned by this user. 0700 because the private signing
 # key lives in it, and because SQLite writes -wal and -shm beside its database — write permission
 # on the file alone is not enough.
 # Reading this daemon's own journal, which is what its Logs tab shows. Without the group journalctl
 # exits 0 having printed nothing — a success indistinguishable from a unit that has logged nothing.
 SupplementaryGroups=systemd-journal
 
-StateDirectory=kgsm-auth-anchor
+StateDirectory=tks-auth
 StateDirectoryMode=0700
 
 Restart=always

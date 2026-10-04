@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// Where the account an identity proves stands on this host, right now.
@@ -35,7 +35,7 @@ public readonly record struct AccountAnswer(AccountOutcome Outcome, KgsmUser? Us
 /// <para>
 /// An identity provider says who someone is and contributes nothing else; this finds the KGSM account
 /// that identity is a credential of. What the account may do is not answered here — it is the roles
-/// assigned to it, evaluated by <c>TheKrystalShip.KGSM.Auth.Access</c>.
+/// assigned to it, evaluated by <c>TheKrystalShip.Auth.Access</c>.
 /// </para>
 /// <para>
 /// An identity attached to no account is <see cref="AccountOutcome.NoAccount"/>, not an error. That is

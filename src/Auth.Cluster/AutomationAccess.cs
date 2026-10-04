@@ -1,6 +1,6 @@
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>Whether an automation may do something now, and why not when it may not.</summary>
 /// <param name="Allowed">Whether it may.</param>

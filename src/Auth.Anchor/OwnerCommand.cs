@@ -1,11 +1,11 @@
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Extensions;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
-/// <c>kgsm-auth-anchor owner grant &lt;username&gt;</c>: assign Owner to an existing account from the
+/// <c>tks-auth owner grant &lt;username&gt;</c>: assign Owner to an existing account from the
 /// anchor's host.
 /// </summary>
 /// <remarks>
@@ -24,7 +24,7 @@ internal static class OwnerCommand
     /// <summary>The first argument that selects this command instead of the daemon.</summary>
     internal const string Verb = "owner";
 
-    private const string Usage = "usage: kgsm-auth-anchor owner grant <username>";
+    private const string Usage = "usage: tks-auth owner grant <username>";
 
     /// <summary>Run the command. Returns the process's exit code.</summary>
     internal static async Task<int> RunAsync(string[] args, AnchorOptions options)

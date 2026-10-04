@@ -1,7 +1,7 @@
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>Whether this anchor is the authority on accounts, and if not, why not.</summary>
 internal enum AnchorStanding

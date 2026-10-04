@@ -1,6 +1,6 @@
-using TheKrystalShip.KGSM.Auth.Minting;
+using TheKrystalShip.Auth.Minting;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 public class SessionTokenServiceTests
 {

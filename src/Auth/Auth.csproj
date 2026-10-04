@@ -4,8 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>TheKrystalShip.KGSM.Auth</RootNamespace>
-    <AssemblyName>TheKrystalShip.KGSM.Auth</AssemblyName>
+    <RootNamespace>TheKrystalShip.Auth</RootNamespace>
+    <AssemblyName>TheKrystalShip.Auth</AssemblyName>
 
     <!--
       Zero package dependencies, by design. Every KGSM surface takes this assembly — including the
@@ -17,9 +17,9 @@
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
 
-    <PackageId>TheKrystalShip.KGSM.Auth</PackageId>
+    <PackageId>TheKrystalShip.Auth</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>4.0.0</Version>
+    <Version>5.0.0</Version>
     <Description>
       KGSM identity: the provider-agnostic KgsmIdentity, the failure a provider or the account store
       reports when it cannot answer, the session claim names, and the provider:name actor convention.

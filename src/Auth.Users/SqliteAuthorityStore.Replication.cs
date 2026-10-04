@@ -2,9 +2,9 @@ using System.Data;
 
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 // The anchor's half of replication: what it owes the cluster, each record as it now stands, and the
 // whole of it for a member building a replica from nothing.

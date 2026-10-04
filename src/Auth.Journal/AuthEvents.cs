@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Journal;
+namespace TheKrystalShip.Auth.Journal;
 
 /// <summary>
 /// The account events a KGSM host records, by name.

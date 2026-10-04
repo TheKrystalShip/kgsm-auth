@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>What happened when a verified external identity was brought to the account store.</summary>
 public enum LinkOutcome

@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth;
+namespace TheKrystalShip.Auth;
 
 /// <summary>
 /// An identity provider or the account store could not be reached, or answered in a way that leaves

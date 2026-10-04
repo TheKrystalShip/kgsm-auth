@@ -3,13 +3,13 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Identity;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// Takes the whole of the cluster's authority from the member holding it: once when this member has

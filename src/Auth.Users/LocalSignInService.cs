@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>How a username-and-password attempt ended.</summary>
 public enum LocalSignInOutcome

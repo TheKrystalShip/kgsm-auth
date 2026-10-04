@@ -3,10 +3,10 @@ using System.Security.Claims;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
+namespace TheKrystalShip.Auth.Cluster.Tests;
 
 /// <summary>
 /// A member answering for the person behind a session it verified: from its own replica, and only once

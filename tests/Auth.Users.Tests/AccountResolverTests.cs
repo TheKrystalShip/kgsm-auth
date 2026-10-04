@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>
 /// The account a verified identity proves, and where it stands — the question every sign-in and every

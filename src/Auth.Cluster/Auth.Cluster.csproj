@@ -4,12 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>TheKrystalShip.KGSM.Auth.Cluster</RootNamespace>
-    <AssemblyName>TheKrystalShip.KGSM.Auth.Cluster</AssemblyName>
+    <RootNamespace>TheKrystalShip.Auth.Cluster</RootNamespace>
+    <AssemblyName>TheKrystalShip.Auth.Cluster</AssemblyName>
 
-    <PackageId>TheKrystalShip.KGSM.Auth.Cluster</PackageId>
+    <PackageId>TheKrystalShip.Auth.Cluster</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Description>
       Everything a cluster member or a leaf does about identity, as a resource server of the auth
       anchor: verify a session it cannot mint against the key the anchor publishes, read who is asking

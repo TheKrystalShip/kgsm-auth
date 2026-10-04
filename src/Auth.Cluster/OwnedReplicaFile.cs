@@ -3,9 +3,9 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// The authority replica of the member that keeps it: the one process on a machine that joins the

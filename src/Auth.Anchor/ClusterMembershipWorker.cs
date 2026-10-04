@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Hosting;
 
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Cluster;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Keeps this anchor's place in the cluster current: it publishes the key members verify sessions

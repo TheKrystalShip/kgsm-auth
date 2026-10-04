@@ -2,15 +2,15 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
-using TheKrystalShip.KGSM.Auth;
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Journal;
+using TheKrystalShip.Auth;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Journal;
 using TheKrystalShip.KGSM.Events;
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.Api.Contracts;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// What every door here shares — checking a password, minting and rotating a session, reading the
@@ -105,7 +105,7 @@ internal static class Endpoints
         }
 
         var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
-            .CreateLogger("TheKrystalShip.KGSM.Auth.Anchor.SignIn");
+            .CreateLogger("TheKrystalShip.Auth.Anchor.SignIn");
 
         switch (result.Outcome)
         {

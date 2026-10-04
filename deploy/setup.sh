@@ -113,24 +113,7 @@ fi
 if [[ ! -f "$PROVIDERS_FILE" ]]; then
     log "seeding ${PROVIDERS_FILE} — fill it in to offer a provider's sign-in beside passwords"
     $SUDO install -d -m 0755 "$(dirname "$PROVIDERS_FILE")"
-    $SUDO install -m 0600 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" /dev/null "$PROVIDERS_FILE"
-    $SUDO tee "$PROVIDERS_FILE" >/dev/null <<'PROVIDERS'
-# ── KGSM sign-in providers — read by the auth anchor ──────────────────────────
-# The OAuth applications people sign in through, keyed by provider. A provider is offered on the
-# sign-in page once both of its keys are set; wiring another is a pair of keys and no rebuild:
-#   KgsmAuth__Providers__github__ClientId=
-#   KgsmAuth__Providers__github__ClientSecret=
-# Each one also needs BOTH of its callbacks registered on the application — the sign-in
-# (/auth/<provider>/callback) and the account-linking one (/auth/identities/<provider>/callback) —
-# or linking is refused at the provider, before anything here sees it.
-#
-# Nothing here grants anything. A sign-in establishes who someone is; what they may do is the roles
-# their KGSM account holds.
-
-KgsmAuth__Providers__discord__ClientId=
-KgsmAuth__Providers__discord__ClientSecret=
-PROVIDERS
-    $SUDO chown "${DEPLOY_USER}:${DEPLOY_GROUP}" "$PROVIDERS_FILE"
+    $SUDO install -m 0600 -o "$DEPLOY_USER" -g "$DEPLOY_GROUP" "$PROVIDERS_EXAMPLE" "$PROVIDERS_FILE"
 fi
 
 # ── 2b. The shared leaf-descriptor directory ──────────────────────────────────

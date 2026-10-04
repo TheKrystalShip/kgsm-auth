@@ -5,15 +5,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-using TheKrystalShip.KGSM.Auth.Cluster;
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Cluster;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 using TheKrystalShip.KGSM.Cluster.Messaging;
 using TheKrystalShip.KGSM.Extensions;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// An auth anchor and nodes on real ports, delivering to each other over the bus: the anchor carries the

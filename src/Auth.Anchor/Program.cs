@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Caching.Memory;
 
-using TheKrystalShip.KGSM.Auth;
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Anchor;
-using TheKrystalShip.KGSM.Auth.Cluster;
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Anchor;
+using TheKrystalShip.Auth.Cluster;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Extensions;
 using TheKrystalShip.KGSM.Cluster.Membership;
@@ -21,10 +21,10 @@ var builder = WebApplication.CreateSlimBuilder(args);
 //      "/", so the framework's own appsettings.json discovery finds nothing and the file's settings
 //      silently never apply. AppContext.BaseDirectory is the binary's own directory, which is where
 //      deploy installs the file.
-//   2. It is named kgsm-auth-anchor.settings.json rather than appsettings.json, so it can never
+//   2. It is named tks-auth.settings.json rather than appsettings.json, so it can never
 //      collide with a sibling ecosystem service's config if they ever share a directory.
 builder.Configuration.AddJsonFile(
-    Path.Combine(AppContext.BaseDirectory, "kgsm-auth-anchor.settings.json"),
+    Path.Combine(AppContext.BaseDirectory, "tks-auth.settings.json"),
     optional: true, reloadOnChange: false);
 
 // Environment variables are re-registered so they sit LAST and therefore win. Configuration resolves
@@ -43,7 +43,7 @@ AnchorSettings settings =
 AnchorOptions options = AnchorOptions.FromSettings(settings);
 builder.Services.AddSingleton(options);
 
-// `kgsm-auth-anchor owner grant <username>` — the Owner recovery path, run on this host as the anchor's
+// `tks-auth owner grant <username>` — the Owner recovery path, run on this host as the anchor's
 // service account. It reads the same settings the daemon does, so it opens the store the daemon opens.
 if (args is [OwnerCommand.Verb, ..])
     return await OwnerCommand.RunAsync(args, options);
@@ -149,7 +149,7 @@ builder.Services.AddKgsmCluster(clusterOptions);
 // The accounts capability's name, when a DNS anchor holds the cluster's zone: this anchor says where it
 // is reached, and while it holds the capability it keeps a certificate for the name and serves it. Inert
 // with no cluster and with nobody holding dns.
-builder.Services.AddKgsmDnsMember(options.PublicHost, "kgsm-auth-anchor");
+builder.Services.AddKgsmDnsMember(options.PublicHost, "tks-auth");
 
 // An anchor registers no card source of its own. What it has to say about itself — its id, its kind,
 // its addresses, its incarnation — is entirely what the package already holds; the node block exists
@@ -367,7 +367,7 @@ app.MapGet("/auth/cluster/public-key", (EcdsaSessionSigner keys) =>
     Results.Text(keys.PublicKeysJson, "application/json"));
 
 app.Logger.LogInformation(
-    "kgsm-auth-anchor listening on {Address} as member {Member} for cluster {Cluster} — accounts {Store}, "
+    "tks-auth listening on {Address} as member {Member} for cluster {Cluster} — accounts {Store}, "
     + "signing key {Key} ({Origin})",
     options.ListenAddress, options.MemberId, options.ClusterId, options.UserStorePath,
     options.SigningKeyPath, keyOrigin == SigningKeyStore.Origin.Generated ? "generated" : "loaded");

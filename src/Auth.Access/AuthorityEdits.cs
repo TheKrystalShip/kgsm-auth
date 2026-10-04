@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// One change a person asks to make to who may do what.

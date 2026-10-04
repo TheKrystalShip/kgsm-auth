@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>Why an action was refused.</summary>
 public enum DenyReason

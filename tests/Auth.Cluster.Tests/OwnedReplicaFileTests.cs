@@ -1,9 +1,9 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
+namespace TheKrystalShip.Auth.Cluster.Tests;
 
 /// <summary>
 /// The replica the member that keeps it owns: created when absent, and a version 1 file set aside for

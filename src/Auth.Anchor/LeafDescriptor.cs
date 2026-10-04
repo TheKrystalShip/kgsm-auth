@@ -1,8 +1,8 @@
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 using TheKrystalShip.KGSM.ComponentConfig;
 
 // What this daemon can be configured with, declared beside the configuration it describes. The
-// generator reads this out of the built assembly and writes deploy/kgsm-auth-anchor.anchor.json;
+// generator reads this out of the built assembly and writes deploy/tks-auth.anchor.json;
 // deploy.sh installs that into /var/lib/kgsm/anchors/auth-anchor.json. The daemon itself never reads
 // any of this.
 
@@ -14,12 +14,12 @@ using TheKrystalShip.KGSM.ComponentConfig;
 [assembly: Anchor(
     id: "auth-anchor",
     displayName: "Auth anchor",
-    unit: "kgsm-auth-anchor.service",
+    unit: "tks-auth.service",
     role: "Holds the cluster's accounts, and is the one place a person signs in to reach every member of it.",
     ActionNamespace = "auth")]
 
 // What this anchor does that access is granted for: administering access itself. The generator writes
-// them to deploy/kgsm-auth-anchor.anchor.actions.json, which the anchor reports into its own catalog.
+// them to deploy/tks-auth.anchor.actions.json, which the anchor reports into its own catalog.
 // AuthActions in Auth.Access names the same actions for every evaluator; a test holds the two together.
 [assembly: Action(AuthActions.RolesEdit, "Edit roles", DeclaredEffect.Write, DeclaredScope.Cluster)]
 [assembly: Action(AuthActions.PermissionsEdit, "Edit permissions", DeclaredEffect.Write, DeclaredScope.Cluster)]
@@ -40,9 +40,9 @@ using TheKrystalShip.KGSM.ComponentConfig;
 
 // Where this daemon's own configuration comes from, lowest precedence first — the same order
 // Program.cs resolves them in. The settings file is the base the other two override one key of.
-[assembly: ConfigFloorSource("appsettings", "/opt/kgsm-auth-anchor/kgsm-auth-anchor.settings.json")]
-[assembly: ConfigFloorSource("systemd-unit", "kgsm-auth-anchor.service")]
-[assembly: ConfigFloorSource("env-file", "/etc/kgsm-auth-anchor/kgsm-auth-anchor.env")]
+[assembly: ConfigFloorSource("appsettings", "/opt/tks-auth/tks-auth.settings.json")]
+[assembly: ConfigFloorSource("systemd-unit", "tks-auth.service")]
+[assembly: ConfigFloorSource("env-file", "/etc/tks-auth/tks-auth.env")]
 
 // Per-category log filtering can name any category there is, so the namespace cannot be enumerated.
 // Every other key in the settings file has to be described or the build fails.

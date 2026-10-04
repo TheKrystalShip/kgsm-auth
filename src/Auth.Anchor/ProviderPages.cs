@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// The provider's pages as plain documents: signing in, the wait for approval, sign-out, and refusals.

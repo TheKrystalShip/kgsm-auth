@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access.Tests;
+namespace TheKrystalShip.Auth.Access.Tests;
 
 /// <summary>
 /// The catalog every member's report adds up to, and the manifests those reports are made of.

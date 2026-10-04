@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — build and deploy the kgsm-auth-anchor daemon. Fully headless: no sudo, no prompts.
+# deploy.sh — build and deploy the tks-auth daemon. Fully headless: no sudo, no prompts.
 #
 #   ./deploy/deploy.sh
 #
@@ -9,7 +9,7 @@
 # building. Publishes the Native-AOT binary as YOU — a single self-contained native binary, so the
 # host needs no .NET runtime.
 #
-#   * the binary, its dlopen'd native libs and its settings file go to /opt/kgsm-auth-anchor,
+#   * the binary, its dlopen'd native libs and its settings file go to /opt/tks-auth,
 #   * the systemd unit is refreshed only if it changed (a write to a file you own + daemon-reload),
 #   * the config descriptor is installed before the swap, so it never lags the binary,
 #   * deploy is verified by an actual 200 from GET /health.
@@ -85,7 +85,7 @@ STOPPED=0
 # ── 4. Verify (an actual 200 from /health) ────────────────────────────────────
 log "waiting for ${SERVICE} to report healthy on 127.0.0.1:${ANCHOR_PORT} ..."
 if wait_health; then
-    log "kgsm-auth-anchor is up and healthy ✓"
+    log "tks-auth is up and healthy ✓"
     systemctl --no-pager --lines=0 status "$SERVICE" 2>/dev/null | head -n 4 || true
 else
     err "service started but GET /health on 127.0.0.1:${ANCHOR_PORT} did not return 200 within ${HEALTH_TRIES}s. Recent logs:"

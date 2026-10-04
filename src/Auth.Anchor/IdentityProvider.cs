@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// Runs a login and says <em>who</em> someone is. One implementation per identity provider; the

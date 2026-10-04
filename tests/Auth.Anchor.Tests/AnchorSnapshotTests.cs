@@ -2,10 +2,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster.Identity;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// What this anchor hands another member, and what it refuses to hand anybody.

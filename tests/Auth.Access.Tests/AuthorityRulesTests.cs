@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access.Tests;
+namespace TheKrystalShip.Auth.Access.Tests;
 
 /// <summary>
 /// Who may change who may do what: the action each change needs, subset, ranking, the permission

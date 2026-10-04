@@ -1,9 +1,9 @@
 using System.Text.Json.Serialization;
 
 using TheKrystalShip.Api.Contracts;
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>Everything that decides access, as the pages that administer it read it.</summary>
 /// <param name="Version">The authority version; every edit names it back.</param>

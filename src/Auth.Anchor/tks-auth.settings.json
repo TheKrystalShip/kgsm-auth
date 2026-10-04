@@ -43,15 +43,15 @@
 
     // The account store: the cluster's accounts and access, this anchor's alone and in its
     // StateDirectory=. Every other member, this machine's node included, holds a replica of its own.
-    "UserStorePath": "/var/lib/kgsm-auth-anchor/accounts.db",
+    "UserStorePath": "/var/lib/tks-auth/accounts.db",
 
     // Where live sessions are recorded, so a revoke outlives the process that issued it and a
     // restart does not sign everybody out. Inside the unit's StateDirectory=.
-    "SessionStorePath": "/var/lib/kgsm-auth-anchor/sessions.db",
+    "SessionStorePath": "/var/lib/tks-auth/sessions.db",
 
     // The private key sessions are signed with. Generated on first start if absent, 0600, and never
     // leaves this machine. Deleting it invalidates every session ever minted.
-    "SigningKeyPath": "/var/lib/kgsm-auth-anchor/session-signing.pem",
+    "SigningKeyPath": "/var/lib/tks-auth/session-signing.pem",
 
     // The descriptor this anchor serves its own configuration page from — written by its build and
     // installed by its deploy, into the anchors directory rather than where a node's leaves are
@@ -62,7 +62,7 @@
     // EnvironmentFile=-, ordered after everything else the unit loads, so it wins. Deleting the file
     // returns every knob to what this host's deploy set — which is how this anchor is recovered if a
     // change stops it starting.
-    "ConfigOverridePath": "/var/lib/kgsm-auth-anchor/config-override.env",
+    "ConfigOverridePath": "/var/lib/tks-auth/config-override.env",
 
     // The provider's pages — sign-in, registration, the wait for approval and the account page — as
     // the kgsm-web-auth package installs them, served at /ui/. Absent, people still sign in through

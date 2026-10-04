@@ -3,9 +3,9 @@ using System.Security.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
-using TheKrystalShip.KGSM.Auth.Cluster;
+using TheKrystalShip.Auth.Cluster;
 
-namespace TheKrystalShip.KGSM.Auth.Minting;
+namespace TheKrystalShip.Auth.Minting;
 
 /// <summary>A just-minted token, its absolute expiry, and the <c>jti</c> it was minted with.</summary>
 /// <remarks>

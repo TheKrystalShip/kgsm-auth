@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth;
+namespace TheKrystalShip.Auth;
 
 /// <summary>
 /// The identity-provider prefix in an actor string. An actor is written <c>provider:name</c> — the

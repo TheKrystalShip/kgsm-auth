@@ -7,7 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 
 using TheKrystalShip.KGSM.Cluster;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// What a machine's leaves verify a person's session against — the cluster's issuer, its audience and

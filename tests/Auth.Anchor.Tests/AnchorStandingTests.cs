@@ -1,9 +1,9 @@
-using TheKrystalShip.KGSM.Auth.Cluster;
-using TheKrystalShip.KGSM.Auth.Minting;
+using TheKrystalShip.Auth.Cluster;
+using TheKrystalShip.Auth.Minting;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// Where an anchor stands, and what follows from it. Three states rather than two, because a machine

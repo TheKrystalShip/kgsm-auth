@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 using TheKrystalShip.Api.Contracts;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
 /// What this daemon is, answered to anybody who asks.
@@ -20,7 +20,7 @@ namespace TheKrystalShip.KGSM.Auth.Anchor;
 /// addresses, nothing about who else exists — that is behind a session.
 /// </para>
 /// </remarks>
-/// <param name="Name">Always <c>kgsm-auth-anchor</c>. What a client matches on.</param>
+/// <param name="Name">Always <c>tks-auth</c>. What a client matches on.</param>
 /// <param name="Cluster">The cluster whose accounts this holds, and the audience of every session it mints.</param>
 /// <param name="Version">This build.</param>
 /// <param name="Holding">

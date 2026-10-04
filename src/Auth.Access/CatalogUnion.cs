@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>One member declaring an action, at the version of the component that declares it.</summary>
 public sealed record ActionDeclaration(string Member, string? Version);

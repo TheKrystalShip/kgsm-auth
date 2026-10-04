@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>
 /// The operations a member serves, and the action each one requires: what a client gates a control on.

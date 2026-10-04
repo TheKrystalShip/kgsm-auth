@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Tests;
+namespace TheKrystalShip.Auth.Tests;
 
 /// <summary>
 /// The two strings an identity produces. They are deliberately different, and each is load-bearing

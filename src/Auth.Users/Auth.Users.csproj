@@ -4,12 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>TheKrystalShip.KGSM.Auth.Users</RootNamespace>
-    <AssemblyName>TheKrystalShip.KGSM.Auth.Users</AssemblyName>
+    <RootNamespace>TheKrystalShip.Auth.Users</RootNamespace>
+    <AssemblyName>TheKrystalShip.Auth.Users</AssemblyName>
 
-    <PackageId>TheKrystalShip.KGSM.Auth.Users</PackageId>
+    <PackageId>TheKrystalShip.Auth.Users</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>2.0.0</Version>
+    <Version>3.0.0</Version>
     <Description>
       The KGSM account store: accounts, the credentials that prove them (a local password, a linked
       external identity), and the access model beside them — permissions, roles, scoped assignments,
@@ -50,7 +50,7 @@
   <ItemGroup>
     <!-- The on-disk spelling of the store's enums and timestamps is internal — it is a file format,
          not a contract a consumer writes against — and the tests that pin it need to see it. -->
-    <InternalsVisibleTo Include="TheKrystalShip.KGSM.Auth.Users.Tests" />
+    <InternalsVisibleTo Include="TheKrystalShip.Auth.Users.Tests" />
   </ItemGroup>
 
   <ItemGroup>

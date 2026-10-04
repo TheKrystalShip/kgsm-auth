@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>Whether an account is a person or a component acting on its own.</summary>
 public enum AccountKind

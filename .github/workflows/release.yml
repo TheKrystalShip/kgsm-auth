@@ -54,7 +54,7 @@ jobs:
 
 
       - name: Test
-        run: dotnet test kgsm-auth.slnx -c Release --nologo
+        run: dotnet test tks-auth.slnx -c Release --nologo
 
       - name: Publish
         run: dotnet publish src/Auth.Anchor/Anchor.csproj -c Release -r linux-x64 -o artifacts/publish

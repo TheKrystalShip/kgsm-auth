@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// What a member says about who signs its sessions (RFC 9728): the document a browser surface reads

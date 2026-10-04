@@ -2,15 +2,15 @@ using System.Text.Json;
 
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Journal;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Journal;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Extensions;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
-/// <c>kgsm-auth-anchor owner grant</c>: Owner assigned from the host's shell, and journaled like any
+/// <c>tks-auth owner grant</c>: Owner assigned from the host's shell, and journaled like any
 /// other grant.
 /// </summary>
 /// <remarks>

@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>
 /// Signing in with a KGSM password — the path that must work with no external provider configured

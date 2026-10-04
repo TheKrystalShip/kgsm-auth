@@ -5,9 +5,9 @@ using System.Text.Json;
 
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Access;
+using TheKrystalShip.Auth.Access;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>What happened to one record in an authority write.</summary>
 public enum AuthorityChangeKind

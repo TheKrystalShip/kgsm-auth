@@ -1,7 +1,7 @@
-using TheKrystalShip.KGSM.Auth.Access;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Access;
+using TheKrystalShip.Auth.Users;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor;
+namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>The anchor's answer to one of its own actions: allowed, refused, or allowed once the person proves themselves again.</summary>
 /// <param name="Decision">The evaluator's answer.</param>

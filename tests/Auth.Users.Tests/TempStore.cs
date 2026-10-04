@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>
 /// A real store on a real file, in a directory of its own, deleted afterwards.

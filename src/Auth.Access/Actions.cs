@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace TheKrystalShip.KGSM.Auth.Access;
+namespace TheKrystalShip.Auth.Access;
 
 /// <summary>What performing an action does. Grants nothing on its own.</summary>
 /// <remarks>

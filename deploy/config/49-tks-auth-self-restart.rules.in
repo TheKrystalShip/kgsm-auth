@@ -1,6 +1,6 @@
-// 49-kgsm-auth-anchor-self-restart.rules — the anchor restarting itself to apply a config change.
+// 49-tks-auth-self-restart.rules — the anchor restarting itself to apply a config change.
 //
-// Rendered from kgsm-auth/deploy/config/49-kgsm-auth-anchor-self-restart.rules.in and installed by
+// Rendered from tks-auth/deploy/config/49-tks-auth-self-restart.rules.in and installed by
 // deploy/setup.sh. This is a SECOND grant, distinct from the deploy one beside it, and the two are
 // separate because their subjects are: the deploy grant names whoever deploys, this one names the
 // account the daemon runs as. Under deploy.sh those are the same person and this rule adds nothing;

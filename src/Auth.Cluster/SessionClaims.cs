@@ -1,6 +1,6 @@
 using System.Security.Claims;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// Reads identity and session back out of a validated token's claims — shared by the refresh

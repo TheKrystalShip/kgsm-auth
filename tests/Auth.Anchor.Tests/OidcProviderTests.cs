@@ -7,12 +7,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Data.Sqlite;
 
-using TheKrystalShip.KGSM.Auth.Cluster;
-using TheKrystalShip.KGSM.Auth.Minting;
-using TheKrystalShip.KGSM.Auth.Users;
+using TheKrystalShip.Auth.Cluster;
+using TheKrystalShip.Auth.Minting;
+using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// The anchor as an OpenID Connect provider, driven the way a browser and a client library drive it.

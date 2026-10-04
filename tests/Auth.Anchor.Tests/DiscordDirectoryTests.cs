@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 
-namespace TheKrystalShip.KGSM.Auth.Anchor.Tests;
+namespace TheKrystalShip.Auth.Anchor.Tests;
 
 /// <summary>
 /// The failure contract. Every branch here decides whether someone gets in during an outage, so each

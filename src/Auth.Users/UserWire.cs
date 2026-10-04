@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace TheKrystalShip.KGSM.Auth.Users;
+namespace TheKrystalShip.Auth.Users;
 
 /// <summary>
 /// How instants are spelled on disk, and the parse back.

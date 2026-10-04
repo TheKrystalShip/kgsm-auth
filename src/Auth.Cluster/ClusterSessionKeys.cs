@@ -5,7 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using TheKrystalShip.KGSM.Cluster;
 using TheKrystalShip.KGSM.Cluster.Membership;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster;
+namespace TheKrystalShip.Auth.Cluster;
 
 /// <summary>
 /// What this member currently knows about verifying sessions its cluster's auth anchor minted.

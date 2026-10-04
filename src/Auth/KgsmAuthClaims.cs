@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth;
+namespace TheKrystalShip.Auth;
 
 /// <summary>
 /// The claim names a KGSM session token carries. Named here so the token the anchor mints reads

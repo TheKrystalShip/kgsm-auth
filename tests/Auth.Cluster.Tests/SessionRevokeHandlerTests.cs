@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using TheKrystalShip.KGSM.Cluster.Messaging;
 
-namespace TheKrystalShip.KGSM.Auth.Cluster.Tests;
+namespace TheKrystalShip.Auth.Cluster.Tests;
 
 /// <summary>
 /// Ending a session because the anchor said so. The handler runs on every member, so what it does

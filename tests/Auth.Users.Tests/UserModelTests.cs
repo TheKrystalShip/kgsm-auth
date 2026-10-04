@@ -1,4 +1,4 @@
-namespace TheKrystalShip.KGSM.Auth.Users.Tests;
+namespace TheKrystalShip.Auth.Users.Tests;
 
 /// <summary>The account model's own rules — the ones no database enforces.</summary>
 public class UserModelTests
