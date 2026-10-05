@@ -7,6 +7,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — tks-auth's own pages and admin UI (daemon 4.4.0)
+
+- The sign-in, registration, wait and account pages ship in this package (`web/`, installed at
+  `/opt/tks-auth/ui`, the default `Anchor__UiPath`). The package replaces `kgsm-web-auth`.
+- Admin pages at `/admin/`: accounts and approval, roles, permissions, the catalog grouped by
+  application, assignments (scope from the link), service requests, and applications (register, edit,
+  clients, a secret shown once, removal).
+- The admin pages sign in as the built-in public client `tks-auth` of the built-in application `auth`
+  (audience `tks-auth`; its tokens list the `auth:*` actions held). Admin routes accept that token beside
+  a KGSM session, other applications' tokens are refused, and `tks-auth` is a reserved audience.
+- The release and `deploy.sh` build the pages, so both need node.
+
 ### Added — token exchange for Discord surfaces (daemon 4.3.0, journal 3.2.0, testing 2.2.0)
 
 - **`/token` takes `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693)** from an authenticated
