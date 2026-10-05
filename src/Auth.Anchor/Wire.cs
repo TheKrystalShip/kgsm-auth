@@ -245,4 +245,9 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(ClientRegistration))]
 [JsonSerializable(typeof(AuthorizeContext))]
 [JsonSerializable(typeof(AccountView))]
+[JsonSerializable(typeof(ApplicationRequest))]
+[JsonSerializable(typeof(ApplicationChange))]
+[JsonSerializable(typeof(ApplicationClientRequest))]
+[JsonSerializable(typeof(ApplicationsPage))]
+[JsonSerializable(typeof(ApplicationAnswer))]
 internal sealed partial class AnchorJsonContext : JsonSerializerContext;

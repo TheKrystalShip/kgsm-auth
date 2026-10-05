@@ -92,6 +92,14 @@ internal static class ClientSources
 /// <param name="Source"><c>member</c>, or <c>admin</c> for a client registered by hand.</param>
 /// <param name="MemberId">The member that announced it, for a member's client.</param>
 /// <param name="Created">When it was registered.</param>
+/// <param name="ApplicationId">
+/// The application it signs people in to, or null for KGSM's: a member's surface, a declared panel, or a
+/// client registered for the cluster.
+/// </param>
+/// <param name="SecretHash">
+/// The hash of its client secret, for a confidential client; null for a public one, which has no secret
+/// to keep.
+/// </param>
 internal sealed record RegisteredClient(
     string ClientId,
     string Name,
@@ -99,7 +107,13 @@ internal sealed record RegisteredClient(
     IReadOnlyList<string> PostLogoutRedirectUris,
     string Source,
     string? MemberId,
-    DateTimeOffset Created);
+    DateTimeOffset Created,
+    string? ApplicationId = null,
+    string? SecretHash = null)
+{
+    /// <summary>Whether it authenticates at <c>/token</c> with a secret.</summary>
+    public bool Confidential => SecretHash is not null;
+}
 
 /// <summary>
 /// The provider's own rows: its sign-ins, the requests in flight, the codes, and the clients.
@@ -205,8 +219,12 @@ internal sealed partial class SqliteSessionRegistry
 
     // ── Sessions minted under a provider session ─────────────────────────────
 
-    /// <summary>Record a session minted through the provider, naming the provider session it came from.</summary>
-    internal Task CreateAsync(SessionRegistration session, string providerSession, CancellationToken ct = default)
+    /// <summary>
+    /// Record a session minted through the provider, naming the provider session it came from and the
+    /// client it was minted for.
+    /// </summary>
+    internal Task CreateAsync(
+        SessionRegistration session, string providerSession, string? clientId = null, CancellationToken ct = default)
     {
         lock (_writeGate)
         {
@@ -216,9 +234,10 @@ internal sealed partial class SqliteSessionRegistry
                 """
                 INSERT INTO sessions
                     (session_id, user_id, host_id, created, expires, user_agent, current_jti, revoked,
-                     provider_session)
-                VALUES ($sid, $user, $host, $created, $expires, $ua, $jti, 0, $provider);
+                     provider_session, client_id)
+                VALUES ($sid, $user, $host, $created, $expires, $ua, $jti, 0, $provider, $client);
                 """;
+            cmd.Parameters.AddWithValue("$client", (object?)clientId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$sid", session.SessionId);
             cmd.Parameters.AddWithValue("$user", session.UserId);
             cmd.Parameters.AddWithValue("$host", session.HostId);
@@ -580,7 +599,8 @@ internal sealed partial class SqliteSessionRegistry
         using SqliteCommand cmd = connection.CreateCommand();
         cmd.CommandText =
             """
-            SELECT client_id, name, redirect_uris, post_logout_uris, source, member_id, created
+            SELECT client_id, name, redirect_uris, post_logout_uris, source, member_id, created,
+                   application_id, secret_hash
               FROM clients ORDER BY client_id;
             """;
 
@@ -595,7 +615,9 @@ internal sealed partial class SqliteSessionRegistry
                 Lines(reader.GetString(3)),
                 reader.GetString(4),
                 NullableString(reader, 5),
-                Parse(reader.GetString(6))));
+                Parse(reader.GetString(6)),
+                NullableString(reader, 7),
+                NullableString(reader, 8)));
         }
 
         return Task.FromResult<IReadOnlyList<RegisteredClient>>(clients);
@@ -607,29 +629,48 @@ internal sealed partial class SqliteSessionRegistry
         lock (_writeGate)
         {
             using SqliteConnection connection = Open();
-            using SqliteCommand cmd = connection.CreateCommand();
-            cmd.CommandText =
-                """
-                INSERT INTO clients (client_id, name, redirect_uris, post_logout_uris, source, member_id, created)
-                VALUES ($id, $name, $redirects, $logouts, $source, $member, $created)
-                ON CONFLICT (client_id) DO NOTHING;
-                """;
-            BindClient(cmd, client);
-            return Task.FromResult(cmd.ExecuteNonQuery() == 1);
+            using SqliteTransaction tx = connection.BeginTransaction();
+            bool added = InsertClient(connection, tx, client);
+            if (added)
+                BumpGeneration(connection, tx);
+            tx.Commit();
+            return Task.FromResult(added);
         }
     }
 
-    /// <summary>Remove a client registered by hand. False when there is none by that id.</summary>
+    private static bool InsertClient(SqliteConnection connection, SqliteTransaction tx, RegisteredClient client)
+    {
+        using SqliteCommand cmd = connection.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText =
+            """
+            INSERT INTO clients
+                (client_id, name, redirect_uris, post_logout_uris, source, member_id, created, application_id, secret_hash)
+            VALUES ($id, $name, $redirects, $logouts, $source, $member, $created, $application, $secret)
+            ON CONFLICT (client_id) DO NOTHING;
+            """;
+        BindClient(cmd, client);
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
+    /// <summary>Remove a client of KGSM's registered by hand. False when there is none by that id.</summary>
     internal Task<bool> RemoveAdminClientAsync(string clientId, CancellationToken ct = default)
     {
         lock (_writeGate)
         {
             using SqliteConnection connection = Open();
+            using SqliteTransaction tx = connection.BeginTransaction();
             using SqliteCommand cmd = connection.CreateCommand();
-            cmd.CommandText = "DELETE FROM clients WHERE client_id = $id AND source = $source;";
+            cmd.Transaction = tx;
+            cmd.CommandText =
+                "DELETE FROM clients WHERE client_id = $id AND source = $source AND application_id IS NULL;";
             cmd.Parameters.AddWithValue("$id", clientId);
             cmd.Parameters.AddWithValue("$source", ClientSources.Admin);
-            return Task.FromResult(cmd.ExecuteNonQuery() == 1);
+            bool removed = cmd.ExecuteNonQuery() == 1;
+            if (removed)
+                BumpGeneration(connection, tx);
+            tx.Commit();
+            return Task.FromResult(removed);
         }
     }
 
@@ -681,8 +722,9 @@ internal sealed partial class SqliteSessionRegistry
                 upsert.Transaction = tx;
                 upsert.CommandText =
                     """
-                    INSERT INTO clients (client_id, name, redirect_uris, post_logout_uris, source, member_id, created)
-                    VALUES ($id, $name, $redirects, $logouts, $source, $member, $created)
+                    INSERT INTO clients
+                        (client_id, name, redirect_uris, post_logout_uris, source, member_id, created, application_id, secret_hash)
+                    VALUES ($id, $name, $redirects, $logouts, $source, $member, $created, $application, $secret)
                     ON CONFLICT (client_id) DO UPDATE SET
                         name = excluded.name,
                         redirect_uris = excluded.redirect_uris,
@@ -704,6 +746,8 @@ internal sealed partial class SqliteSessionRegistry
                 changed |= delete.ExecuteNonQuery() > 0;
             }
 
+            if (changed)
+                BumpGeneration(connection, tx);
             tx.Commit();
             return Task.FromResult(changed);
         }
@@ -718,6 +762,8 @@ internal sealed partial class SqliteSessionRegistry
         cmd.Parameters.AddWithValue("$source", client.Source);
         cmd.Parameters.AddWithValue("$member", (object?)client.MemberId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$created", client.Created.ToString("O"));
+        cmd.Parameters.AddWithValue("$application", (object?)client.ApplicationId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$secret", (object?)client.SecretHash ?? DBNull.Value);
     }
 
     // A URI never contains a line break, so a list of them is stored one per line.

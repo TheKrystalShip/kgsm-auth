@@ -83,6 +83,7 @@ internal sealed partial class SqliteSessionRegistry : ISessionRegistry
         }
 
         InitializeProvider(connection);
+        InitializeApplications(connection);
     }
 
     /// <summary>One live session, as a person reviewing their own devices sees it.</summary>

@@ -24,7 +24,57 @@ public sealed record MintedToken(string Token, DateTimeOffset ExpiresAt, string 
 /// The anchor re-reads the account before it mints the next pair, so a token outliving its account's
 /// switch-off buys nothing.
 /// </remarks>
-public sealed record RefreshClaims(KgsmIdentity Identity, string SessionId, string Jti);
+public sealed record RefreshClaims(KgsmIdentity Identity, string SessionId, string Jti)
+{
+    /// <summary>
+    /// The audience it was minted for: the cluster for a KGSM session, the issuer for a session of an
+    /// application outside KGSM.
+    /// </summary>
+    public string? Audience { get; init; }
+}
+
+/// <summary>
+/// An access token for an application outside KGSM: who it names, and what that application's audience,
+/// lifetime and actions are.
+/// </summary>
+/// <param name="Subject">The account, as the application keys a person: the <c>id_token</c>'s subject.</param>
+/// <param name="Username">The account's username, as <c>preferred_username</c>.</param>
+/// <param name="DisplayName">What the account is shown as, as <c>name</c>.</param>
+/// <param name="Picture">The account's picture, when one is known.</param>
+/// <param name="SessionId">The session it is scoped to.</param>
+/// <param name="ClientId">The client it was minted for.</param>
+/// <param name="Audience">The application's audience, the one string its resource server checks.</param>
+/// <param name="Lifetime">How long it lives: the application's, never KGSM's.</param>
+/// <param name="Actions">
+/// The application's actions the account holds, evaluated at this mint. Carried in
+/// <see cref="ApplicationClaims.Actions"/>, an array even when it is empty.
+/// </param>
+public sealed record ApplicationAccess(
+    string Subject,
+    string Username,
+    string DisplayName,
+    string? Picture,
+    string SessionId,
+    string ClientId,
+    string Audience,
+    TimeSpan Lifetime,
+    IReadOnlyList<string> Actions);
+
+/// <summary>The claims an access token for an application outside KGSM carries beyond the registered ones.</summary>
+public static class ApplicationClaims
+{
+    /// <summary>
+    /// The application's actions the account holds, as an array of action ids. An application reads it
+    /// under a name it is configured with, so a provider other than tks-auth can emit its own.
+    /// </summary>
+    public const string Actions = "tks_actions";
+
+    /// <summary>The client the token was minted for (RFC 9068).</summary>
+    public const string ClientId = "client_id";
+
+    /// <summary>The JWT <c>typ</c> of an access token (RFC 9068), which no id token carries.</summary>
+    public const string AccessTokenType = "at+jwt";
+}
 
 /// <summary>How the anchor mints session tokens.</summary>
 /// <param name="Audience">
@@ -54,8 +104,10 @@ public sealed record SessionTokenOptions(
 /// absolute cap.
 /// </summary>
 /// <remarks>
-/// A token proves who and carries no claim about what: a member resolves what the holder may do from
-/// its own replica on every request, so nothing a token says can outlive a revocation.
+/// A KGSM session proves who and carries no claim about what: a member resolves what the holder may do
+/// from its own replica on every request, so nothing a token says can outlive a revocation. An
+/// application outside KGSM holds no replica, so its access token lists that application's actions the
+/// holder has, evaluated at every mint, and its short lifetime bounds how long a list outlives a change.
 /// </remarks>
 public interface ISessionTokenService
 {
@@ -70,7 +122,20 @@ public interface ISessionTokenService
     MintedToken MintRefresh(KgsmIdentity identity, string sessionId);
 
     /// <summary>
-    /// Validate a presented refresh token. Returns <see langword="null"/> when it is invalid, expired,
+    /// Mint an access token for an application outside KGSM: its audience, its lifetime, and the
+    /// actions claim, typed <c>at+jwt</c>.
+    /// </summary>
+    MintedToken MintApplicationAccess(ApplicationAccess access);
+
+    /// <summary>
+    /// Mint the refresh token for a session of an application outside KGSM. Its audience is the issuer:
+    /// it is presented back here and nowhere else, so no application's resource server accepts it.
+    /// </summary>
+    MintedToken MintApplicationRefresh(KgsmIdentity identity, string sessionId);
+
+    /// <summary>
+    /// Validate a presented refresh token — a KGSM session's, audienced to the cluster, or an
+    /// application's, audienced to the issuer. Returns <see langword="null"/> when it is invalid, expired,
     /// not a refresh token, or missing the <c>sid</c>/<c>jti</c> a session needs — the caller answers
     /// 401 and does not try to salvage a partial answer.
     /// </summary>
@@ -89,6 +154,7 @@ public sealed class SessionTokenService : ISessionTokenService
     private readonly SessionTokenOptions _options;
     private readonly SigningCredentials _signing;
     private readonly JsonWebTokenHandler _handler = new();
+    private readonly TokenValidationParameters _refreshValidation;
 
     public TokenValidationParameters ValidationParameters { get; }
 
@@ -121,15 +187,64 @@ public sealed class SessionTokenService : ISessionTokenService
             ClockSkew = ClusterSessionValidation.ClockSkew,
             NameClaimType = "sub",
         };
+
+        // A refresh token comes back only here, audienced to the cluster for a KGSM session and to the
+        // issuer for an application's, so this one check accepts both and the bearer check above
+        // accepts neither of an application's.
+        _refreshValidation = ValidationParameters.Clone();
+        _refreshValidation.ValidAudience = null;
+        _refreshValidation.ValidAudiences = [options.Audience, options.Issuer];
     }
 
     public MintedToken MintAccess(KgsmIdentity identity, string sessionId) =>
-        Mint(identity, KgsmTokenKind.Access, _options.AccessLifetime, sessionId);
+        Mint(identity, KgsmTokenKind.Access, _options.AccessLifetime, sessionId, _options.Audience);
 
     public MintedToken MintRefresh(KgsmIdentity identity, string sessionId) =>
-        Mint(identity, KgsmTokenKind.Refresh, _options.RefreshLifetime, sessionId);
+        Mint(identity, KgsmTokenKind.Refresh, _options.RefreshLifetime, sessionId, _options.Audience);
 
-    private MintedToken Mint(KgsmIdentity identity, string kind, TimeSpan ttl, string sessionId)
+    public MintedToken MintApplicationRefresh(KgsmIdentity identity, string sessionId) =>
+        Mint(identity, KgsmTokenKind.Refresh, _options.RefreshLifetime, sessionId, _options.Issuer);
+
+    public MintedToken MintApplicationAccess(ApplicationAccess access)
+    {
+        ArgumentNullException.ThrowIfNull(access);
+
+        string jti = Guid.NewGuid().ToString("N");
+        DateTime now = DateTime.UtcNow;
+        DateTime expires = now.Add(access.Lifetime);
+
+        // The registered claims an OpenID Connect resource server reads (RFC 9068), the profile an
+        // id_token carries under the same names, and the actions — an array whatever its length, so a
+        // reader never has to tell one action from a list of them.
+        var claims = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["sub"] = access.Subject,
+            [ApplicationClaims.ClientId] = access.ClientId,
+            [KgsmAuthClaims.TokenKind] = KgsmTokenKind.Access,
+            [KgsmAuthClaims.SessionId] = access.SessionId,
+            [KgsmAuthClaims.Jti] = jti,
+            ["preferred_username"] = access.Username,
+            ["name"] = access.DisplayName,
+            [ApplicationClaims.Actions] = access.Actions.ToArray(),
+        };
+        if (access.Picture is not null)
+            claims["picture"] = access.Picture;
+
+        string token = _handler.CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = _options.Issuer,
+            Audience = access.Audience,
+            Claims = claims,
+            Expires = expires,
+            IssuedAt = now,
+            TokenType = ApplicationClaims.AccessTokenType,
+            SigningCredentials = _signing,
+        });
+
+        return new MintedToken(token, new DateTimeOffset(expires, TimeSpan.Zero), jti);
+    }
+
+    private MintedToken Mint(KgsmIdentity identity, string kind, TimeSpan ttl, string sessionId, string audience)
     {
         // A fresh jti per mint. For a refresh token this is the reuse-detection key the registry
         // stores; for an access token it is informational, and both get one so every token is
@@ -139,7 +254,7 @@ public sealed class SessionTokenService : ISessionTokenService
         List<Claim> claims =
         [
             new("sub", identity.Handle),
-            new(KgsmAuthClaims.Host, _options.Audience),
+            new(KgsmAuthClaims.Host, audience),
             new(KgsmAuthClaims.TokenKind, kind),
             new(KgsmAuthClaims.SessionId, sessionId),
             new(KgsmAuthClaims.Jti, jti),
@@ -154,7 +269,7 @@ public sealed class SessionTokenService : ISessionTokenService
         string token = _handler.CreateToken(new SecurityTokenDescriptor
         {
             Issuer = _options.Issuer,
-            Audience = _options.Audience,
+            Audience = audience,
             Subject = new ClaimsIdentity(claims),
             Expires = expires,
             IssuedAt = DateTime.UtcNow,
@@ -166,7 +281,7 @@ public sealed class SessionTokenService : ISessionTokenService
 
     public async Task<RefreshClaims?> ReadRefreshAsync(string token)
     {
-        TokenValidationResult result = await _handler.ValidateTokenAsync(token, ValidationParameters);
+        TokenValidationResult result = await _handler.ValidateTokenAsync(token, _refreshValidation);
         if (!result.IsValid || result.ClaimsIdentity is null)
             return null;
 
@@ -188,6 +303,9 @@ public sealed class SessionTokenService : ISessionTokenService
         if (sid is null || jti is null)
             return null;
 
-        return new RefreshClaims(identity, sid, jti);
+        return new RefreshClaims(identity, sid, jti)
+        {
+            Audience = result.SecurityToken is JsonWebToken jwt ? jwt.Audiences.FirstOrDefault() : null,
+        };
     }
 }

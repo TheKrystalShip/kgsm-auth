@@ -114,6 +114,28 @@ public sealed class ClusterSessionValidationTests
     // ── Refused: not this cluster's ──────────────────────────────────────────
 
     [Fact]
+    public async Task A_token_the_anchor_minted_for_another_application_is_refused()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        SessionTokenService anchor = Anchor(signer);
+        MintedToken minted = anchor.MintApplicationAccess(new ApplicationAccess(
+            "usr_abc", "haru", "Haru", null, "sid_1", "cinema-site", "cinema", TimeSpan.FromMinutes(5),
+            ["cinema:watch"]));
+
+        // The same key, the same issuer, the same person: only the audience says it is Cinema's.
+        Assert.False((await Validate(minted.Token, Known.Of(ClusterId, signer))).IsValid);
+    }
+
+    [Fact]
+    public async Task An_application_session_s_refresh_token_is_refused()
+    {
+        using var signer = EcdsaSessionSigner.Generate();
+        MintedToken minted = Anchor(signer).MintApplicationRefresh(Identity(), "sid_1");
+
+        Assert.False((await Validate(minted.Token, Known.Of(ClusterId, signer))).IsValid);
+    }
+
+    [Fact]
     public async Task A_session_signed_by_a_key_nobody_published_is_refused()
     {
         using var published = EcdsaSessionSigner.Generate();

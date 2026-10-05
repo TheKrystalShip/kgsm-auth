@@ -232,6 +232,14 @@ internal sealed class CatalogDeclaredHandler(AuthorityIntake intake, ILogger<Cat
             return;
         }
 
+        // An application's report is read here from the address it registered, never taken off the bus:
+        // a member speaking under an application's name would be declaring that application's actions.
+        if (envelope.From.StartsWith(Application.CatalogMemberPrefix, StringComparison.Ordinal))
+        {
+            logger.LogWarning("'{Member}' sent a catalog report under an application's name; it was refused", envelope.From);
+            return;
+        }
+
         if (report is not null)
             await intake.CatalogDeclaredAsync(envelope.From, report, ct).ConfigureAwait(false);
     }

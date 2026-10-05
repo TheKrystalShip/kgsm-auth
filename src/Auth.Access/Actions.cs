@@ -180,6 +180,12 @@ public static class AuthActions
     /// <summary>Approve, narrow and revoke service requirements. Cluster scope.</summary>
     public const string ServicesManage = "auth:services.manage";
 
+    /// <summary>
+    /// Register, change and remove the applications this provider signs people in to, their clients and
+    /// their client secrets. Cluster scope.
+    /// </summary>
+    public const string ApplicationsManage = "auth:applications.manage";
+
     /// <summary>Every action above, as the anchor declares it.</summary>
     public static IReadOnlyList<CatalogAction> Declared { get; } =
     [
@@ -191,5 +197,6 @@ public static class AuthActions
         new(AccountsDelete, "Delete accounts", ActionEffect.Write, ScopeKind.Cluster),
         new(AccountsCreate, "Create accounts", ActionEffect.Write, ScopeKind.Cluster),
         new(ServicesManage, "Manage service requirements", ActionEffect.Write, ScopeKind.Cluster),
+        new(ApplicationsManage, "Manage applications", ActionEffect.Write, ScopeKind.Cluster),
     ];
 }

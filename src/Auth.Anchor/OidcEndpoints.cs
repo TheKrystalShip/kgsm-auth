@@ -15,8 +15,10 @@ namespace TheKrystalShip.Auth.Anchor;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Authorization code with PKCE (S256), public clients.</b> No client secret exists to leak from a
-/// browser. A code is single use, lives sixty seconds, and is bound to its client and its exact redirect.
+/// <b>Authorization code with PKCE (S256), for every client.</b> A browser surface is a public client with
+/// no secret to leak; a service is a confidential client that authenticates at <c>/token</c> with the
+/// secret registered for it, and is held to PKCE as well. A code is single use, lives sixty seconds, and
+/// is bound to its client and its exact redirect.
 /// </para>
 /// <para>
 /// <b>The request in flight is held here</b>, keyed by the hash of a secret the browser carries in
@@ -66,7 +68,7 @@ internal static class OidcEndpoints
             ScopesSupported: ["openid"],
             ClaimsSupported: ["sub", "sid", "auth_time", "nonce", "preferred_username", "name", "picture"],
             CodeChallengeMethodsSupported: ["S256"],
-            TokenEndpointAuthMethodsSupported: ["none"],
+            TokenEndpointAuthMethodsSupported: ["none", "client_secret_basic", "client_secret_post"],
             PromptValuesSupported: ["none", "login"],
             AuthorizationResponseIssParameterSupported: true),
             AnchorJsonContext.Default.OidcDiscovery);
@@ -544,7 +546,12 @@ internal static class OidcEndpoints
     /// </para>
     /// <para>
     /// The session is minted through the one mint site every door uses, recording the provider session it
-    /// came from. Its access token's audience is the cluster; the <c>id_token</c> beside it is the client's.
+    /// came from and the client it is for. Its access token's audience is the client's application's — the
+    /// cluster for KGSM — and the <c>id_token</c> beside it is the client's.
+    /// </para>
+    /// <para>
+    /// The client is authenticated before either grant is looked at, so a client that fails to prove its
+    /// secret never reaches a code or a session.
     /// </para>
     /// </remarks>
     internal static async Task Token(HttpContext ctx)
@@ -575,14 +582,28 @@ internal static class OidcEndpoints
         }
 
         IFormCollection form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+
+        var auth = ClientAuthentication.Read(ctx.Request, form, ctx.RequestServices.GetRequiredService<ClientRegistry>());
+        switch (auth.Result)
+        {
+            case ClientAuthentication.Outcome.Malformed:
+                await OAuthErrorAsync(ctx, StatusCodes.Status400BadRequest, "invalid_request",
+                    "A client authenticates one way: HTTP Basic, or client_id and client_secret in the form.");
+                return;
+
+            case ClientAuthentication.Outcome.Failed:
+                await auth.RefuseAsync(ctx, "The client could not be authenticated.");
+                return;
+        }
+
         switch (Single(form, "grant_type"))
         {
             case "authorization_code":
-                await ExchangeCodeAsync(ctx, form);
+                await ExchangeCodeAsync(ctx, form, auth);
                 return;
 
             case "refresh_token":
-                await RefreshAsync(ctx, form);
+                await RefreshAsync(ctx, form, auth);
                 return;
 
             default:
@@ -592,17 +613,26 @@ internal static class OidcEndpoints
         }
     }
 
-    private static async Task ExchangeCodeAsync(HttpContext ctx, IFormCollection form)
+    private static async Task ExchangeCodeAsync(HttpContext ctx, IFormCollection form, ClientAuthentication auth)
     {
         string? code = Single(form, "code");
         string? redirectUri = Single(form, "redirect_uri");
-        string? clientId = Single(form, "client_id");
+        string? clientId = auth.ClientId;
         string? verifier = Single(form, "code_verifier");
 
         if (code is null || redirectUri is null || clientId is null || verifier is null)
         {
             await OAuthErrorAsync(ctx, StatusCodes.Status400BadRequest, "invalid_request",
                 "code, redirect_uri, client_id and code_verifier are all required.");
+            return;
+        }
+
+        // A confidential client that did not authenticate is refused before its code is looked at: the
+        // code is still good for the client that can.
+        RegisteredClient? client = ctx.RequestServices.GetRequiredService<ClientRegistry>().Find(clientId);
+        if (client is { Confidential: true } && auth.Result != ClientAuthentication.Outcome.Authenticated)
+        {
+            await auth.RefuseAsync(ctx, "This client authenticates with its secret.");
             return;
         }
 
@@ -614,7 +644,8 @@ internal static class OidcEndpoints
             || !string.Equals(issued.ClientId, clientId, StringComparison.Ordinal)
             || !string.Equals(issued.RedirectUri, redirectUri, StringComparison.Ordinal)
             || !VerifierMatches(verifier, issued.CodeChallenge)
-            || ctx.RequestServices.GetRequiredService<ClientRegistry>().Find(clientId) is null)
+            || client is null
+            || ctx.RequestServices.GetRequiredService<ApplicationRegistry>().Of(client) is not { } application)
         {
             await OAuthErrorAsync(ctx, StatusCodes.Status400BadRequest, "invalid_grant",
                 "That code is not valid for this exchange.");
@@ -653,7 +684,7 @@ internal static class OidcEndpoints
         }
 
         var idTokens = ctx.RequestServices.GetRequiredService<IdTokens>();
-        await Endpoints.MintSessionFor(ctx, identity, user, now, (access, refresh) =>
+        bool minted = await Endpoints.MintSessionFor(ctx, identity, user, now, (access, refresh) =>
             Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new TokenResponse(
                 AccessToken: access.Token,
                 TokenType: "Bearer",
@@ -662,10 +693,16 @@ internal static class OidcEndpoints
                 IdToken: idTokens.Mint(user, clientId, session.SessionId, issued.AuthTime, issued.Nonce, identity.AvatarUrl),
                 Scope: "openid"),
                 AnchorJsonContext.Default.TokenResponse),
-            providerSession: session.SessionId);
+            providerSession: session.SessionId, client, application);
+
+        if (!minted)
+        {
+            await OAuthErrorAsync(ctx, StatusCodes.Status503ServiceUnavailable, "temporarily_unavailable",
+                "The account store could not be read.");
+        }
     }
 
-    private static async Task RefreshAsync(HttpContext ctx, IFormCollection form)
+    private static async Task RefreshAsync(HttpContext ctx, IFormCollection form, ClientAuthentication auth)
     {
         if (Single(form, "refresh_token") is not { } presented)
         {
@@ -674,9 +711,13 @@ internal static class OidcEndpoints
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        Endpoints.Rotation rotation = await Endpoints.RotateAsync(ctx, presented);
+        Endpoints.Rotation rotation = await Endpoints.RotateAsync(ctx, presented, auth);
         switch (rotation.Outcome)
         {
+            case Endpoints.RotationOutcome.ClientRefused:
+                await auth.RefuseAsync(ctx, "This client authenticates with its secret.");
+                return;
+
             case Endpoints.RotationOutcome.Rotated:
                 await Endpoints.WriteJson(ctx, StatusCodes.Status200OK, new TokenResponse(
                     AccessToken: rotation.Access!.Token,
@@ -837,14 +878,17 @@ internal static class OidcEndpoints
     private static readonly string ConfigRead = Access.ActionIds.Format(Access.ActionIds.AuthComponent, "config.read");
     private static readonly string ConfigWrite = Access.ActionIds.Format(Access.ActionIds.AuthComponent, "config.write");
 
-    /// <summary><c>GET /auth/cluster/clients</c>: every client, announced or registered.</summary>
+    /// <summary>
+    /// <c>GET /auth/cluster/clients</c>: every client of KGSM's, announced, declared or registered. An
+    /// application outside KGSM is listed with its clients under <c>/auth/cluster/applications</c>.
+    /// </summary>
     internal static async Task ListClients(HttpContext ctx)
     {
         if (!await Endpoints.RequireAuthorityAsync(ctx) || await Endpoints.RequireCaller(ctx, ConfigRead) is null)
             return;
 
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
-            new ClientsPage([.. ctx.RequestServices.GetRequiredService<ClientRegistry>().All.Select(ToRecord)]),
+            new ClientsPage([.. ctx.RequestServices.GetRequiredService<ClientRegistry>().Kgsm.Select(ToRecord)]),
             AnchorJsonContext.Default.ClientsPage);
     }
 
@@ -1099,7 +1143,7 @@ internal static class OidcEndpoints
         RedirectError(ctx, request.RedirectUri, request.State, error, description);
     }
 
-    private static Task OAuthErrorAsync(HttpContext ctx, int status, string error, string description) =>
+    internal static Task OAuthErrorAsync(HttpContext ctx, int status, string error, string description) =>
         Endpoints.WriteJson(ctx, status, new OAuthError(error, description), AnchorJsonContext.Default.OAuthError);
 
     // ── Checks ────────────────────────────────────────────────────────────────

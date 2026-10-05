@@ -21,31 +21,66 @@ namespace TheKrystalShip.Auth.Anchor;
 /// carrying a code.
 /// </para>
 /// <para>
-/// Held in memory and reloaded after every write, because it is read on every request that carries an
-/// <c>Origin</c> and on every authorization, and the only writer is this process.
+/// Held in memory, because it is read on every request that carries an <c>Origin</c> and on every
+/// authorization. It is reloaded after every write this process makes, and when the store's generation
+/// says another process — the host command — has written since.
 /// </para>
 /// <para>
-/// <b>Three sources.</b> A member announces the panel it serves; anything else is registered here
-/// by hand; and a panel on a static host, which no member can announce, is declared in this anchor's
-/// configuration. A declared panel is never stored — it is what the deploy said this process should
-/// serve, so it comes back with every start and goes when the setting does, and it wins over a stored
-/// client of the same id.
+/// <b>Every client belongs to an application.</b> KGSM's clients come from three sources: a member
+/// announces the panel it serves; anything else is registered here by hand; and a panel on a static
+/// host, which no member can announce, is declared in this anchor's configuration. A declared panel is
+/// never stored — it is what the deploy said this process should serve, so it comes back with every
+/// start and goes when the setting does, and it wins over a stored client of the same id. An
+/// application outside KGSM has the clients registered for it, and only those
+/// (<see cref="ApplicationRegistry"/>).
 /// </para>
 /// </remarks>
 internal sealed partial class ClientRegistry
 {
+    /// <summary>How long a read trusts the snapshot before asking the store whether it has moved.</summary>
+    private static readonly TimeSpan GenerationCheck = TimeSpan.FromSeconds(1);
+
     private readonly SqliteSessionRegistry _store;
     private readonly IReadOnlyList<RegisteredClient> _declared;
+    private readonly Lock _reload = new();
     private volatile Snapshot _snapshot;
+    private long _checkedAt;
 
     private sealed record Snapshot(
-        IReadOnlyDictionary<string, RegisteredClient> ById, IReadOnlySet<string> Origins);
+        IReadOnlyDictionary<string, RegisteredClient> ById,
+        IReadOnlySet<string> Origins,
+        IReadOnlyDictionary<string, Application> Applications,
+        long Generation);
 
     public ClientRegistry(SqliteSessionRegistry store, IReadOnlyList<string>? panelOrigins = null)
     {
         _store = store;
         (_declared, RefusedPanelOrigins) = Declare(panelOrigins ?? [], DateTimeOffset.UtcNow);
-        _snapshot = Load(store.ListClientsAsync().GetAwaiter().GetResult());
+        _snapshot = Read();
+        _checkedAt = Environment.TickCount64;
+    }
+
+    /// <summary>The snapshot, reloaded first when another process has written the store since it was read.</summary>
+    private Snapshot Current
+    {
+        get
+        {
+            long now = Environment.TickCount64;
+            if (now - Interlocked.Read(ref _checkedAt) < (long)GenerationCheck.TotalMilliseconds)
+                return _snapshot;
+
+            lock (_reload)
+            {
+                if (now - _checkedAt >= (long)GenerationCheck.TotalMilliseconds)
+                {
+                    if (_store.RegistryGeneration() != _snapshot.Generation)
+                        _snapshot = Read();
+                    Interlocked.Exchange(ref _checkedAt, now);
+                }
+
+                return _snapshot;
+            }
+        }
     }
 
     /// <summary>Configured panel origins that cannot be a client, each with why.</summary>
@@ -96,21 +131,44 @@ internal sealed partial class ClientRegistry
         return (declared, refused);
     }
 
-    /// <summary>Every registered client.</summary>
-    public IReadOnlyList<RegisteredClient> All => [.. _snapshot.ById.Values.OrderBy(c => c.ClientId, StringComparer.Ordinal)];
+    /// <summary>Every registered client, of every application.</summary>
+    public IReadOnlyList<RegisteredClient> All => [.. Current.ById.Values.OrderBy(c => c.ClientId, StringComparer.Ordinal)];
+
+    /// <summary>KGSM's clients: announced, declared and registered for the cluster.</summary>
+    public IReadOnlyList<RegisteredClient> Kgsm => [.. All.Where(c => c.ApplicationId is null)];
+
+    /// <summary>The clients of one application outside KGSM.</summary>
+    public IReadOnlyList<RegisteredClient> Of(string applicationId) =>
+        [.. All.Where(c => string.Equals(c.ApplicationId, applicationId, StringComparison.Ordinal))];
 
     /// <summary>The client with this id, or null.</summary>
     public RegisteredClient? Find(string? clientId) =>
-        clientId is { Length: > 0 } && _snapshot.ById.TryGetValue(clientId, out RegisteredClient? client) ? client : null;
+        clientId is { Length: > 0 } && Current.ById.TryGetValue(clientId, out RegisteredClient? client) ? client : null;
+
+    /// <summary>Every application registered here, KGSM's aside.</summary>
+    public IReadOnlyList<Application> Applications =>
+        [.. Current.Applications.Values.OrderBy(a => a.Id, StringComparer.Ordinal)];
+
+    /// <summary>The registered application with this id, or null. KGSM's is never stored.</summary>
+    public Application? FindApplication(string? applicationId) =>
+        applicationId is { Length: > 0 } && Current.Applications.TryGetValue(applicationId, out Application? a) ? a : null;
 
     /// <summary>
-    /// Whether <paramref name="origin"/> is where some registered client lives. Such an origin may read
-    /// what this provider publishes and exchange codes, and nothing that reads its cookie.
+    /// Whether <paramref name="origin"/> is where some registered client lives, of any application. Such
+    /// an origin may read what this provider publishes and exchange codes, and nothing that reads its
+    /// cookie.
     /// </summary>
-    public bool IsClientOrigin(string origin) => _snapshot.Origins.Contains(origin);
+    public bool IsClientOrigin(string origin) => Current.Origins.Contains(origin);
 
-    /// <summary>Every origin a registered client lives at — what members admit across origins.</summary>
-    public IReadOnlyCollection<string> Origins => [.. _snapshot.Origins];
+    /// <summary>
+    /// Every origin one of KGSM's clients lives at — what members admit across origins. An application
+    /// outside KGSM is nothing a member serves, so none of its origins is published to one.
+    /// </summary>
+    public IReadOnlyCollection<string> Origins =>
+        [.. Kgsm.SelectMany(c => c.RedirectUris.Concat(c.PostLogoutRedirectUris))
+            .Where(u => Uri.TryCreate(u, UriKind.Absolute, out _))
+            .Select(OriginOf)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>Whether <paramref name="uri"/> is one of the client's redirect URIs, exactly.</summary>
     public static bool Redirects(RegisteredClient client, string? uri) =>
@@ -126,7 +184,7 @@ internal sealed partial class ClientRegistry
     /// <summary>What registering a client did.</summary>
     internal enum RegisterOutcome { Registered, Invalid, Taken }
 
-    /// <summary>Register a client by hand.</summary>
+    /// <summary>Register a public client of KGSM's by hand.</summary>
     public async Task<(RegisterOutcome Outcome, RegisteredClient? Client, string? Problem)> RegisterAsync(
         ClientRegistration request, DateTimeOffset now, CancellationToken ct)
     {
@@ -134,39 +192,61 @@ internal sealed partial class ClientRegistry
         if (name.Length is 0 or > 80)
             return (RegisterOutcome.Invalid, null, "A client needs a name of at most 80 characters.");
 
-        string id = string.IsNullOrWhiteSpace(request.ClientId)
-            ? "cli_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8))
-            : request.ClientId.Trim();
-        if (!ClientIdShape().IsMatch(id))
-            return (RegisterOutcome.Invalid, null,
-                "A client id is 3–64 lowercase letters, digits, '.', '_' or '-', beginning with a letter or a digit.");
+        (RegisteredClient? client, string? problem) = Shape(
+            request.ClientId, name, request.RedirectUris, request.PostLogoutRedirectUris,
+            applicationId: null, secretHash: null, now);
+        if (client is null)
+            return (RegisterOutcome.Invalid, null, problem);
 
-        IReadOnlyList<string> redirects = request.RedirectUris ?? [];
-        if (redirects.Count == 0)
-            return (RegisterOutcome.Invalid, null, "A client needs at least one redirect URI.");
-
-        foreach (string uri in redirects.Concat(request.PostLogoutRedirectUris ?? []))
-        {
-            if (Problem(uri) is { } problem)
-                return (RegisterOutcome.Invalid, null, $"'{uri}': {problem}");
-        }
-
-        var client = new RegisteredClient(
-            id, name, [.. redirects.Distinct(StringComparer.Ordinal)],
-            [.. (request.PostLogoutRedirectUris ?? []).Distinct(StringComparer.Ordinal)],
-            ClientSources.Admin, MemberId: null, now);
-
-        // A declared panel is not stored, so the store would accept its id and the declaration would
-        // then hide the row it wrote.
-        if (Find(id) is { Source: ClientSources.Config })
-            return (RegisterOutcome.Taken, null, $"'{id}' is already a client.");
+        if (IsTaken(client.ClientId))
+            return (RegisterOutcome.Taken, null, $"'{client.ClientId}' is already a client.");
 
         if (!await _store.AddClientAsync(client, ct).ConfigureAwait(false))
-            return (RegisterOutcome.Taken, null, $"'{id}' is already a client.");
+            return (RegisterOutcome.Taken, null, $"'{client.ClientId}' is already a client.");
 
         await ReloadAsync(ct).ConfigureAwait(false);
         return (RegisterOutcome.Registered, client, null);
     }
+
+    /// <summary>
+    /// A client registered by hand, or why the request cannot be one.
+    /// </summary>
+    /// <remarks>
+    /// A public client needs somewhere to send a code. A confidential one may have nowhere: a service
+    /// that authenticates with its secret and exchanges a token never takes a browser through a sign-in.
+    /// </remarks>
+    internal static (RegisteredClient? Client, string? Problem) Shape(
+        string? clientId, string name, IReadOnlyList<string>? redirectUris, IReadOnlyList<string>? postLogoutUris,
+        string? applicationId, string? secretHash, DateTimeOffset now)
+    {
+        string id = string.IsNullOrWhiteSpace(clientId)
+            ? "cli_" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8))
+            : clientId.Trim();
+        if (!ClientIdShape().IsMatch(id))
+            return (null,
+                "A client id is 3–64 lowercase letters, digits, '.', '_' or '-', beginning with a letter or a digit.");
+
+        IReadOnlyList<string> redirects = redirectUris ?? [];
+        if (redirects.Count == 0 && secretHash is null)
+            return (null, "A public client needs at least one redirect URI.");
+
+        foreach (string uri in redirects.Concat(postLogoutUris ?? []))
+        {
+            if (Problem(uri) is { } problem)
+                return (null, $"'{uri}': {problem}");
+        }
+
+        return (new RegisteredClient(
+            id, name, [.. redirects.Distinct(StringComparer.Ordinal)],
+            [.. (postLogoutUris ?? []).Distinct(StringComparer.Ordinal)],
+            ClientSources.Admin, MemberId: null, now, applicationId, secretHash), null);
+    }
+
+    /// <summary>
+    /// Whether a client id is in use. A declared panel is not stored, so the store would accept its id
+    /// and the declaration would then hide the row it wrote.
+    /// </summary>
+    internal bool IsTaken(string clientId) => Find(clientId) is not null;
 
     /// <summary>What removing a client did.</summary>
     internal enum RemoveOutcome { Removed, NotFound, Announced, Declared }
@@ -177,7 +257,8 @@ internal sealed partial class ClientRegistry
     /// </summary>
     public async Task<RemoveOutcome> RemoveAsync(string clientId, CancellationToken ct)
     {
-        if (Find(clientId) is not { } client)
+        // An application's client is removed through its application, never through KGSM's list.
+        if (Find(clientId) is not { ApplicationId: null } client)
             return RemoveOutcome.NotFound;
         if (client.Source == ClientSources.Config)
             return RemoveOutcome.Declared;
@@ -301,12 +382,36 @@ internal sealed partial class ClientRegistry
         return "only https, or http on this machine or a private network";
     }
 
-    private async Task ReloadAsync(CancellationToken ct) =>
-        _snapshot = Load(await _store.ListClientsAsync(ct).ConfigureAwait(false));
-
-    private Snapshot Load(IReadOnlyList<RegisteredClient> stored)
+    /// <summary>Read the store again, after a write this process made.</summary>
+    internal Task ReloadAsync(CancellationToken ct)
     {
-        var byId = stored.ToDictionary(c => c.ClientId, StringComparer.Ordinal);
+        lock (_reload)
+        {
+            _snapshot = Read();
+            Interlocked.Exchange(ref _checkedAt, Environment.TickCount64);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Snapshot Read()
+    {
+        // The generation first: a write landing between it and the lists is picked up by the next check
+        // rather than hidden under a generation that already counts it.
+        long generation = _store.RegistryGeneration();
+        IReadOnlyList<RegisteredClient> stored = _store.ListClientsAsync().GetAwaiter().GetResult();
+        IReadOnlyList<Application> applications = _store.ListApplicationsAsync().GetAwaiter().GetResult();
+        return Load(stored, applications, generation);
+    }
+
+    private Snapshot Load(IReadOnlyList<RegisteredClient> stored, IReadOnlyList<Application> applications, long generation)
+    {
+        var apps = applications.ToDictionary(a => a.Id, StringComparer.Ordinal);
+
+        // An application's client is shown by its application's name, which a rename changes in one place.
+        var byId = stored
+            .Select(c => c.ApplicationId is { } app && apps.TryGetValue(app, out Application? owner) ? c with { Name = owner.Name } : c)
+            .ToDictionary(c => c.ClientId, StringComparer.Ordinal);
         foreach (RegisteredClient client in _declared)
             byId[client.ClientId] = client;
 
@@ -320,7 +425,7 @@ internal sealed partial class ClientRegistry
             }
         }
 
-        return new Snapshot(byId, origins);
+        return new Snapshot(byId, origins, apps, generation);
     }
 
     [GeneratedRegex("^[a-z0-9][a-z0-9._-]{2,63}$")]

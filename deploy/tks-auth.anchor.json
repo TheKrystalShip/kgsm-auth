@@ -276,6 +276,18 @@
       "risk": "safe"
     },
     {
+      "key": "manifestRefreshMinutes",
+      "env": "Anchor__ManifestRefreshMinutes",
+      "label": "Application manifest interval",
+      "description": "How often this provider reads each application's list of actions again from where the application serves it. An action an application starts declaring appears, unmapped, within this long; registering an application or changing its manifest address reads it at once.",
+      "group": "access",
+      "type": "int",
+      "default": "15",
+      "min": 1,
+      "unit": "minutes",
+      "risk": "safe"
+    },
+    {
       "key": "authorityHeartbeatSeconds",
       "env": "Anchor__AuthorityHeartbeatSeconds",
       "label": "Access heartbeat",

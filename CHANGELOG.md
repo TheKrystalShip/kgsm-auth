@@ -7,6 +7,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — applications, their audiences and the actions claim (daemon 4.2.0, access 2.1.0, journal 3.1.0, testing 2.1.0)
+
+- **The client registry is an application registry.** An application has an id (its action namespace),
+  a name, an audience, a manifest address, an access lifetime (five minutes unless set, at most sixty),
+  the Discord applications its clients may present, whether it may act for linked Discord users, and its
+  clients. It is stored beside the clients in the session store (`applications`, and nullable
+  `clients.application_id`, `clients.secret_hash`, `sessions.client_id`). KGSM is the built-in
+  application whose audience is the cluster id; the clients members announce, the declared panels and the
+  ones registered for the cluster are its clients, and its tokens are unchanged.
+- **Confidential clients.** A client may be registered with a secret, made by the provider, shown once
+  and stored as its SHA-256 hash. `/token` authenticates it by `client_secret_basic` or
+  `client_secret_post` (RFC 6749 §2.3.1), which discovery advertises beside `none`; a wrong or missing
+  secret is `invalid_client` with `401`, carrying a `Basic` challenge when Basic was tried. A confidential
+  client is held to PKCE as well, and its session is refreshed only by the client authenticating again.
+- **An application's tokens are its own.** The access token for a client of an application outside KGSM is
+  audienced to that application, typed `at+jwt`, carries `client_id`, the account as `sub` (the
+  `id_token`'s subject), `preferred_username` and `name`, lives the application's lifetime, and lists in
+  `tks_actions` the application's actions the account holds — evaluated by `AccessEvaluator` at the whole
+  organization's scope at every mint and every refresh. Its refresh token is audienced to the issuer, so
+  no resource server accepts it as a bearer. KGSM members refuse an application's token, and an
+  application refuses KGSM's, by audience.
+- **Manifests are pulled.** An application's action manifest is read from its address when it is
+  registered, when the address changes, and every `ManifestRefreshMinutes` (15 unless set). Its actions
+  join the catalog under `application:<id>`, unmapped. A manifest in another namespace, in a KGSM
+  component's namespace, or declaring requirements is refused whole and changes nothing.
+- **Administering applications.** `GET|POST /auth/cluster/applications`,
+  `PATCH|DELETE /auth/cluster/applications/{id}`, `POST /auth/cluster/applications/{id}/clients`,
+  `DELETE …/clients/{clientId}` and `POST …/clients/{clientId}/secret`, on the new
+  `auth:applications.manage` (`AuthActions.ApplicationsManage`), which needs a recent sign-in like every
+  `auth:*` action and is published in the operations. `tks-auth app list|add|set|remove`,
+  `tks-auth app client add|remove` and `tks-auth app rotate-secret` take the same code path from the host.
+  Removing an application or a client ends every session minted through it.
+- **`Auth.Journal`** names `auth.application.changed`, `auth.application.removed`,
+  `auth.application.client.removed` and `auth.application.secret.rotated`, with the `Application`
+  payload (`Id`, `Name`, `Client`). No secret is ever recorded.
+- **`Auth.Testing`** compiles the application mint: `ISessionTokenService.MintApplicationAccess` and
+  `MintApplicationRefresh`, `ApplicationAccess`, `ApplicationClaims` and `RefreshClaims.Audience`.
+- `/auth/cluster/clients` lists KGSM's clients, and `auth.origins` publishes only their origins: no
+  member admits an application's origin.
+
 ### Fixed — a provider's round trip returns to the issuer (daemon 4.1.1)
 
 - With no `PublicBaseUrl`, the provider callbacks are built on the issuer's origin when the issuer is a

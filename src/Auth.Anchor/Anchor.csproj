@@ -14,7 +14,7 @@
 
     <RootNamespace>TheKrystalShip.Auth.Anchor</RootNamespace>
     <AssemblyName>tks-auth</AssemblyName>
-    <Version>4.1.1</Version>
+    <Version>4.2.0</Version>
 
     <!-- The config descriptor is generated from AnchorSettings by TheKrystalShip.KGSM.ComponentConfig.
          These name the two files it works between; the attribute source, the documentation file the

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "component": "auth",
-  "version": "4.1.1",
+  "version": "4.2.0",
   "actions": [
     {
       "id": "accounts.approve",
@@ -24,6 +24,12 @@
     {
       "id": "accounts.disable",
       "title": "Disable accounts",
+      "effect": "write",
+      "scope": "cluster"
+    },
+    {
+      "id": "applications.manage",
+      "title": "Manage applications",
       "effect": "write",
       "scope": "cluster"
     },

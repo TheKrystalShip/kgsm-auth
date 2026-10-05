@@ -29,6 +29,7 @@ using TheKrystalShip.KGSM.ComponentConfig;
 [assembly: Action(AuthActions.AccountsDelete, "Delete accounts", DeclaredEffect.Write, DeclaredScope.Cluster)]
 [assembly: Action(AuthActions.AccountsCreate, "Create accounts", DeclaredEffect.Write, DeclaredScope.Cluster)]
 [assembly: Action(AuthActions.ServicesManage, "Manage service requirements", DeclaredEffect.Write, DeclaredScope.Cluster)]
+[assembly: Action(AuthActions.ApplicationsManage, "Manage applications", DeclaredEffect.Write, DeclaredScope.Cluster)]
 
 // Panel sections, in the order they render. Fields land in one by naming its id, and follow the
 // order they are declared in AnchorSettings.

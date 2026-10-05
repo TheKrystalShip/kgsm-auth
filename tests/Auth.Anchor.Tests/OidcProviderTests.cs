@@ -205,7 +205,8 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         Assert.Equal(AnchorFixture.Issuer + "/token", doc.GetProperty("token_endpoint").GetString());
         Assert.Equal(AnchorFixture.Issuer + "/sign-out", doc.GetProperty("end_session_endpoint").GetString());
         Assert.Equal(["S256"], doc.GetProperty("code_challenge_methods_supported").EnumerateArray().Select(e => e.GetString()));
-        Assert.Equal(["none"], doc.GetProperty("token_endpoint_auth_methods_supported").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(["none", "client_secret_basic", "client_secret_post"],
+            doc.GetProperty("token_endpoint_auth_methods_supported").EnumerateArray().Select(e => e.GetString()));
     }
 
     [Fact]

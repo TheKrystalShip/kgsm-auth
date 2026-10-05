@@ -42,9 +42,11 @@ if (!decision.Allowed)
     return Deny(decision.Reason);
 ```
 
-**A session proves who, never what.** The token names an identity; a member finds the account that
+**A KGSM session proves who, never what.** The token names an identity; a member finds the account that
 identity is a credential of in its replica and evaluates it there, so a change of access lands on the
-next request with no session ended.
+next request with no session ended. An application outside KGSM holds no replica, so its token lists its
+actions the account holds, evaluated by the same function when it is minted (see
+[Applications](#applications)).
 
 **Every surface answers it the same way, including kgsm-bot.** The bot has no login of its own, so the
 Discord account the gateway hands it *is* the identity — resolved to whatever KGSM account it is
@@ -248,10 +250,10 @@ anchor's key is unreadable" must not take the same path. The public half is serv
 `/.well-known/jwks.json` and, with the KGSM module, at `/auth/cluster/public-key` and gossiped to every
 member.
 
-**Access is evaluated on every request, never read off the token.** The token carries no claim about
-it, so a change of access lands at the caller's next request. The account's standing is re-read on
-refresh too, and a withdrawn account has its session ended there rather than being left to run out
-its bearer.
+**KGSM's access is evaluated on every request, never read off the token.** A KGSM session carries no
+claim about it, so a change of access lands at the caller's next request. The account's standing is
+re-read on refresh too, and a withdrawn account has its session ended there rather than being left to
+run out its bearer.
 
 **Nothing on the serving path leaves the machine.** Signature checks are local and the standing read
 is a local point query, which is what lets a member keep serving and keep refreshing while the
@@ -260,7 +262,7 @@ anchor is unreachable.
 ### The OpenID Connect provider
 
 The anchor is also the cluster's OpenID Connect provider — authorization code with PKCE (S256), public
-clients, no consent screen — served at its issuer. `Anchor__Issuer` has to be the anchor's
+and confidential clients, no consent screen — served at its issuer. `Anchor__Issuer` has to be the anchor's
 browser-facing URL (`https://auth.anchors.example.com`); with anything else every door below answers
 `no_issuer` and mints nothing. The design is `../hosted-sign-in-plan.md`.
 
@@ -274,10 +276,11 @@ browser-facing URL (`https://auth.anchors.example.com`); with anything else ever
 | `GET /authorize/context` | what the pages draw for the request in flight: the client, the providers, whether registration is open |
 | `POST /authorize/register` | make an account against the request in flight, same-origin only; the wait follows |
 | `GET /authorize/{provider}` | an external provider's round trip for the request in flight |
-| `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token` |
-| `GET /userinfo` | the account behind a bearer |
+| `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token`. A confidential client authenticates by `client_secret_basic` or `client_secret_post` |
+| `GET /userinfo` | the account behind a KGSM bearer |
 | `GET /sign-out`, `POST /sign-out` | end a browser's sign-in and everything minted under it; asks without a hint |
-| `GET/POST /auth/cluster/clients`, `DELETE /auth/cluster/clients/{id}` | the client registry, to a caller holding any `auth:*` action |
+| `GET/POST /auth/cluster/clients`, `DELETE /auth/cluster/clients/{id}` | KGSM's clients, on `auth:config.read` and `auth:config.write` |
+| `/auth/cluster/applications` | the applications and their clients and secrets, on `auth:applications.manage` (see [Applications](#applications)) |
 
 **Two cookies on the anchor's own origin, both `HttpOnly; SameSite=Lax; Path=/`.** `kgsm_authz` names
 the request in flight, held here for ten minutes so the page and its form carry no request field.
@@ -290,12 +293,13 @@ them, a second account on the same browser ends the first's, and the same accoun
 keeps them. The sessions page lists the provider session with `kind: provider`; ending it there is
 signing out.
 
-**Clients come from three places.** A member serving a surface states the `auth.client` fact — paths
-only, joined to the browser address its roster row carries — and appears with no operator step; it
-leaves when the member does. A Control Panel on a static host, which no member can announce, is declared
-in `Anchor__PanelOrigins`: one client per origin, id the origin's host, at the paths every panel lands on
-(`ClusterClientAnnouncement.ControlPanel`), never stored and never removable through the registry.
-Anything else is registered through the registry. Redirects are matched exactly and must be HTTPS, or HTTP where
+**Every client belongs to an application.** KGSM's come from three places. A member serving a surface
+states the `auth.client` fact — paths only, joined to the browser address its roster row carries — and
+appears with no operator step; it leaves when the member does. A Control Panel on a static host, which no
+member can announce, is declared in `Anchor__PanelOrigins`: one client per origin, id the origin's host,
+at the paths every panel lands on (`ClusterClientAnnouncement.ControlPanel`), never stored and never
+removable through the registry. Anything else for KGSM is registered through `/auth/cluster/clients`. An
+application outside KGSM has the clients registered with it. Redirects are matched exactly and must be HTTPS, or HTTP where
 the cluster itself accepts plaintext — this machine, a private network or a local name — so a cluster of
 one on a LAN has somewhere to send a code. A registered client's origin may read discovery, the key set,
 `/token`, `/userinfo` and the account API across origins, without credentials; nothing that reads the
@@ -334,7 +338,53 @@ already attached to the same account; it never signs anybody in and never makes 
 origin reads the discovery document, exchanges its code and drives the administration with the bearer
 it holds, so every registered client's origin is answered on those paths — without credentials, and
 never on anything that reads the provider's cookie. There is deliberately no wildcard: this surface
-mints credentials. The same origins are published as `auth.origins` for every member to admit.
+mints credentials. KGSM's clients' origins are published as `auth.origins` for every member to admit;
+an application outside KGSM is nothing a member serves, and none of its origins is published.
+
+### Applications
+
+An **application** is an API this provider signs people in to: an id, which is also the namespace its
+actions are declared in (`cinema` declares `cinema:*`), a name, an **audience**, the address it serves
+its action manifest at, an access lifetime, the Discord applications its clients may present, whether
+it may act for linked Discord users, and the clients it signs people in through. **KGSM is the built-in
+application**: its audience is the cluster id, its clients are the ones above, and nothing here changes
+its tokens. Every other application is registered on `auth:applications.manage`, by the admin surface or
+on the host, and is stored beside the clients in the session store.
+
+```bash
+tks-auth app add cinema --name "Krystal Cinema" --manifest https://movies.example.com/.well-known/tks-actions.json \
+    --client-id cinema-site --redirect https://movies.example.com/signin
+tks-auth app client add cinema --client-id cinema-api --confidential     # the secret is printed once
+tks-auth app set cinema --lifetime 5
+tks-auth app rotate-secret cinema cinema-api
+tks-auth app list
+tks-auth app remove cinema
+```
+
+The command and `/auth/cluster/applications` (`GET`/`POST`, `PATCH`/`DELETE …/{id}`,
+`POST …/{id}/clients`, `DELETE …/{id}/clients/{client}`, `POST …/{id}/clients/{client}/secret`) are one
+code path, `ApplicationRegistry`, journaled as `auth.application.*`. The command runs as the provider's
+service account over the daemon's own files, and the daemon picks the change up within a second.
+
+**An application's token is its own.** Its access token is audienced to the application, typed
+`at+jwt`, names the account in `sub` exactly as the `id_token` does, carries `client_id`, and lives the
+application's lifetime — five minutes unless set. It lists the application's actions the account holds in
+**`tks_actions`**, an array, evaluated by `AccessEvaluator` across the whole organization (the stored scope
+`cluster`) at every mint and every refresh, so a role taken away reaches the application within one
+lifetime. Its refresh token is audienced to the issuer and is accepted nowhere but `/token`. A KGSM member
+refuses an application's token, and an application refuses KGSM's, by audience alone; this provider's own
+doors take only KGSM's sessions.
+
+**Confidential clients authenticate with a secret** the provider makes, shows once and keeps as a hash:
+`client_secret_basic` or `client_secret_post`, one at a time, and a wrong one is `invalid_client` with
+`401`. They are held to PKCE like every client, and only the client a session was minted for continues
+it.
+
+**The catalog pulls each application's manifest** — the format KGSM's components ship — from its address
+when it is registered, when the address changes and every `Anchor__ManifestRefreshMinutes`. Its actions
+are held under `application:<id>` beside every member's report and arrive unmapped. A manifest in another
+namespace, in a KGSM component's, or declaring requirements is refused whole, and one that cannot be read
+changes nothing.
 
 ### One member of a cluster
 

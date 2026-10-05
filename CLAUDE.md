@@ -28,8 +28,8 @@ provider that holds the accounts and signs people in. It is built from these lib
 reference, so a change to a library is a compile break here before it is anything else.
 
 **tks-auth runs with no KGSM; KGSM is a module of it.** The core — accounts, sessions, the OpenID
-Connect provider, clients, the account and admin doors, the journal — is everything a standalone
-install runs. The KGSM module, composed only when a cluster secret is configured, is what makes it the
+Connect provider, the applications it signs people in to and their clients, the account and admin
+doors, the journal — is everything a standalone install runs. The KGSM module, composed only when a cluster secret is configured, is what makes it the
 member that holds a KGSM cluster's accounts and signs people in to every member at once. A core
 change must not reach for anything the module registers, and nothing in the core touches `/etc/kgsm`
 or `/var/lib/kgsm` (`src/Auth.Anchor/CLAUDE.md` holds the seam).
@@ -58,9 +58,13 @@ account-store design is also covered by `../auth-internal-users-plan.md`, and th
 - **`ActorString` and `Handle` are different strings on purpose.** The handle keys things; the actor
   string (`provider:username`) is what a human reads in an audit log. Do not merge them.
 - **One evaluator decides access.** `AccessEvaluator` in `Auth.Access` answers every "may this
-  account do this action here", on the anchor and on every member from its replica. Do not add a
-  second check beside it — a rule written anywhere else lets surfaces answer the same question
-  differently.
+  account do this action here", on the anchor and on every member from its replica, and it is what
+  computes the actions an application outside KGSM finds in its token. Do not add a second check
+  beside it — a rule written anywhere else lets surfaces answer the same question differently.
+- **Every application has its own audience, and a token for one is refused at every other.** KGSM's
+  is the cluster id and its tokens carry no actions; any other application's token lists only that
+  application's actions, under `tks_actions`. Nothing in this repo accepts one application's token
+  where another's is expected (`src/Auth.Anchor/CLAUDE.md`, "Applications").
 - **No surface derives access from an outside group, a guild or a provider's role.** An OAuth
   application carries the application and nothing else; the account store is the single authority on
   what anyone may do, including for kgsm-bot, whose caller is a Discord account with no login behind

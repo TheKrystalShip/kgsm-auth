@@ -9,7 +9,7 @@
 
     <PackageId>TheKrystalShip.Auth.Testing</PackageId>
     <Authors>Heisenberg</Authors>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <Description>
       The auth anchor's session minter, for tests: a test project that has to present a signed-in
       caller to a member mints the session exactly as the anchor does, and verifies it through the

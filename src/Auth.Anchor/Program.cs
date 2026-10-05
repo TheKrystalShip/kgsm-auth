@@ -35,6 +35,11 @@ AnchorOptions options = AnchorOptions.FromSettings(settings);
 if (args is [OwnerCommand.Verb, ..])
     return await OwnerCommand.RunAsync(args, options);
 
+// `tks-auth app …` — register and administer the applications this provider signs people in to, by the
+// same code path the admin surface takes, over the same files.
+if (args is [ApplicationCommand.Verb, ..])
+    return await ApplicationCommand.RunAsync(args, options);
+
 // The private key, generated once on a machine that has none. Read before the host is built so a key
 // that cannot be read stops the daemon here rather than at the first sign-in attempt.
 //

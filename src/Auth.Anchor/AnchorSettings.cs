@@ -49,7 +49,18 @@ internal sealed class AnchorSettings
 
         /// <summary>A bound shorter than a minute turns one late heartbeat into a read-only cluster.</summary>
         public const int StalenessBoundSeconds = 60;
+
+        /// <summary>Reading every application's manifest more often than this is a request per minute for nothing new.</summary>
+        public const int ManifestRefreshMinutes = 1;
     }
+
+    /// <summary>How often every application's action manifest is read again.</summary>
+    /// <panel>How often this provider reads each application's list of actions again from where the
+    /// application serves it. An action an application starts declaring appears, unmapped, within this
+    /// long; registering an application or changing its manifest address reads it at once.</panel>
+    [ConfigField("manifestRefreshMinutes", "Application manifest interval", Group = "access", Risk = ConfigRisk.Safe,
+        Min = Floors.ManifestRefreshMinutes, Unit = "minutes")]
+    public int? ManifestRefreshMinutes { get; set; }
 
     /// <summary>Whether somebody with no account may make one.</summary>
     /// <panel>Whether a person with no account can create one from the sign-in page. The account they

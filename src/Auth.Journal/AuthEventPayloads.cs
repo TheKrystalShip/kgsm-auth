@@ -226,6 +226,19 @@ public static class AuthEventPayloads
             w.WriteNumber("AuthorityVersion", authorityVersion);
         };
 
+    /// <summary>An application, or one of its clients, registered, changed or removed.</summary>
+    /// <param name="id">The application's id.</param>
+    /// <param name="name">What it is called, when known.</param>
+    /// <param name="clientId">The client the change was to, or null for the application's own fields.</param>
+    /// <returns>The payload writer.</returns>
+    public static Action<Utf8JsonWriter> Application(string id, string? name, string? clientId) =>
+        w =>
+        {
+            w.WriteString("Id", id ?? string.Empty);
+            Nullable(w, "Name", name);
+            Nullable(w, "Client", clientId);
+        };
+
     private static void Strings(Utf8JsonWriter writer, string name, IReadOnlyList<string> values)
     {
         writer.WriteStartArray(name);

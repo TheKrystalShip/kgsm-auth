@@ -178,17 +178,23 @@ internal static class Endpoints
     /// <param name="providerSession">
     /// The browser's sign-in this was minted under, so ending that sign-in ends this too.
     /// </param>
-    internal static async Task MintSessionFor(
+    /// <param name="client">The client it is minted for, which every refresh of it is held to.</param>
+    /// <param name="application">
+    /// The application that client signs people in to, which decides the access token's audience,
+    /// lifetime and whether it lists actions.
+    /// </param>
+    /// <returns>False, with nothing minted, when the account store could not be read.</returns>
+    internal static async Task<bool> MintSessionFor(
         HttpContext ctx, KgsmIdentity identity, KgsmUser user, DateTimeOffset now,
-        Func<MintedToken, MintedToken, Task> respond, string providerSession)
+        Func<MintedToken, MintedToken, Task> respond, string providerSession,
+        RegisteredClient client, Application application)
     {
-        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
         AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
 
         string sessionId = NewSessionId();
-        MintedToken access = tokens.MintAccess(identity, sessionId);
-        MintedToken refresh = tokens.MintRefresh(identity, sessionId);
+        if (await MintPairAsync(ctx, identity, user, sessionId, client.ClientId, application) is not ({ } access, { } refresh))
+            return false;
 
         var registration = new SessionRegistration(
             SessionId: sessionId,
@@ -201,7 +207,7 @@ internal static class Endpoints
             UserAgent: UserAgentOf(ctx),
             CurrentJti: refresh.Jti);
 
-        await ((SqliteSessionRegistry)registry).CreateAsync(registration, providerSession, ctx.RequestAborted);
+        await ((SqliteSessionRegistry)registry).CreateAsync(registration, providerSession, client.ClientId, ctx.RequestAborted);
 
         // Recorded after the session exists and before the caller is answered. The actor is the
         // identity that arrived rather than this daemon: nobody else was involved in a sign-in, and
@@ -219,6 +225,49 @@ internal static class Endpoints
             ct: ctx.RequestAborted);
 
         await respond(access, refresh);
+        return true;
+    }
+
+    /// <summary>
+    /// The access token and refresh token a session of <paramref name="application"/> gets, or null when
+    /// the actions its token lists could not be evaluated.
+    /// </summary>
+    /// <remarks>
+    /// KGSM's are the cluster's session: audienced to the cluster, carrying no actions, verified by every
+    /// member and evaluated there from its replica. Any other application's access token is audienced to
+    /// it, lives its lifetime and lists its actions the account holds, evaluated here at every mint; its
+    /// refresh token is audienced to this provider, the one place it is presented.
+    /// </remarks>
+    private static async Task<(MintedToken Access, MintedToken Refresh)?> MintPairAsync(
+        HttpContext ctx, KgsmIdentity identity, KgsmUser user, string sessionId,
+        string? clientId, Application application)
+    {
+        var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
+        if (application.IsKgsm)
+            return (tokens.MintAccess(identity, sessionId), tokens.MintRefresh(identity, sessionId));
+
+        IReadOnlyList<string> held;
+        try
+        {
+            held = await ctx.RequestServices.GetRequiredService<ApplicationCatalog>()
+                .HeldAsync(application, user.UserId, ctx.RequestAborted);
+        }
+        catch (Exception e) when (e is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            return null;
+        }
+
+        MintedToken access = tokens.MintApplicationAccess(new ApplicationAccess(
+            Subject: user.UserId,
+            Username: user.Username,
+            DisplayName: user.DisplayName,
+            Picture: identity.AvatarUrl,
+            SessionId: sessionId,
+            ClientId: clientId ?? throw new InvalidOperationException("An application's session is minted for a client."),
+            Audience: application.Audience,
+            Lifetime: application.AccessLifetime,
+            Actions: held));
+        return (access, tokens.MintApplicationRefresh(identity, sessionId));
     }
 
     // ── Keep a session ────────────────────────────────────────────────────────
@@ -237,6 +286,9 @@ internal static class Endpoints
 
         /// <summary>The account store could not be read.</summary>
         Unavailable,
+
+        /// <summary>The session belongs to a confidential client, and the request did not authenticate as it.</summary>
+        ClientRefused,
     }
 
     /// <summary>A rotation's outcome, with the new tokens when there are some.</summary>
@@ -246,11 +298,19 @@ internal static class Endpoints
     /// Rotate the session a refresh token belongs to, with the account's standing re-read.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The refresh grant at <c>/token</c>. Nothing on this path leaves the machine, which is what makes
     /// a session survive an outage of anything else — the standing comes from the account store on this
     /// host, and the signature from the key this daemon holds.
+    /// </para>
+    /// <para>
+    /// A session is continued only for the client it was minted for (RFC 6749 §6): a confidential one
+    /// authenticates as itself, and nobody presents another client's refresh token as their own. An
+    /// application's next access token is minted afresh — its actions evaluated again — so a role taken
+    /// away reaches it at the next refresh.
+    /// </para>
     /// </remarks>
-    internal static async Task<Rotation> RotateAsync(HttpContext ctx, string presented)
+    internal static async Task<Rotation> RotateAsync(HttpContext ctx, string presented, ClientAuthentication auth)
     {
         var tokens = ctx.RequestServices.GetRequiredService<ISessionTokenService>();
         RefreshClaims? claims = await tokens.ReadRefreshAsync(presented);
@@ -260,6 +320,34 @@ internal static class Endpoints
         var registry = ctx.RequestServices.GetRequiredService<ISessionRegistry>();
         var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
         var accounts = ctx.RequestServices.GetRequiredService<AccountResolver>();
+        var applications = ctx.RequestServices.GetRequiredService<ApplicationRegistry>();
+        AnchorOptions options = ctx.RequestServices.GetRequiredService<AnchorOptions>();
+
+        // A session recorded without a client is KGSM's, and any request may continue it as it always could.
+        string? clientId = ((SqliteSessionRegistry)registry).SessionClient(claims.SessionId);
+        RegisteredClient? client = null;
+        if (clientId is not null)
+        {
+            client = ctx.RequestServices.GetRequiredService<ClientRegistry>().Find(clientId);
+            if (client is null)
+                return new Rotation(RotationOutcome.Invalid, null, null);
+
+            if (!auth.Speaks(client))
+            {
+                return client.Confidential && auth.Result == ClientAuthentication.Outcome.Unauthenticated
+                    ? new Rotation(RotationOutcome.ClientRefused, null, null)
+                    : new Rotation(RotationOutcome.Invalid, null, null);
+            }
+        }
+
+        if ((client is null ? applications.Kgsm : applications.Of(client)) is not { } application)
+            return new Rotation(RotationOutcome.Invalid, null, null);
+
+        // The token says which kind of session it continues; the row says which client. They agree for every
+        // token this provider minted.
+        string expectedAudience = application.IsKgsm ? options.ClusterId : options.Issuer;
+        if (!string.Equals(claims.Audience, expectedAudience, StringComparison.Ordinal))
+            return new Rotation(RotationOutcome.Invalid, null, null);
 
         // Standing is re-read rather than carried over from the presented token, so a disable takes
         // effect at the next rotation instead of at the end of the session.
@@ -302,7 +390,9 @@ internal static class Endpoints
             return new Rotation(RotationOutcome.Withdrawn, null, null);
         }
 
-        MintedToken refresh = tokens.MintRefresh(claims.Identity, claims.SessionId);
+        if (await MintPairAsync(ctx, claims.Identity, answer.User!, claims.SessionId, clientId, application)
+            is not ({ } access, { } refresh))
+            return new Rotation(RotationOutcome.Unavailable, null, null);
 
         // The presented jti has to be the one the session currently holds. Anything else is a replay
         // of a token that has already been rotated away — a stale client or a stolen token, and this
@@ -316,7 +406,6 @@ internal static class Endpoints
             return new Rotation(RotationOutcome.Invalid, null, null);
         }
 
-        MintedToken access = tokens.MintAccess(claims.Identity, claims.SessionId);
         return new Rotation(RotationOutcome.Rotated, access, refresh);
     }
 

@@ -159,6 +159,11 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
         string type, string id, string? name, long authorityVersion, string actor, CancellationToken ct = default) =>
         WriteAsync(type, actor, origin: null, AuthEventPayloads.Authority(id, name, authorityVersion), ct);
 
+    /// <summary>Record an application, or one of its clients, being registered, changed or removed.</summary>
+    internal Task ApplicationAsync(
+        string type, string id, string? name, string? clientId, string actor, string? origin, CancellationToken ct = default) =>
+        WriteAsync(type, actor, origin, AuthEventPayloads.Application(id, name, clientId), ct);
+
     /// <summary>Append one line, saying what was lost if it cannot.</summary>
     /// <remarks>
     /// The base logs the generic failure; this adds what the base cannot know — a line nobody will

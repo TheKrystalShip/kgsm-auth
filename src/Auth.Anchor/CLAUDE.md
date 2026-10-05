@@ -10,7 +10,7 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
 
 - **`Program.cs` composes the core, and the KGSM module only when a cluster is configured.**
   `TksAuthCore` (`AddTksAuthCore`, `MapTksAuthCore`) is accounts, sessions, the OpenID Connect doors,
-  clients, the account page, the admin and authority routes and the journal. `KgsmModule`
+  the applications and their clients, the account page, the admin and authority routes and the journal. `KgsmModule`
   (`AddKgsmModule`, `MapKgsmModule`) is membership and the bus, the DNS member,
   `ClusterMembershipWorker` (standing, the founding claim, the `auth.*` facts, announced clients), the
   catalog's handlers and `AuthorityReporter`, `MemberDepartureWorker`, `AuthorityBroadcast` and its
@@ -37,9 +37,10 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
 
 ## The daemon
 
-- **A session's audience is the CLUSTER, not a machine.** That single value is what makes one
+- **A KGSM session's audience is the CLUSTER, not a machine.** That single value is what makes one
   sign-in valid on every member, and changing `Anchor__ClusterId` on a running cluster invalidates
-  every token at once. It reaches the minter as `SessionTokenOptions.Audience`.
+  every token at once. It reaches the minter as `SessionTokenOptions.Audience`. Every other
+  application's tokens carry that application's audience (see "Applications").
 - **Signing is asymmetric and the verification key is published.** A member must be able to check a
   session it cannot mint — one that could mint what it verifies could mint itself an Owner's session.
   `ValidAlgorithms` is pinned for the same reason: a public key offered as an HMAC secret would make
@@ -55,10 +56,12 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   directory, and never the node's replica on the same machine (`/var/lib/kgsm/auth/users.db`). A node
   applying the anchor's snapshot to the file the anchor writes would be the authority rewritten by its
   own echo.
-- **A token proves who, never what.** A session carries no claim about access. Every route decides its caller
-  by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and, for
-  `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
-  withdrawn account has its session revoked rather than left to run out its bearer's lifetime.
+- **A KGSM session proves who, never what.** It carries no claim about access. Every route here decides
+  its caller by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and,
+  for `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
+  withdrawn account has its session revoked rather than left to run out its bearer's lifetime. Only
+  KGSM's sessions are accepted as a bearer at this daemon's own doors: the validation is
+  `SessionTokenOptions.Audience`, the cluster's.
 - **A gated route declares its action on itself, and that declaration is both enforced and
   published.** `AuthAction` metadata on the route is what the handler reads (`AuthAction.Of`), the
   own-surface group is marked for `OwnSurfaceFilter`, and authority edits take their action from
@@ -220,6 +223,54 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   `auth.assignment.granted` with `local:<user>` as the actor. It opens the store the way the daemon
   does, refusing a file at any other schema version.
 
+## Applications (`ApplicationRegistry`, `ApplicationCatalog`, `ClientAuthentication`)
+
+- **Every client belongs to an application, and the application decides what is minted.** KGSM is the
+  built-in application (`ApplicationRegistry.Kgsm`): its audience is the cluster id, its access lifetime
+  `Anchor__AccessLifetimeMinutes`, and its clients are the announced ones, the declared panels and those
+  registered under `/auth/cluster/clients` (a client row with no `application_id`). It is never stored and
+  cannot be changed or removed here, because its audience is a cluster setting. Every other application
+  is a row in the session store's `applications`, beside its clients.
+- **One code path, two doors.** `ApplicationRegistry` holds every rule and every journal line for
+  registering, changing and removing an application, adding and removing a client and rotating a secret.
+  `/auth/cluster/applications` (on `auth:applications.manage`) and `tks-auth app …` both call it, the
+  command composing it over the daemon's own files with `DeferredAnnouncements`, so the daemon drains
+  what it owed the cluster. A rule written in a door is a second implementation.
+- **The registry is read from memory and reloaded by generation.** Every write to the clients or the
+  applications advances `registry_meta.generation` in its own transaction, and `ClientRegistry` re-reads
+  the store when a read finds the generation moved, checking at most once a second. That is how a
+  change the host command makes reaches the running daemon.
+- **An application's audience is its own.** Never the cluster id, never the issuer (an application's
+  refresh tokens are audienced to the issuer), and never another application's. Its id is its action
+  namespace, and is never `kgsm`, `auth` or any namespace a KGSM member declares.
+- **An application's access token lists its actions; KGSM's lists none.** `MintPairAsync` mints, for an
+  application outside KGSM, an `at+jwt` audienced to it, naming the account in `sub` as the `id_token`
+  does, carrying `client_id`, living the application's lifetime, and listing in `tks_actions` (an array,
+  even empty) every catalog action in its namespace that `AccessEvaluator` allows the account at cluster
+  scope. It is evaluated at every mint, the code exchange and every refresh alike, so the lifetime bounds
+  how long a removed role keeps working there. Its refresh token is audienced to the issuer, so no
+  resource server takes it as a bearer.
+- **A confidential client proves its secret before any grant is read.** `ClientAuthentication` reads
+  `client_secret_basic` or `client_secret_post` — both at once is `invalid_request` — and a client that
+  fails is `invalid_client` with `401`, with a `Basic` challenge when Basic was tried. A code is therefore
+  never spent by a request that could not have used it. A secret presented for a public client is
+  refused, never ignored. PKCE is required of every client.
+- **A session is continued only for the client it was minted for.** `sessions.client_id` records it at
+  mint; the refresh of a confidential client's session needs that client authenticated, and naming any
+  other client is `invalid_grant`. A session with no client recorded is KGSM's.
+- **A client secret is made here, shown once and stored as its SHA-256 hash.** It is 256 random bits,
+  so a slow hash buys nothing, and nobody can choose a weak one. It is never journaled, logged or listed,
+  and rotating it ends the old one at once.
+- **Removing an application or one of its clients ends every session minted through it**, in the
+  transaction that removes the rows, and the application's actions leave the catalog with it.
+- **An application's manifest is pulled, and refused whole when it speaks for anyone else.**
+  `ApplicationCatalog` reads it from the registered address on registration, on a change of address and
+  every `Anchor__ManifestRefreshMinutes` (`ApplicationManifestWorker`, only while this anchor holds the
+  accounts), and hands it to `AuthorityIntake` as the report of `application:<id>`. A manifest in another
+  namespace, in a KGSM component's or declaring requirements is refused; one that cannot be read changes
+  nothing, so an application whose server is briefly down keeps every grant. Reports from the bus are
+  members', never an application's.
+
 ## The Discord round trip (`DiscordDirectory`, `OAuthHandshake`)
 
 - **It answers who, and only who.** `DiscordDirectory` is an `IIdentityProvider` and stays the only
@@ -261,7 +312,8 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   sent. That is the login-CSRF gate, and moving the check after the password check turns it into a
   lockout anybody can trigger.
 - **A code is taken out of the store before anything about the exchange is checked**, by one
-  delete-returning statement. A code presented wrongly is spent; two exchanges racing get one row.
+  delete-returning statement, once the client has authenticated. A code presented wrongly is spent;
+  two exchanges racing get one row.
 - **Every session minted through the provider records its provider session, in one column set at
   mint.** It is what makes sign-out, a second account on one browser, and ending the provider session
   from the sessions list each end exactly the right set. A mint site that skips it strands a surface
@@ -278,10 +330,11 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   announced surface and a declared panel alike, so a surface derives its own from where it was loaded
   and is told nothing — which is what lets a panel on a static host sign in through a member that
   never served it.
-- **Where the clients live is published, as `auth.origins`, while this anchor holds the accounts.**
+- **Where KGSM's clients live is published, as `auth.origins`, while this anchor holds the accounts.**
   Every member reads it through the holder to admit those origins, so a registered client and a
   declared panel — which exist only here — are admitted everywhere without anybody configuring a
-  member.
+  member. An application outside KGSM is nothing a member serves, and its origins are admitted here
+  alone.
 - **A panel on a static host is declared, not stored.** `Anchor__PanelOrigins` is what the deploy said
   this process serves, so it is rebuilt on every start and wins over a stored client of the same id; the
   registry refuses to remove one or to register over it. Its paths are

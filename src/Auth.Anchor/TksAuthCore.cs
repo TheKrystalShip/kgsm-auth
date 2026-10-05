@@ -9,8 +9,9 @@ using TheKrystalShip.KGSM.Extensions;
 namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
-/// The provider itself: accounts, sessions, the OpenID Connect provider, its clients, the account and
-/// admin doors, and the journal. Everything here runs with no KGSM on the machine.
+/// The provider itself: accounts, sessions, the OpenID Connect provider, the applications it signs people
+/// in to and their clients, the account and admin doors, and the journal. Everything here runs with no
+/// KGSM on the machine.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -99,6 +100,12 @@ internal static class TksAuthCore
         // sign-in here is a session and every session minted through it records which one it came from.
         services.AddSingleton(sp => new ClientRegistry(
             sp.GetRequiredService<SqliteSessionRegistry>(), options.PanelOrigins));
+
+        // The applications those clients sign people in to — KGSM's built in, every other registered by
+        // the admin surface or the host command — and the actions each declares in the manifest it serves,
+        // read on registration and on an interval.
+        AddApplications(services);
+        services.AddHostedService<ApplicationManifestWorker>();
         services.AddSingleton<ProviderSessions>();
         services.AddSingleton<IdTokens>();
         services.AddSingleton<ProviderBundle>();
@@ -143,6 +150,18 @@ internal static class TksAuthCore
             services.AddHostedService<StandaloneCatalog>();
         }
 
+        return services;
+    }
+
+    /// <summary>
+    /// The application registry and the catalog of what applications declare: the one path every change
+    /// to an application takes, from the admin surface and from the host command alike.
+    /// </summary>
+    internal static IServiceCollection AddApplications(IServiceCollection services)
+    {
+        services.AddHttpClient(ApplicationCatalog.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<ApplicationCatalog>();
+        services.AddSingleton<ApplicationRegistry>();
         return services;
     }
 
@@ -192,6 +211,9 @@ internal static class TksAuthCore
         app.MapGet("/auth/cluster/clients", OidcEndpoints.ListClients);
         app.MapPost("/auth/cluster/clients", OidcEndpoints.RegisterClient);
         app.MapDelete("/auth/cluster/clients/{clientId}", OidcEndpoints.RemoveClient);
+
+        // The applications this provider signs people in to, their clients and their client secrets.
+        ApplicationEndpoints.Map(app);
 
         // Where a provider sends the browser back: to complete the request in flight, or to prove the
         // person again for the account page. The one address registered with the provider's application.

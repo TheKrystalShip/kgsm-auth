@@ -32,6 +32,7 @@ namespace TheKrystalShip.Auth.Anchor;
 /// <param name="UiPath">Where the provider's pages are installed.</param>
 /// <param name="AuthorityHeartbeat">How often every member is sent <c>authority.current</c>.</param>
 /// <param name="StalenessBound">How long a member stays current without one.</param>
+/// <param name="ManifestRefresh">How often every application's action manifest is read again.</param>
 internal sealed record AnchorOptions(
     string MemberId,
     string ListenAddress,
@@ -53,7 +54,8 @@ internal sealed record AnchorOptions(
     TimeSpan ReauthWindow,
     string UiPath,
     TimeSpan AuthorityHeartbeat,
-    TimeSpan StalenessBound)
+    TimeSpan StalenessBound,
+    TimeSpan ManifestRefresh)
 {
     /// <summary>
     /// Where the bootstrap Owner account's one-time password is left, on an anchor whose account store
@@ -125,7 +127,9 @@ internal sealed record AnchorOptions(
             AuthorityHeartbeat: TimeSpan.FromSeconds(heartbeat),
             // At least two heartbeats, so one that arrives late never leaves a member read-only.
             StalenessBound: TimeSpan.FromSeconds(Math.Max(
-                AtLeast(s.StalenessBoundSeconds ?? 300, AnchorSettings.Floors.StalenessBoundSeconds), 2 * heartbeat)));
+                AtLeast(s.StalenessBoundSeconds ?? 300, AnchorSettings.Floors.StalenessBoundSeconds), 2 * heartbeat)),
+            ManifestRefresh: TimeSpan.FromMinutes(
+                AtLeast(s.ManifestRefreshMinutes ?? 15, AnchorSettings.Floors.ManifestRefreshMinutes)));
     }
 
     /// <summary>

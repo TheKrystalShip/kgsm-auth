@@ -88,6 +88,18 @@ public static class AuthEvents
 
     /// <summary>The catalog of declared actions changed.</summary>
     public const string CatalogChanged = "auth.catalog.changed";
+
+    /// <summary>An application was registered or changed, or a client was registered with it.</summary>
+    public const string ApplicationChanged = "auth.application.changed";
+
+    /// <summary>An application was removed, with its clients.</summary>
+    public const string ApplicationRemoved = "auth.application.removed";
+
+    /// <summary>A client was removed from an application.</summary>
+    public const string ApplicationClientRemoved = "auth.application.client.removed";
+
+    /// <summary>A client was given a new secret, ending the one it held.</summary>
+    public const string ClientSecretRotated = "auth.application.secret.rotated";
 }
 
 /// <summary>

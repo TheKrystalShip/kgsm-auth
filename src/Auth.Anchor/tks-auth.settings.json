@@ -112,7 +112,11 @@
 
     // How often dead session rows are swept. The sweep only deletes what is already past its cap;
     // it is housekeeping, not revocation.
-    "SessionCleanupMinutes": 60
+    "SessionCleanupMinutes": 60,
+
+    // How often every registered application's action manifest is read again from where it serves
+    // it. Registering an application, or changing where its manifest is, reads it at once.
+    "ManifestRefreshMinutes": 15
   },
 
   "Logging": {
