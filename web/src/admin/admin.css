@@ -1,0 +1,156 @@
+/* The admin pages — their frame, and what only they have: the catalog's application groups, the
+   application and client forms, and a secret shown once. */
+
+.admin-shell {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: var(--canvas);
+  color: var(--fg-1);
+  font-family: var(--font-ui);
+}
+
+.admin-head {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 20px 16px 12px;
+}
+
+.admin-head__mark {
+  width: 32px;
+  height: 32px;
+}
+
+.admin-head__name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.admin-head__who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fg-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-head__who:hover {
+  color: var(--fg-1);
+}
+
+.admin-shell > .subtabs,
+.admin-shell > .subtabs-mobile {
+  box-sizing: border-box;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.admin-body {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 16px 16px 64px;
+}
+
+.admin-spacer {
+  flex: 1;
+}
+
+/* The scope an Assignments page is about, chosen in its header. */
+.admin-scope {
+  width: min(360px, 60vw);
+}
+
+/* ── The catalog, one group per application ── */
+.access-app + .access-app {
+  margin-top: 18px;
+}
+
+.access-app__title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* ── Applications ── */
+.app-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.app-form .login-form__input {
+  height: 36px;
+}
+
+.app-form .login-form__label {
+  margin-top: 6px;
+}
+
+.app-form--register {
+  padding: 12px;
+  margin-bottom: 14px;
+  border: var(--edge);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.app-form__mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.app-form .app-form__area {
+  height: auto;
+  min-height: 64px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.app-form__check {
+  margin-top: 6px;
+}
+
+.app-secret {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border: var(--edge);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.app-secret__client {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-secret__value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg-1);
+  overflow-wrap: anywhere;
+}

@@ -64,10 +64,10 @@
     // change stops it starting.
     "ConfigOverridePath": "/var/lib/tks-auth/config-override.env",
 
-    // The provider's pages — sign-in, registration, the wait for approval and the account page — as
-    // the kgsm-web-auth package installs them, served at /ui/. Absent, people still sign in through
-    // a plain form this daemon renders itself.
-    "UiPath": "/usr/share/kgsm-web-auth",
+    // The provider's pages — sign-in, registration, the wait for approval, the account page and the
+    // admin pages — installed beside the binary and served at /ui/. Absent, people still sign in
+    // through a plain form this daemon renders itself.
+    "UiPath": "/opt/tks-auth/ui",
 
     // How long an access bearer lives before it has to be refreshed. Short, because it bounds how
     // long a stolen one is worth anything.

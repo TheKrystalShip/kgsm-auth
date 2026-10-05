@@ -1,0 +1,66 @@
+/* ============================================================================
+   responsive.css — phone, small-phone and landscape media queries.
+
+   Desktop is the baseline. At ≤ 768px (phone) touch targets grow; at ≤ 480px (small phone) the
+   shell compacts further. Safe-area insets keep content out of iOS notch / home-indicator areas
+   when used standalone.
+   ============================================================================ */
+
+/* ---------- iOS standalone: pad for status bar + home indicator ---------- */
+@supports (padding: max(0px)) {
+  .login-shell {
+    padding-top: max(32px, env(safe-area-inset-top, 0));
+    padding-bottom: max(32px, env(safe-area-inset-bottom, 0));
+  }
+}
+
+/* ============================================================
+   PHONE — 768px and down
+   ============================================================ */
+@media (max-width: 768px) {
+  .login-shell {
+    padding: 20px;
+  }
+
+  .login-card {
+    padding: 22px;
+  }
+
+  /* Forms: bump touch target heights */
+  .fb-editor__btn,
+  .oauth-btn {
+    min-height: 40px;
+  }
+}
+
+/* ============================================================
+   SMALL PHONE — 480px and down
+   ============================================================ */
+@media (max-width: 480px) {
+  .login-shell {
+    padding: 16px;
+  }
+
+  .login-card {
+    padding: 18px;
+    gap: 14px;
+  }
+}
+
+/* ============================================================
+   LANDSCAPE PHONE — small heights
+   ============================================================ */
+@media (max-height: 480px) and (max-width: 900px) {
+  .login-shell {
+    padding: 16px;
+  }
+
+  .login-shell__brand {
+    gap: 4px;
+  }
+
+  .login-shell__brand img {
+    width: 48px;
+    height: 48px;
+  }
+}

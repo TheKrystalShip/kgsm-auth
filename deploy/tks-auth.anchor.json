@@ -149,11 +149,11 @@
     {
       "key": "uiPath",
       "env": "Anchor__UiPath",
-      "label": "Sign-in pages",
-      "description": "The folder holding the sign-in, approval and account pages. Absent, people still sign in through a plain form, and registration and the account page are unavailable.",
+      "label": "Pages",
+      "description": "The folder holding the sign-in, approval, account and admin pages. Absent, people still sign in through a plain form, and registration, the account page and the admin pages are unavailable.",
       "group": "storage",
       "type": "path",
-      "default": "/usr/share/kgsm-web-auth",
+      "default": "/opt/tks-auth/ui",
       "risk": "wiring"
     },
     {

@@ -32,7 +32,8 @@ namespace TheKrystalShip.Auth.Anchor;
 /// never stored — it is what the deploy said this process should serve, so it comes back with every
 /// start and goes when the setting does, and it wins over a stored client of the same id. An
 /// application outside KGSM has the clients registered for it, and only those
-/// (<see cref="ApplicationRegistry"/>).
+/// (<see cref="ApplicationRegistry"/>). tks-auth's own admin pages are one more declared client, on the
+/// issuer's origin.
 /// </para>
 /// </remarks>
 internal sealed partial class ClientRegistry
@@ -52,12 +53,38 @@ internal sealed partial class ClientRegistry
         IReadOnlyDictionary<string, Application> Applications,
         long Generation);
 
-    public ClientRegistry(SqliteSessionRegistry store, IReadOnlyList<string>? panelOrigins = null)
+    /// <param name="store">The session store the registered clients and applications live in.</param>
+    /// <param name="panelOrigins">Origins a Control Panel is served from with no member behind it.</param>
+    /// <param name="issuer">
+    /// This provider's issuer; when it is a URL, the admin pages' client is declared on its origin.
+    /// </param>
+    public ClientRegistry(SqliteSessionRegistry store, IReadOnlyList<string>? panelOrigins = null, string? issuer = null)
     {
         _store = store;
-        (_declared, RefusedPanelOrigins) = Declare(panelOrigins ?? [], DateTimeOffset.UtcNow);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        (IReadOnlyList<RegisteredClient> panels, RefusedPanelOrigins) = Declare(panelOrigins ?? [], now);
+        _declared = AdminPages(issuer, now) is { } admin ? [.. panels, admin] : panels;
         _snapshot = Read();
         _checkedAt = Environment.TickCount64;
+    }
+
+    /// <summary>
+    /// The admin pages' client: public, built in, and sending its codes and sign-outs back to the pages on
+    /// the issuer's own origin. Null when the issuer is not a URL, where no OpenID Connect door is served.
+    /// </summary>
+    /// <remarks>
+    /// Declared, never stored, like a configured panel: it is what this build serves, so it comes back on
+    /// every start, and nothing can register over it or remove it.
+    /// </remarks>
+    private static RegisteredClient? AdminPages(string? issuer, DateTimeOffset now)
+    {
+        if (!Uri.TryCreate(issuer, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("https" or "http"))
+            return null;
+
+        string pages = uri.GetLeftPart(UriPartial.Authority) + Application.ProviderPagesPath;
+        return new RegisteredClient(
+            Application.ProviderClientId, "tks-auth", [pages], [pages], ClientSources.Builtin, MemberId: null, now,
+            Application.ProviderId);
     }
 
     /// <summary>The snapshot, reloaded first when another process has written the store since it was read.</summary>

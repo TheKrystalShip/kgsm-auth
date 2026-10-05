@@ -268,12 +268,12 @@ public sealed class OidcProviderTests(AnchorFixture anchor)
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         string html = await page.Content.ReadAsStringAsync();
 
-        // The floor: a form that signs somebody in with no script at all, and the line naming the
-        // package whose pages would replace it.
+        // The floor: a form that signs somebody in with no script at all, and the line saying the pages
+        // that would replace it are not installed.
         Assert.Contains("<form method=\"post\" action=\"/authorize/credentials\">", html, StringComparison.Ordinal);
         Assert.Contains("name=\"password\"", html, StringComparison.Ordinal);
         Assert.Contains("href=\"/authorize/discord\"", html, StringComparison.Ordinal);
-        Assert.Contains("kgsm-web-auth", html, StringComparison.Ordinal);
+        Assert.Contains("the pages are not installed", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<script", html, StringComparison.OrdinalIgnoreCase);
 
         // Nothing about the request rides in the page: it is held behind the cookie.

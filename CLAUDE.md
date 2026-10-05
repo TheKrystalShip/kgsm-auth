@@ -25,7 +25,11 @@ its own with a password, and an external identity is a credential attached to it
 
 **The repo also holds one deployable.** `src/Auth.Anchor` builds `tks-auth`, the OpenID Connect
 provider that holds the accounts and signs people in. It is built from these libraries by project
-reference, so a change to a library is a compile break here before it is anything else.
+reference, so a change to a library is a compile break here before it is anything else. Its pages —
+signing in, registering, the wait for approval, the account page, and the admin pages for accounts,
+roles, permissions, the catalog, assignments, service requests and applications — are `web/`, a Vite
++ React app on krystal-ui, built into `ui/` beside the binary and served from there
+(`web/CLAUDE.md`).
 
 **tks-auth runs with no KGSM; KGSM is a module of it.** The core — accounts, sessions, the OpenID
 Connect provider, the applications it signs people in to and their clients, the account and admin
@@ -81,6 +85,19 @@ account-store design is also covered by `../auth-internal-users-plan.md`, and th
 
 - Namespace `TheKrystalShip.Auth`; package id matches. The daemon is
   `TheKrystalShip.Auth.Anchor`, and its binary and unit are `tks-auth`.
+
+## Commands
+
+```bash
+TMPDIR=~/.cache KGSM_JOURNAL_STATE_ROOT=<scratch> dotnet test tks-auth.slnx -c Release
+dotnet publish src/Auth.Anchor/Anchor.csproj -c Release -r linux-x64 -o artifacts/publish   # 0 ILC warnings
+(cd web && npm ci && npm run build && npm run check && npm run lint)   # the pages → web/dist
+./deploy/deploy.sh   # both, the pages into /opt/tks-auth/ui beside the binary
+```
+
+The pages are checked in a real browser by the workspace harness (`scripts/visual-harness/`):
+`oidc-pages.mjs` (the sign-in, wait and account pages pixel for pixel, the floor with scripting off),
+`p5-access.mjs` (administering access) and `p5-applications.mjs` (the Applications page).
 
 ## Version tracking
 

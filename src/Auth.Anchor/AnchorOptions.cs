@@ -125,7 +125,7 @@ internal sealed record AnchorOptions(
                 Cap: Math.Max(0, s.PendingCap ?? 25),
                 Ttl: TimeSpan.FromDays(AtLeast(s.PendingTtlDays ?? 14, 1))),
             ReauthWindow: TimeSpan.FromMinutes(AtLeast(s.ReauthWindowMinutes ?? 5, 1)),
-            UiPath: Text(s.UiPath, "/usr/share/kgsm-web-auth"),
+            UiPath: Text(s.UiPath, "/opt/tks-auth/ui"),
             AuthorityHeartbeat: TimeSpan.FromSeconds(heartbeat),
             // At least two heartbeats, so one that arrives late never leaves a member read-only.
             StalenessBound: TimeSpan.FromSeconds(Math.Max(

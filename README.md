@@ -23,9 +23,9 @@ None of them can mint a session.
 | **`TheKrystalShip.Auth.Testing`** | the anchor's session minter and signer, compiled from the anchor's own source, so a test presents a session exactly as the anchor would mint it. | test projects only |
 
 The deployable is **`tks-auth`** (`src/Auth.Anchor`), built from those libraries and shipped
-as a pacman package and a systemd unit. It publishes nothing to NuGet: minting, the session registry,
-the Discord round trip and the OAuth handshake are its own code, so no other component can compile
-them.
+as a pacman package and a systemd unit, with its pages (`web/`) built into `ui/` beside the binary. It
+publishes nothing to NuGet: minting, the session registry, the Discord round trip and the OAuth
+handshake are its own code, so no other component can compile them.
 
 ## The model
 
@@ -313,14 +313,22 @@ anchor's cookie answers another origin.
 content security policy with no inline script or style and `form-action` naming the one client the
 request returns to. It signs somebody in with scripting off.
 
-### The pages and the account page
+### The pages, the account page and the admin pages
 
-The pages people see are `kgsm-web`'s, packaged as **`kgsm-web-auth`** and read from `Anchor__UiPath`
-(`/usr/share/kgsm-web-auth`) on every request, their assets served at `/ui/`. Each is a document with
-its own floor — the sign-in form, a wait that refreshes only with scripting off — which the application
-replaces on mount; the anchor fills in the provider links and nothing else. Absent, the anchor renders
-the floor itself and names the package, and a plain form post that fails is always answered on that
-built-in page with the reason.
+The pages people see are this repo's `web/`, shipped in the package beside the binary and read from
+`Anchor__UiPath` (`/opt/tks-auth/ui`) on every request, their assets served at `/ui/`. Each is a
+document with its own floor — the sign-in form, a wait that refreshes only with scripting off — which
+the application replaces on mount; the anchor fills in the provider links and nothing else. Absent,
+the anchor renders the floor itself and says the pages are not installed, and a plain form post that
+fails is always answered on that built-in page with the reason.
+
+**The admin pages** are `/admin/`: accounts and their approval, roles, permissions, the catalog grouped
+by application, assignments, service requests and applications. They are an OpenID Connect client of
+this provider — the built-in public client `tks-auth`, redirecting to `/admin/` on the issuer's own
+origin — and call the admin routes below with a token for tks-auth's own application (audience
+`tks-auth`), which those routes accept beside a KGSM session and no other application's token is. A
+page's parameters ride in its address, so another surface opens it at a scope:
+`/admin/#/assignments?scope=instance:<node>/<id>%23<nonce>&label=<name>`.
 
 | | |
 |---|---|
@@ -350,10 +358,12 @@ an application outside KGSM is nothing a member serves, and none of its origins 
 An **application** is an API this provider signs people in to: an id, which is also the namespace its
 actions are declared in (`cinema` declares `cinema:*`), a name, an **audience**, the address it serves
 its action manifest at, an access lifetime, the Discord applications its clients may present, whether
-it may act for linked Discord users, and the clients it signs people in through. **KGSM is the built-in
-application**: its audience is the cluster id, its clients are the ones above, and nothing here changes
-its tokens. Every other application is registered on `auth:applications.manage`, by the admin surface or
-on the host, and is stored beside the clients in the session store.
+it may act for linked Discord users, and the clients it signs people in through. **Two are built in.**
+KGSM: its audience is the cluster id, its clients are the ones above, and nothing here changes its
+tokens. And tks-auth itself (`auth`): its audience is `tks-auth`, its one client the admin pages', and
+its tokens list the `auth:*` actions the account holds. Every other application is registered on
+`auth:applications.manage`, by the Applications admin page or on the host, and is stored beside the
+clients in the session store.
 
 ```bash
 tks-auth app add cinema --name "Krystal Cinema" --manifest https://movies.example.com/.well-known/tks-actions.json \
@@ -377,7 +387,7 @@ application's lifetime — five minutes unless set. It lists the application's a
 `cluster`) at every mint and every refresh, so a role taken away reaches the application within one
 lifetime. Its refresh token is audienced to the issuer and is accepted nowhere but `/token`. A KGSM member
 refuses an application's token, and an application refuses KGSM's, by audience alone; this provider's own
-doors take only KGSM's sessions.
+doors take KGSM's sessions and its admin pages', and no other application's.
 
 **Confidential clients authenticate with a secret** the provider makes, shows once and keeps as a hash:
 `client_secret_basic` or `client_secret_post`, one at a time, and a wrong one is `invalid_client` with
@@ -483,7 +493,7 @@ from that same read (`Auth.Cluster`'s `HostProviderFile`).
 
 ```bash
 ./deploy/setup.sh          # once per host, asks for sudo
-./deploy/deploy.sh         # every deploy, no sudo, no prompts
+./deploy/deploy.sh         # every deploy, no sudo, no prompts — the binary and the pages (needs node)
 ```
 
 Its whole configurable surface is `src/Auth.Anchor/tks-auth.settings.json`, which the build

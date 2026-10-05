@@ -10,10 +10,10 @@ namespace TheKrystalShip.Auth.Anchor;
 /// <para>
 /// <b>The floor.</b> Signing in never needs script. The document carries a working form and the provider
 /// links, so a bundle that fails to load, or scripting that is off, still leaves a way in — the provider
-/// is the one origin whose failure locks a cluster out of everything. Where <c>kgsm-web-auth</c> is
-/// installed its documents are served instead (<see cref="ProviderBundle"/>), each carrying a floor of
-/// its own; these answer a refusal, a form post that failed with no script to show why, and every page
-/// while that package is absent — the sign-in page then names it.
+/// is the one origin whose failure locks a cluster out of everything. Where the pages are installed
+/// their documents are served instead (<see cref="ProviderBundle"/>), each carrying a floor of its own;
+/// these answer a refusal, a form post that failed with no script to show why, and every page while the
+/// pages are absent — the sign-in page then says so.
 /// </para>
 /// <para>
 /// Every document is sent under a content security policy with no inline script and no inline style,
@@ -65,7 +65,7 @@ internal static class ProviderPages
             body.Append("</div>");
         }
 
-        body.Append("<p class=\"note\">Plain sign-in form: kgsm-web-auth is not installed.</p>");
+        body.Append("<p class=\"note\">Plain sign-in form: the pages are not installed.</p>");
         return WriteAsync(ctx, status, "Sign in", body.ToString(), clientOrigin);
     }
 

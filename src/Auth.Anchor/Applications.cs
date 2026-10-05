@@ -8,7 +8,10 @@ namespace TheKrystalShip.Auth.Anchor;
 /// <summary>Where an application came from.</summary>
 internal static class ApplicationSources
 {
-    /// <summary>KGSM, built into this provider: its audience is the cluster id, and it is never stored.</summary>
+    /// <summary>
+    /// Built into this provider and never stored: KGSM, whose audience is the cluster id, and tks-auth's
+    /// own admin pages.
+    /// </summary>
     public const string Builtin = "builtin";
 
     /// <summary>Registered on this provider, by the host command or the admin surface.</summary>
@@ -28,7 +31,7 @@ internal static class ApplicationSources
 /// <param name="AccessLifetime">How long an access token for it lives.</param>
 /// <param name="DiscordApplications">The Discord applications whose tokens its clients may present.</param>
 /// <param name="ActForDiscord">Whether its confidential clients may act for a linked Discord user.</param>
-/// <param name="Source"><c>builtin</c> for KGSM, <c>admin</c> for one registered here.</param>
+/// <param name="Source"><c>builtin</c> for KGSM and tks-auth's own, <c>admin</c> for one registered here.</param>
 /// <param name="Created">When it was registered.</param>
 internal sealed record Application(
     string Id,
@@ -44,11 +47,28 @@ internal sealed record Application(
     /// <summary>KGSM's id.</summary>
     public const string KgsmId = "kgsm";
 
+    /// <summary>
+    /// tks-auth's own id: the namespace of the actions its admin routes require, which its access tokens list.
+    /// </summary>
+    public const string ProviderId = ActionIds.AuthComponent;
+
+    /// <summary>The audience of an access token for tks-auth's own admin routes.</summary>
+    public const string ProviderAudience = "tks-auth";
+
+    /// <summary>The admin pages' client: public, its redirect on the issuer's own origin.</summary>
+    public const string ProviderClientId = "tks-auth";
+
+    /// <summary>Where the admin pages are served, and where their client's codes and sign-outs return.</summary>
+    public const string ProviderPagesPath = "/admin/";
+
     /// <summary>What the catalog records an application's report under, before its id.</summary>
     public const string CatalogMemberPrefix = "application:";
 
     /// <summary>Whether this is KGSM, whose tokens carry no actions and whose members evaluate from a replica.</summary>
-    public bool IsKgsm => Source == ApplicationSources.Builtin;
+    public bool IsKgsm => Source == ApplicationSources.Builtin && Id == KgsmId;
+
+    /// <summary>Whether this is built into the provider: never stored, and never changed or removed here.</summary>
+    public bool IsBuiltin => Source == ApplicationSources.Builtin;
 
     /// <summary>The name its manifest's report is held under in the catalog, beside every member's.</summary>
     public string CatalogMember => CatalogMemberPrefix + Id;
@@ -155,6 +175,13 @@ internal sealed record ApplicationClientRequest(
 /// different one would end every KGSM session.
 /// </para>
 /// <para>
+/// <b>tks-auth's own admin routes are an application too, built in.</b> Its id is <c>auth</c>, the
+/// namespace of the actions those routes require, its audience <c>tks-auth</c>, and its one client the
+/// admin pages, declared from the issuer (<see cref="ClientRegistry"/>). A KGSM session reaches those
+/// routes as well, so a cluster's Control Panel administers with the session it holds; no other
+/// application's token does.
+/// </para>
+/// <para>
 /// <b>A client secret is made here, shown once and stored as its hash.</b> It is 256 random bits, so a
 /// fast hash is as strong as a slow one would be, and nobody can choose a weak one.
 /// </para>
@@ -178,17 +205,30 @@ internal sealed partial class ApplicationRegistry(
         Application.KgsmId, "KGSM", options.ClusterId, ManifestUrl: null, options.AccessLifetime,
         DiscordApplications: [], ActForDiscord: false, ApplicationSources.Builtin, DateTimeOffset.UnixEpoch);
 
-    /// <summary>Every application, KGSM's first.</summary>
-    public IReadOnlyList<Application> All => [Kgsm, .. clients.Applications];
+    /// <summary>
+    /// tks-auth's own application: its admin routes, signed in to by the admin pages' client. Its tokens
+    /// are an application's like any other, listing the <c>auth:*</c> actions the account holds.
+    /// </summary>
+    public Application Provider { get; } = new(
+        Application.ProviderId, "tks-auth", Application.ProviderAudience, ManifestUrl: null,
+        TimeSpan.FromMinutes(DefaultAccessLifetimeMinutes), DiscordApplications: [], ActForDiscord: false,
+        ApplicationSources.Builtin, DateTimeOffset.UnixEpoch);
 
-    /// <summary>The application with this id, KGSM's included, or null.</summary>
-    public Application? Find(string? id) =>
-        id == Application.KgsmId ? Kgsm : clients.FindApplication(id);
+    /// <summary>Every application, the built-in ones first.</summary>
+    public IReadOnlyList<Application> All => [Kgsm, Provider, .. clients.Applications];
+
+    /// <summary>The application with this id, the built-in ones included, or null.</summary>
+    public Application? Find(string? id) => id switch
+    {
+        Application.KgsmId => Kgsm,
+        Application.ProviderId => Provider,
+        _ => clients.FindApplication(id),
+    };
 
     /// <summary>The application a client signs people in to.</summary>
     /// <remarks>Null only for a client whose application is gone, which its removal took with it.</remarks>
     public Application? Of(RegisteredClient client) =>
-        client.ApplicationId is { } id ? clients.FindApplication(id) : Kgsm;
+        client.ApplicationId is { } id ? Find(id) : Kgsm;
 
     /// <summary>The clients an application signs people in through.</summary>
     public IReadOnlyList<RegisteredClient> ClientsOf(Application application) =>
@@ -274,8 +314,12 @@ internal sealed partial class ApplicationRegistry(
     {
         if (Find(id) is not { } current)
             return ApplicationResult.Refused(ApplicationOutcome.NotFound, $"No application is called '{id}'.");
-        if (current.IsKgsm)
-            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, "KGSM's application is changed by configuring the cluster.");
+        if (current.IsBuiltin)
+        {
+            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, current.IsKgsm
+                ? "KGSM's application is changed by configuring the cluster."
+                : $"{current.Name}'s own application is built in.");
+        }
 
         (Application? changed, string? problem) = Shape(current with
         {
@@ -325,8 +369,8 @@ internal sealed partial class ApplicationRegistry(
     {
         if (Find(id) is not { } current)
             return ApplicationResult.Refused(ApplicationOutcome.NotFound, $"No application is called '{id}'.");
-        if (current.IsKgsm)
-            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, "KGSM's application is built in.");
+        if (current.IsBuiltin)
+            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, $"{current.Name}'s application is built in.");
 
         if (!await store.RemoveApplicationAsync(id, ct).ConfigureAwait(false))
             return ApplicationResult.Refused(ApplicationOutcome.NotFound, $"No application is called '{id}'.");
@@ -346,10 +390,11 @@ internal sealed partial class ApplicationRegistry(
     {
         if (Find(id) is not { } application)
             return ApplicationResult.Refused(ApplicationOutcome.NotFound, $"No application is called '{id}'.");
-        if (application.IsKgsm)
+        if (application.IsBuiltin)
         {
-            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn,
-                "KGSM's clients are its members' surfaces, its declared panels and the clients registered for the cluster.");
+            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, application.IsKgsm
+                ? "KGSM's clients are its members' surfaces, its declared panels and the clients registered for the cluster."
+                : $"{application.Name}'s one client is its admin pages, built in.");
         }
 
         (RegisteredClient? client, IssuedSecret? secret, string? problem) = NewClient(application, request, DateTimeOffset.UtcNow);
@@ -371,8 +416,12 @@ internal sealed partial class ApplicationRegistry(
     {
         if (Find(id) is not { } application)
             return ApplicationResult.Refused(ApplicationOutcome.NotFound, $"No application is called '{id}'.");
-        if (application.IsKgsm)
-            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, "KGSM's clients are removed from the cluster's client list.");
+        if (application.IsBuiltin)
+        {
+            return ApplicationResult.Refused(ApplicationOutcome.BuiltIn, application.IsKgsm
+                ? "KGSM's clients are removed from the cluster's client list."
+                : $"{application.Name}'s one client is its admin pages, built in.");
+        }
 
         if (!await store.RemoveApplicationClientAsync(id, clientId, ct).ConfigureAwait(false))
             return ApplicationResult.Refused(ApplicationOutcome.NotFound, $"'{id}' has no client '{clientId}'.");
@@ -423,10 +472,12 @@ internal sealed partial class ApplicationRegistry(
         if (audience.Length is 0 or > 200 || audience.Any(char.IsWhiteSpace))
             return (null, "An audience is up to 200 characters with no spaces.");
 
-        // KGSM's audience is its own, and the issuer is what an application's refresh tokens are
-        // audienced to: either would make a token for this application one something else accepts.
+        // KGSM's audience and this provider's own admin routes' are theirs, and the issuer is what an
+        // application's refresh tokens are audienced to: any of them would make a token for this
+        // application one something else accepts.
         if (string.Equals(audience, options.ClusterId, StringComparison.Ordinal)
-            || string.Equals(audience, options.Issuer, StringComparison.Ordinal))
+            || string.Equals(audience, options.Issuer, StringComparison.Ordinal)
+            || string.Equals(audience, Application.ProviderAudience, StringComparison.Ordinal))
             return (null, $"'{audience}' is not an audience an application may have: it is KGSM's or this provider's own.");
 
         if (clients.Applications.Any(a => a.Id != except && string.Equals(a.Audience, audience, StringComparison.Ordinal)))

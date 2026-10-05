@@ -9,7 +9,8 @@
 # building. Publishes the Native-AOT binary as YOU — a single self-contained native binary, so the
 # host needs no .NET runtime.
 #
-#   * the binary, its dlopen'd native libs and its settings file go to /opt/tks-auth,
+#   * the binary, its dlopen'd native libs and its settings file go to /opt/tks-auth, and the pages
+#     built from web/ to /opt/tks-auth/ui beside them, where the settings file's UiPath points,
 #   * the systemd unit is refreshed only if it changed (a write to a file you own + daemon-reload),
 #   * the config descriptor is installed before the swap, so it never lags the binary,
 #   * deploy is verified by an actual 200 from GET /health.
@@ -47,11 +48,24 @@ refuse_root
 require_setup
 [[ -f "$PROJECT_CSPROJ" ]] || { err "project not found: $PROJECT_CSPROJ"; exit 1; }
 command -v clang > /dev/null 2>&1 || warn "'clang' not found — Native-AOT publish needs a C toolchain (clang + zlib). Install it if publish fails."
+command -v npm > /dev/null 2>&1 || { err "'npm' not found — the pages are built with node"; exit 1; }
 
 # ── 1. Build (Native-AOT, as the invoking user) ───────────────────────────────
 log "publishing Native-AOT (${RID}) → ${PUBLISH_DIR} (ILC compile — this takes a minute)"
 rm -rf "$PUBLISH_DIR"
 dotnet publish "$PROJECT_CSPROJ" -c Release -r "$RID" -o "$PUBLISH_DIR"
+
+# ── 1b. The pages, into the publish tree ──────────────────────────────────────
+# Refused rather than shipped: a page carrying an inline script renders broken under the provider's
+# policy, and a sign-in floor without its form leaves nobody a way in with scripting off.
+log "building the pages → ${PUBLISH_DIR}/ui"
+(
+    cd "$REPO_DIR/web"
+    [[ -d node_modules ]] || npm ci
+    npm run build
+    npm run check
+)
+cp -a "$REPO_DIR/web/dist" "$PUBLISH_DIR/ui"
 
 # ── 2. Refresh the unit if it changed (we own the file; systemd reads it via the symlink) ──
 install_units_unprivileged

@@ -196,12 +196,14 @@ internal sealed class AnchorSettings
     public string SigningKeyPath { get; set; } = "/var/lib/tks-auth/session-signing.pem";
 
     /// <summary>
-    /// Where the provider's pages are installed: the <c>kgsm-web-auth</c> bundle, served at <c>/ui/</c>.
+    /// Where the provider's pages are installed: the bundle built from this repo's <c>web/</c>, beside the
+    /// binary, served at <c>/ui/</c>.
     /// </summary>
-    /// <panel>The folder holding the sign-in, approval and account pages. Absent, people still sign in
-    /// through a plain form, and registration and the account page are unavailable.</panel>
-    [ConfigField("uiPath", "Sign-in pages", Group = "storage", Type = ConfigType.Path, Risk = ConfigRisk.Wiring)]
-    public string UiPath { get; set; } = "/usr/share/kgsm-web-auth";
+    /// <panel>The folder holding the sign-in, approval, account and admin pages. Absent, people still
+    /// sign in through a plain form, and registration, the account page and the admin pages are
+    /// unavailable.</panel>
+    [ConfigField("uiPath", "Pages", Group = "storage", Type = ConfigType.Path, Risk = ConfigRisk.Wiring)]
+    public string UiPath { get; set; } = "/opt/tks-auth/ui";
 
     /// <summary>The descriptor this anchor serves its own configuration surface from.</summary>
     /// <panel>The file describing what this anchor can be configured with, written by its own build

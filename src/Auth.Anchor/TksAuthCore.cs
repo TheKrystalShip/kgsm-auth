@@ -99,7 +99,7 @@ internal static class TksAuthCore
         // id_token beside every session it mints. Its rows live beside the sessions, because a browser's
         // sign-in here is a session and every session minted through it records which one it came from.
         services.AddSingleton(sp => new ClientRegistry(
-            sp.GetRequiredService<SqliteSessionRegistry>(), options.PanelOrigins));
+            sp.GetRequiredService<SqliteSessionRegistry>(), options.PanelOrigins, options.Issuer));
 
         // The applications those clients sign people in to — KGSM's built in, every other registered by
         // the admin surface or the host command — and the actions each declares in the manifest it serves,
@@ -196,9 +196,11 @@ internal static class TksAuthCore
         app.MapGet("/sign-out", OidcEndpoints.SignOut);
         app.MapPost("/sign-out", OidcEndpoints.ConfirmSignOut);
 
-        // The provider's own pages as kgsm-web builds them, and the account page's calls. Every one of
-        // those is authenticated by the provider's cookie and answered on this origin alone.
+        // The provider's own pages, and the account page's calls. Every one of those is authenticated by
+        // the provider's cookie and answered on this origin alone. The admin pages are a client of this
+        // provider and call the admin routes below with the bearer they hold.
         app.MapGet("/ui/{**path}", ProviderBundle.ServeAssetAsync);
+        app.MapGet(Application.ProviderPagesPath, ProviderBundle.ServeAdminAsync);
         app.MapGet("/account", AccountPageEndpoints.Page);
         app.MapGet("/account/sign-in", AccountPageEndpoints.SignIn);
         app.MapGet("/account/me", AccountPageEndpoints.Me);

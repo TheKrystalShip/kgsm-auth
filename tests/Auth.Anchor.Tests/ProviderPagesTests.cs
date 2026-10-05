@@ -166,7 +166,7 @@ public sealed class ProviderPagesTests(AnchorFixture anchor)
         using HttpClient browser = anchor.Following();
 
         HttpResponseMessage page = await browser.GetAsync(AuthorizeUrl());
-        Assert.Contains("kgsm-web-auth", await page.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Contains("the pages are not installed", await page.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
         var post = new HttpRequestMessage(HttpMethod.Post, "/authorize/credentials")
         {

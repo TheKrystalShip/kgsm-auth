@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="same-origin" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" type="image/png" href="/assets/tks-mark.png" />
+    <title>tks-auth</title>
+  </head>
+  <!-- Administering access is the application's alone: it holds a session of its own, which a page
+       with no script cannot. -->
+  <body data-page="admin">
+    <div id="floor" class="login-shell">
+      <div class="login-shell__inner">
+        <div class="login-shell__brand">
+          <img src="/assets/tks-mark.png" alt="" />
+          <div class="login-shell__brand-name">The Krystal Ship</div>
+          <div class="login-shell__tagline">Administering access needs JavaScript.</div>
+        </div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/admin/main.jsx"></script>
+  </body>
+</html>

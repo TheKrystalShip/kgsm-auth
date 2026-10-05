@@ -2,9 +2,9 @@
 #
 # Build from this directory:  cd packaging && makepkg
 #
-# Compiles nothing. CI publishes the Native-AOT binary first and this places the result, so the
-# packaged bytes are the tested bytes. Point KGSM_STAGE at that publish output, or leave it unset to
-# use ../artifacts/publish, which is where deploy.sh leaves one.
+# Compiles nothing. CI publishes the Native-AOT binary and builds the pages into ui/ beside it first,
+# and this places the result, so the packaged bytes are the tested bytes. Point KGSM_STAGE at that
+# publish output, or leave it unset to use ../artifacts/publish, which is where deploy.sh leaves one.
 #
 # The daemon is the one deployable built from this repo, and it is what this ships. The repo's other
 # output is a set of libraries every surface compiles against, published to NuGet on their own
@@ -25,16 +25,16 @@ groups=('kgsm-node')
 # kgsm-base carries the kgsm service account this unit runs as, the /etc/kgsm/cluster-founded record saying whether this machine founded its
 # cluster, and the preset policy deciding whether this runs here.
 depends=('kgsm-base' 'systemd')
-# The daemon's earlier package name, so a node that has it installed upgrades to this one.
+# The daemon's earlier package name, so a node that has it installed upgrades to this one; and the
+# package its pages came in, which these pages replace.
 provides=('kgsm-auth-anchor')
-replaces=('kgsm-auth-anchor')
-conflicts=('kgsm-auth-anchor')
+replaces=('kgsm-auth-anchor' 'kgsm-web-auth')
+conflicts=('kgsm-auth-anchor' 'kgsm-web-auth')
 backup=('etc/tks-auth/tks-auth.env'
         'etc/tks-auth/providers.env')
 install="tks-auth.install"
 optdepends=(
     'kgsm-api: the node whose Control Panel people sign in to through this anchor'
-    'kgsm-web-auth: the sign-in, registration and account pages; without it a plain sign-in form'
 )
 # No separate debug package: these are shipped to a private fleet, not a distro archive.
 options=('!debug')
@@ -53,13 +53,21 @@ build() {
         printf '  or point KGSM_STAGE at an existing one.\n\n' >&2
         return 1
     }
+    # The pages are part of what this ships: without them the daemon serves a plain sign-in form and no
+    # account or admin pages, which is a package that installs and is not tks-auth.
+    [[ -f "${stage}/ui/auth-sign-in.html" && -f "${stage}/ui/admin.html" ]] || {
+        printf '\n  no pages at %s/ui\n' "$stage" >&2
+        printf '  build them first:  (cd web && npm ci && npm run build && npm run check) && cp -a web/dist artifacts/publish/ui\n\n' >&2
+        return 1
+    }
 }
 
 package() {
     local repo="${startdir}/.." stage; stage="$(_stage)"
     local prefix="${pkgdir}/opt/${pkgname}"
 
-    # The AOT binary, the SQLite native lib it dlopens and the settings file, exactly as published.
+    # The AOT binary, the SQLite native lib it dlopens and the settings file, exactly as published, and
+    # the pages in ui/ beside them, where the settings file's UiPath points.
     install -dm755 "$prefix"
     cp -a "${stage}/." "${prefix}/"
     # A published tree carries build leftovers a package should not.

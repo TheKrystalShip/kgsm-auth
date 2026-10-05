@@ -88,9 +88,26 @@ internal sealed class AnchorAuth(SessionReader sessions, AccountResolver account
 /// Reads the session behind a request: the signature, the token kind, and whether the session is
 /// still alive. Who the session's holder is, and what they may do, is the caller's next question.
 /// </summary>
-internal sealed class SessionReader(ISessionTokenService tokens, ISessionValidator sessions)
+/// <remarks>
+/// Two kinds of access token are a caller here, and no other: a KGSM session, audienced to the cluster,
+/// and one minted for tks-auth's own admin pages, audienced to <see cref="Application.ProviderAudience"/>.
+/// Both are this daemon's sessions under a browser's sign-in here; any other application's token is that
+/// application's alone and is refused.
+/// </remarks>
+internal sealed class SessionReader
 {
+    private readonly ISessionTokenService _tokens;
+    private readonly ISessionValidator _sessions;
+    private readonly TokenValidationParameters _provider;
     private readonly JsonWebTokenHandler _handler = new();
+
+    public SessionReader(ISessionTokenService tokens, ISessionValidator sessions)
+    {
+        _tokens = tokens;
+        _sessions = sessions;
+        _provider = tokens.ValidationParameters.Clone();
+        _provider.ValidAudience = Application.ProviderAudience;
+    }
 
     /// <summary>The live session on <paramref name="request"/> and who it names, or why there is none.</summary>
     internal async Task<(CallerRefusal Refusal, string? SessionId, KgsmIdentity? Identity)> ReadAsync(
@@ -101,7 +118,13 @@ internal sealed class SessionReader(ISessionTokenService tokens, ISessionValidat
             return (CallerRefusal.Unauthenticated, null, null);
 
         TokenValidationResult result =
-            await _handler.ValidateTokenAsync(bearer, tokens.ValidationParameters).ConfigureAwait(false);
+            await _handler.ValidateTokenAsync(bearer, _tokens.ValidationParameters).ConfigureAwait(false);
+        bool provider = false;
+        if (!result.IsValid)
+        {
+            result = await _handler.ValidateTokenAsync(bearer, _provider).ConfigureAwait(false);
+            provider = true;
+        }
 
         if (!result.IsValid || result.ClaimsIdentity is null)
             return (CallerRefusal.Unauthenticated, null, null);
@@ -117,13 +140,29 @@ internal sealed class SessionReader(ISessionTokenService tokens, ISessionValidat
         if (sessionId is null)
             return (CallerRefusal.Unauthenticated, null, null);
 
-        if (!await sessions.IsValidAsync(sessionId, ct).ConfigureAwait(false))
+        if (!await _sessions.IsValidAsync(sessionId, ct).ConfigureAwait(false))
             return (CallerRefusal.SessionEnded, sessionId, null);
 
-        KgsmIdentity? identity = SessionClaims.ReadIdentity(claims);
+        KgsmIdentity? identity = provider ? AccountOf(claims) : SessionClaims.ReadIdentity(claims);
         return identity is null
             ? (CallerRefusal.Unauthenticated, sessionId, null)
             : (CallerRefusal.None, sessionId, identity);
+    }
+
+    /// <summary>
+    /// The account an admin pages' token names. Its <c>sub</c> is the account id, as every application's
+    /// is, which is the subject of the account's local identity — the one a KGSM session names.
+    /// </summary>
+    private static KgsmIdentity? AccountOf(ClaimsIdentity claims)
+    {
+        string? sub = claims.FindFirst("sub")?.Value;
+        if (sub is null || !sub.StartsWith(UserIds.UserPrefix, StringComparison.Ordinal))
+            return null;
+
+        string username = claims.FindFirst("preferred_username")?.Value ?? sub;
+        return new KgsmIdentity(
+            KgsmActorProvider.Local, sub, username, claims.FindFirst("name")?.Value ?? username,
+            claims.FindFirst("picture")?.Value, Scopes: []);
     }
 
     /// <summary>

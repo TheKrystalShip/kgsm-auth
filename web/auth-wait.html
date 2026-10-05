@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="same-origin" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" type="image/png" href="/assets/tks-mark.png" />
+    <!-- The floor polls by refreshing, and only where scripting is off: with it on, the application
+         polls instead, and a refresh left in force would reload it every time. -->
+    <noscript><meta http-equiv="refresh" content="15" /></noscript>
+    <title>Waiting for approval</title>
+  </head>
+  <body data-page="wait">
+    <div id="floor" class="login-shell">
+      <div class="login-shell__inner">
+        <div class="login-shell__brand">
+          <img src="/assets/tks-mark.png" alt="" />
+          <div class="login-shell__brand-name">The Krystal Ship</div>
+        </div>
+        <div class="pending">
+          <h1 class="pending__title">Waiting for approval</h1>
+          <p class="pending__body">An administrator has to approve your account.</p>
+          <div class="pending__actions">
+            <a class="login-form__submit" href="/authorize/wait">Check again</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/pages/main.jsx"></script>
+  </body>
+</html>

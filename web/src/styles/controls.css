@@ -1,0 +1,44 @@
+/* ============================================================================
+   controls.css — the committing button an inline form ends with, and the secondary beside it.
+   ============================================================================ */
+
+.fb-editor__btn {
+  background: var(--krystal-teal);
+  color: var(--on-accent);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 0 14px;
+  height: 36px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  /* the label never shrinks or wraps */
+}
+
+.fb-editor__btn:hover {
+  background: var(--krystal-teal-hover);
+}
+
+.fb-editor__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fb-editor__btn--secondary {
+  background: transparent;
+  color: var(--fg-2);
+  border-color: var(--border-subtle);
+}
+
+.fb-editor__btn--secondary:hover {
+  background: var(--surface-2);
+  color: var(--fg-1);
+  border-color: var(--border-strong);
+}

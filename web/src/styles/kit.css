@@ -1,0 +1,22 @@
+/* The kit every tks-auth page draws with: the design system's own sheets
+   (@thekrystalship/krystal-ui) and the partials below, imported in CASCADE ORDER.
+
+   Order is load-bearing — later rules win on equal specificity, so each design-system sheet sits
+   just before the partial that restyles or places what it draws (a dialog's `.modal` width wins over
+   the form inside it, a page's `.pending__actions > *` over the button it holds). Add a rule to the
+   partial that owns its domain. */
+@import "@thekrystalship/krystal-ui/styles/tokens.css";
+@import "@thekrystalship/krystal-ui/styles/motion.css";
+
+@import "./base.css";
+@import "@thekrystalship/krystal-ui/styles/subtabs.css";
+@import "./controls.css";
+@import "@thekrystalship/krystal-ui/styles/select.css";
+@import "./signin.css";
+@import "./responsive.css";
+@import "@thekrystalship/krystal-ui/styles/brief.css";
+@import "@thekrystalship/krystal-ui/styles/settings.css";
+@import "./settings.css";
+@import "./hosts.css";
+@import "./states.css";
+@import "./access.css";

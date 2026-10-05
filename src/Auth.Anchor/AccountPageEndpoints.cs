@@ -89,7 +89,7 @@ internal static class AccountPageEndpoints
             return;
 
         await ProviderPages.ProblemAsync(ctx, StatusCodes.Status503ServiceUnavailable, "Account page not installed",
-            "The account page comes with kgsm-web-auth, which is not installed here.");
+            "The account page is not installed here.");
     }
 
     /// <summary><c>GET /account/sign-in</c>: sign in at the anchor to reach the account page.</summary>

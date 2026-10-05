@@ -1,0 +1,14 @@
+/* ============================================================================
+   states.css — a control that is working.
+   ============================================================================ */
+
+.is-spinning {
+  animation: filter-bar-spin .7s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes filter-bar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

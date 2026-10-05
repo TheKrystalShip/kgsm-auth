@@ -82,6 +82,9 @@ internal static class ClientSources
 
     /// <summary>A panel on a static host, declared in this anchor's configuration and never stored.</summary>
     public const string Config = "config";
+
+    /// <summary>The admin pages' own client, built in and never stored.</summary>
+    public const string Builtin = "builtin";
 }
 
 /// <summary>A client this provider will issue codes to.</summary>

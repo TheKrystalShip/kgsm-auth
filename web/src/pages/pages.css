@@ -1,0 +1,133 @@
+/* The sign-in, wait and account pages — what they need beyond the kit.
+
+   What is here is what only these pages have: the floor's provider links (written by the daemon into
+   a static document, so they are plain anchors rather than the kit's buttons), a doorway line that
+   names a client rather than opening a picker, and the account page's column. */
+
+/* The floor — the provider links the daemon writes at its marker, drawn as the kit's provider button. */
+.floor-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.floor-providers:empty {
+  display: none;
+}
+
+.floor-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fg-2);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.floor-provider:hover {
+  background: var(--surface-3);
+  color: var(--fg-1);
+  border-color: var(--border-strong);
+}
+
+.floor-note {
+  color: var(--fg-3);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+/* Whose sign-in this is: the doorway pill, with nothing to change and so no affordance. */
+.doorway--static {
+  cursor: default;
+}
+
+.doorway--static:hover {
+  border-color: var(--border-subtle);
+  background: var(--surface-1);
+}
+
+/* The account page: one column, the width of a settings page's cards. */
+.account-page {
+  box-sizing: border-box;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: var(--font-ui);
+  color: var(--fg-1);
+}
+
+.account-page__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.account-page__mark {
+  width: 40px;
+  height: 40px;
+}
+
+.account-page__who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.account-page__who h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-page__who span {
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.account-page__notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: var(--edge);
+  background: var(--surface-1);
+  font-size: 13.5px;
+}
+
+.account-page__notice--ok {
+  color: var(--success-fg);
+}
+
+.account-page__notice--bad {
+  color: var(--danger-fg);
+}
+
+.account-page__connect {
+  width: auto;
+  height: 32px;
+  font-size: 13px;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.account-page__spacer {
+  flex: 1;
+}

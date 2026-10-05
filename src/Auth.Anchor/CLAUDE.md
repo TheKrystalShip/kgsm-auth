@@ -59,9 +59,11 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
 - **A KGSM session proves who, never what.** It carries no claim about access. Every route here decides
   its caller by an action — `Endpoints.RequireCaller(ctx, action)`, evaluated against the authority and,
   for `auth:*`, held to a recent sign-in — and the account's standing is re-read on refresh, where a
-  withdrawn account has its session revoked rather than left to run out its bearer's lifetime. Only
-  KGSM's sessions are accepted as a bearer at this daemon's own doors: the validation is
-  `SessionTokenOptions.Audience`, the cluster's.
+  withdrawn account has its session revoked rather than left to run out its bearer's lifetime. Two
+  kinds of bearer are accepted at this daemon's own doors, and no other (`SessionReader`): a KGSM
+  session, audienced to the cluster, and a session of tks-auth's own application — the admin pages' —
+  audienced to `tks-auth`. Both are sessions under a browser's sign-in here and are decided by the same
+  action and the same recent-sign-in rule; any other application's token is that application's alone.
 - **A gated route declares its action on itself, and that declaration is both enforced and
   published.** `AuthAction` metadata on the route is what the handler reads (`AuthAction.Of`), the
   own-surface group is marked for `OwnSurfaceFilter`, and authority edits take their action from
@@ -230,8 +232,16 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   built-in application (`ApplicationRegistry.Kgsm`): its audience is the cluster id, its access lifetime
   `Anchor__AccessLifetimeMinutes`, and its clients are the announced ones, the declared panels and those
   registered under `/auth/cluster/clients` (a client row with no `application_id`). It is never stored and
-  cannot be changed or removed here, because its audience is a cluster setting. Every other application
-  is a row in the session store's `applications`, beside its clients.
+  cannot be changed or removed here, because its audience is a cluster setting. Every application
+  registered here is a row in the session store's `applications`, beside its clients.
+- **tks-auth's own admin routes are a built-in application too** (`ApplicationRegistry.Provider`): id
+  `auth`, the namespace of the actions those routes require, audience `tks-auth`, an application's
+  lifetime, and its tokens list the `auth:*` actions the account holds. Its one client is the admin
+  pages', `tks-auth` — public, PKCE, its redirect and post-sign-out address `<issuer origin>/admin/` —
+  declared from the issuer by `ClientRegistry` like a configured panel, never stored, and nothing
+  registers over it or removes it. The admin pages are therefore a client of the provider that serves
+  them, administering with a session that no KGSM member and no other application accepts, whether or
+  not a cluster is configured.
 - **One code path, two doors.** `ApplicationRegistry` holds every rule and every journal line for
   registering, changing and removing an application, adding and removing a client and rotating a secret.
   `/auth/cluster/applications` (on `auth:applications.manage`) and `tks-auth app …` both call it, the
@@ -242,8 +252,8 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   the store when a read finds the generation moved, checking at most once a second. That is how a
   change the host command makes reaches the running daemon.
 - **An application's audience is its own.** Never the cluster id, never the issuer (an application's
-  refresh tokens are audienced to the issuer), and never another application's. Its id is its action
-  namespace, and is never `kgsm`, `auth` or any namespace a KGSM member declares.
+  refresh tokens are audienced to the issuer), never `tks-auth`, and never another application's. Its
+  id is its action namespace, and is never `kgsm`, `auth` or any namespace a KGSM member declares.
 - **An application's access token lists its actions; KGSM's lists none.** `MintPairAsync` mints, for an
   application outside KGSM, an `at+jwt` audienced to it, naming the account in `sub` as the `id_token`
   does, carrying `client_id`, living the application's lifetime, and listing in `tks_actions` (an array,
@@ -379,11 +389,13 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   `ClusterClientAnnouncement.ControlPanel`, the same statement a node announces its panel with.
 - **`id_token`'s subject is the account, its audience the client.** It is never accepted as a bearer,
   and a bearer is never accepted as a sign-out hint.
-- **The pages are `kgsm-web-auth`'s documents, served as built.** The anchor writes the provider links
-  at the marker and nothing else, reads the files per request, and serves `/ui/` only from under
-  `UiPath` — a resolved path outside it is a 404, because this daemon can open its signing key. A
-  failed plain form post is answered on the built-in page with the reason: the static document has
-  nowhere to put one.
+- **The pages are this repo's `web/`, served as built from `UiPath`** (`ui/` beside the binary). The
+  anchor writes the provider links at the marker and nothing else, reads the files per request, and
+  serves `/ui/` only from under `UiPath` — a resolved path outside it is a 404, because this daemon can
+  open its signing key. Every document goes out under the same content security policy, the admin
+  pages' (`/admin/`) included. A failed plain form post is answered on the built-in page with the
+  reason: the static document has nowhere to put one. With no pages installed the built-in floor still
+  signs people in, and the account and admin pages answer that they are not installed.
 - **The account page is the only place a credential changes, and a change needs a recent proof** —
   the provider session's `credential_at` inside the re-authentication window. Its sign-in is a request
   in flight for the `kgsm-account` pseudo-client, which is never registered and never issued a code.

@@ -1,0 +1,332 @@
+/* ── Access (Roles, Permissions, Catalog, Assignments, Service requests, Applications) ──────────
+   Framed lists in the accounts table's idiom: one row per role or permission, the row a container
+   carrying its own controls, an expanded body beneath it. */
+
+.access-list {
+  display: flex;
+  flex-direction: column;
+  border: var(--edge);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.access-row {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.access-row:last-child { border-bottom: none; }
+.access-row[draggable="true"] { cursor: grab; }
+.access-row--dragging { opacity: 0.5; }
+
+.access-row__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 12px;
+}
+
+.access-row__grip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--fg-3);
+}
+
+.access-row__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-row__name--editing { flex: 1; }
+.access-row__name--editing .login-form__input { height: 30px; }
+
+.access-row__meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-row__tools {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.access-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  background: none;
+  border: none;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+.access-icon-btn:hover:not(:disabled) { background: var(--veil-1); color: var(--fg-1); }
+.access-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.access-icon-btn--danger:hover:not(:disabled) { color: var(--danger); }
+
+.access-link-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--krystal-teal);
+  cursor: pointer;
+}
+
+.access-confirm {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.access-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 45%;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--fg-3);
+}
+
+.access-lock__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px 12px 36px;
+}
+
+.access-sub--empty {
+  padding: 8px 2px;
+  font-size: 12.5px;
+  color: var(--fg-3);
+}
+
+.access-sub__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.access-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+  font-size: 12.5px;
+  color: var(--fg-2);
+}
+
+.access-check__name { font-weight: 600; color: var(--fg-1); }
+
+.access-check__id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-check__meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.access-group { margin-top: 10px; }
+
+.access-group__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.access-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.access-action__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.access-action__title { font-size: 13px; font-weight: 600; color: var(--fg-1); }
+.access-action__why { font-size: 12px; color: var(--fg-3); }
+
+.access-action__by {
+  font-size: 11.5px;
+  color: var(--fg-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.access-action__file { width: 190px; max-width: 100%; }
+
+.access-pill {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--veil-1);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+}
+
+.access-pill--execute, .access-pill--waiting, .access-pill--warn { background: var(--warning-bg); color: var(--warning-fg); }
+.access-pill--write, .access-pill--revoked { background: var(--danger-bg); color: var(--danger-fg); }
+.access-pill--read, .access-pill--approved { background: var(--success-bg); color: var(--success-fg); }
+
+.access-filter {
+  display: inline-flex;
+  border: var(--edge);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+
+.access-filter__opt {
+  padding: 3px 10px;
+  background: none;
+  border: none;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+.access-filter__opt.is-on { background: var(--veil-2); color: var(--fg-1); }
+
+.access-create {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.access-create .login-form__input { flex: 1; min-width: 0; }
+.access-create--inline { margin: 0 0 8px; }
+
+.access-refusal {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  font-size: 12.5px;
+}
+
+.access-refusal > svg { flex-shrink: 0; margin-top: 2px; }
+.access-refusal--compact { margin: 6px 0; padding: 6px 9px; }
+.access-refusal__actions { font-family: var(--font-mono); font-size: 11.5px; }
+.access-refusal__link { margin-left: auto; font-weight: 600; color: inherit; white-space: nowrap; }
+
+.access-assign { display: flex; flex-direction: column; gap: 8px; }
+
+.access-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.access-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 4px 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--veil-1);
+  border: var(--edge);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.access-chip__scope { color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.access-chip__x {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+.access-chip__x:hover:not(:disabled) { background: var(--veil-2); color: var(--danger); }
+
+.access-assign__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.access-assign__form > .k-select { flex: 1 1 160px; min-width: 0; }
+
+.settings-users__roles {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 40%;
+}
+
+@media (max-width: 640px) {
+  .access-row__head { flex-wrap: wrap; }
+  .access-row__meta { flex-basis: 100%; order: 3; }
+  .access-lock { max-width: 100%; order: 4; }
+  .access-sub { padding-left: 12px; }
+  .settings-users__roles { display: none; }
+}

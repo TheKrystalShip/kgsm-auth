@@ -97,8 +97,11 @@ app.Logger.LogInformation(
 // Said at every start, because a panel origin mistyped in the settings is otherwise a sign-in that sends
 // nobody back with nothing anywhere saying why.
 ClientRegistry registry = app.Services.GetRequiredService<ClientRegistry>();
-foreach (RegisteredClient panel in registry.Declared)
-    app.Logger.LogInformation("the panel at {Redirect} is a client, as {ClientId}", panel.RedirectUris[0], panel.ClientId);
+foreach (RegisteredClient declared in registry.Declared)
+{
+    app.Logger.LogInformation("{Name} at {Redirect} is a client, as {ClientId}",
+        declared.Name, declared.RedirectUris[0], declared.ClientId);
+}
 foreach ((string origin, string problem) in registry.RefusedPanelOrigins)
     app.Logger.LogWarning("the panel origin '{Origin}' is not a client: {Problem}", origin, problem);
 

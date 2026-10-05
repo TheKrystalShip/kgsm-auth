@@ -1,0 +1,45 @@
+/* ============================================================================
+   base.css — global glue, scrollbar
+   ============================================================================ */
+
+html,
+body,
+#root {
+   height: 100%;
+   margin: 0;
+}
+
+body {
+   overflow: hidden;
+}
+
+/* Global scrollbar — matches Monaco's slider (the theme's scrollbarSlider tokens):
+   a thin, track-less, subtly-inset thumb instead of the chunky OS default that
+   clashed with the dark theme. Applies to every scrollable surface site-wide.
+   scrollbar-width/color cover Firefox. */
+* {
+   scrollbar-width: thin;
+   scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+   width: 11px;
+   height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+   background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+   background: var(--scrollbar-thumb);
+   border-radius: var(--r-md);
+   border: 3px solid transparent;
+   background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+   background: var(--scrollbar-thumb-hover);
+   border: 3px solid transparent;
+   background-clip: padding-box;
+}

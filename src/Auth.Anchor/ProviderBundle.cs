@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.StaticFiles;
 namespace TheKrystalShip.Auth.Anchor;
 
 /// <summary>
-/// The provider's pages as <c>kgsm-web</c> builds them — the <c>kgsm-web-auth</c> package — served from
-/// where it is installed.
+/// tks-auth's own pages, built from this repo's <c>web/</c> and installed beside the binary, served from
+/// where they are installed.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,12 +15,13 @@ namespace TheKrystalShip.Auth.Anchor;
 /// working form, <c>auth-wait.html</c> a refresh that only applies with scripting off, and the
 /// application replaces both on mount. The request in flight lives behind a cookie, so the documents are
 /// static and served as built; the one thing filled in is the provider links, which only this daemon
-/// knows, at the <c>&lt;!--kgsm-floor-providers--&gt;</c> marker.
+/// knows, at the <c>&lt;!--kgsm-floor-providers--&gt;</c> marker. <c>admin.html</c> is the admin pages,
+/// an OpenID Connect client of this provider holding a session of its own.
 /// </para>
 /// <para>
-/// Read from disk on every request, so installing or upgrading the package takes effect without a
-/// restart, and an absent package is noticed the same way. Assets are served under <c>/ui/</c>, the base
-/// the bundle is built with; their names carry their hash, so they are cached for good.
+/// Read from disk on every request, so installing or upgrading the pages takes effect without a restart,
+/// and absent pages are noticed the same way. Assets are served under <c>/ui/</c>, the base the bundle is
+/// built with; their names carry their hash, so they are cached for good.
 /// </para>
 /// </remarks>
 internal sealed class ProviderBundle(AnchorOptions options)
@@ -31,8 +32,19 @@ internal sealed class ProviderBundle(AnchorOptions options)
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
 
     /// <summary>The pages the bundle carries.</summary>
-    internal enum Page { SignIn, Wait, Account }
+    internal enum Page { SignIn, Wait, Account, Admin }
 
+    /// <summary>
+    /// <c>GET /admin/</c>, with or without its slash: the admin pages, and where their client's codes and
+    /// sign-outs return. Every route the pages call authenticates by the bearer they hold, never by this
+    /// daemon's cookie.
+    /// </summary>
+    internal static async Task ServeAdminAsync(HttpContext ctx)
+    {
+        var bundle = ctx.RequestServices.GetRequiredService<ProviderBundle>();
+        if (!await bundle.TryServeAsync(ctx, Page.Admin, clientOrigin: null, providers: []))
+            await ProviderPages.ProblemAsync(ctx, StatusCodes.Status404NotFound, "Not installed", "The admin pages are not installed.");
+    }
     /// <summary>Whether the bundle is installed at all.</summary>
     public bool Installed => File.Exists(PathOf(Page.SignIn));
 
@@ -109,7 +121,8 @@ internal sealed class ProviderBundle(AnchorOptions options)
     {
         Page.SignIn => "auth-sign-in.html",
         Page.Wait => "auth-wait.html",
-        _ => "auth-account.html",
+        Page.Account => "auth-account.html",
+        _ => "admin.html",
     });
 
     private static string ProviderLinks(IReadOnlyList<string> providers)

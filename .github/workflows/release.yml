@@ -52,12 +52,33 @@ jobs:
             --store-password-in-clear-text \
             --configfile nuget.config
 
+      # The @thekrystalship scope resolves from GitHub Packages, which wants a token even to install;
+      # setup-node writes the registry for the scope and reads the token from NODE_AUTH_TOKEN.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@thekrystalship'
+
 
       - name: Test
         run: dotnet test tks-auth.slnx -c Release --nologo
 
       - name: Publish
         run: dotnet publish src/Auth.Anchor/Anchor.csproj -c Release -r linux-x64 -o artifacts/publish
+
+      # The provider's pages, built into ui/ beside the binary, where the settings file's UiPath points.
+      # The check refuses a page the provider's content security policy would break, a floor that lost
+      # its form, and a sign-in page reaching the admin pages' session.
+      - name: Build the pages
+        working-directory: web
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          npm run check
+          cp -a dist ../artifacts/publish/ui
 
       - name: Pack the stage, modes included
         run: tar -C artifacts/publish -cf stage.tar .

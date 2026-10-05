@@ -4,6 +4,10 @@ artifacts/
 *.user
 TestResults/
 
+# The pages' dependencies and build, restored and rebuilt from web/package-lock.json.
+/web/node_modules/
+/web/dist/
+
 # makepkg's by-products. The package itself is a release asset, never a committed file.
 packaging/*.pkg.tar.zst*
 packaging/pkg/

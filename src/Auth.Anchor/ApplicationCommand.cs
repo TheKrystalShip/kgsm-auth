@@ -116,7 +116,8 @@ internal static class ApplicationCommand
         services.AddSingleton<IAuthorityAnnouncer, DeferredAnnouncements>();
         services.AddSingleton<AuthorityIntake>();
         services.AddSingleton(_ => new SqliteSessionRegistry(options.SessionStorePath));
-        services.AddSingleton(sp => new ClientRegistry(sp.GetRequiredService<SqliteSessionRegistry>(), options.PanelOrigins));
+        services.AddSingleton(sp => new ClientRegistry(
+            sp.GetRequiredService<SqliteSessionRegistry>(), options.PanelOrigins, options.Issuer));
         TksAuthCore.AddApplications(services);
         return services.BuildServiceProvider();
     }

@@ -88,8 +88,8 @@ public sealed class AnchorFixture : IDisposable
             "Anchor__ConfigOverridePath", Path.Combine(Root, "config-override.env"));
 
         // The provider's pages, pointed at a folder that holds nothing unless a test installs them. Left
-        // at its default, a run on a host with kgsm-web-auth installed tests those pages instead of the
-        // floor, and one without it tests the floor — the same suite measuring the host.
+        // at its default, a run on a host with tks-auth installed tests those pages instead of the floor,
+        // and one without it tests the floor — the same suite measuring the host.
         Environment.SetEnvironmentVariable("Anchor__UiPath", Path.Combine(Root, "ui"));
 
         // The journal's state root, relocated into the fixture. Left at its default, a test run

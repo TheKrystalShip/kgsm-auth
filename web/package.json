@@ -1,0 +1,28 @@
+{
+  "name": "tks-auth-ui",
+  "private": true,
+  "type": "module",
+  "description": "tks-auth's own pages: signing in, registering, the wait for approval, the account page, and administering access and applications.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "node scripts/check-bundle.mjs",
+    "lint": "eslint src scripts"
+  },
+  "dependencies": {
+    "@thekrystalship/krystal-ui": "0.8.0",
+    "lucide-react": "^0.460.0",
+    "oidc-client-ts": "^3.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^17.7.0",
+    "vite": "^6.0.5"
+  }
+}

@@ -1,0 +1,667 @@
+/* ============================================================================
+   signin.css — the way in: sign in, register, the wait for approval.
+
+   One shell for every page a person meets before they are signed in, so signing in, registering
+   and waiting are one family by construction rather than by resemblance.
+
+   THE FORM FURNITURE HERE FOLLOWS THE SITE, NOT ITS OWN SCHEME: inputs fill with --surface-3 and
+   focus to --border-accent, ghosts lift a surface on hover, as every other control in the kit does.
+
+   Corners are --r-sm throughout. --r-pill stays on the doorway chip and the strength meter, because
+   those are shapes rather than corners.
+   ============================================================================ */
+
+/* ============= The shell ============= */
+.login-shell {
+  position: fixed;
+  inset: 0;
+  background: var(--canvas);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px;
+  overflow: auto;
+}
+
+/* Soft brand-tinted glow in the corners — references the smoke cloud from the
+   wordmark without being literal. */
+.login-shell::before,
+.login-shell::after {
+  content: "";
+  position: fixed;
+  width: 600px;
+  height: 600px;
+  border-radius: var(--r-pill);
+  pointer-events: none;
+  filter: blur(120px);
+  opacity: 0.18;
+}
+
+.login-shell::before {
+  top: -240px;
+  left: -180px;
+  background: radial-gradient(circle, var(--krystal-teal) 0%, transparent 70%);
+}
+
+.login-shell::after {
+  bottom: -240px;
+  right: -180px;
+  background: radial-gradient(circle, var(--krystal-teal-press) 0%, transparent 70%);
+}
+
+.login-shell__inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 430px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  margin: auto;
+}
+
+.login-shell__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-shell__brand img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.login-shell__brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--fg-1);
+  letter-spacing: -0.01em;
+}
+
+.login-shell__tagline {
+  color: var(--fg-3);
+  font-size: 14px;
+  text-align: center;
+}
+
+.login-card {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--surface-1);
+  border: var(--edge);
+  border-radius: var(--r-sm);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: var(--shadow-2);
+}
+
+/* Why something did not go through — inside a card's or a dialog's own flex column, so it needs no
+   margin of its own. */
+.login-card__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger-fg) 30%, transparent);
+  border-radius: var(--r-sm);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ============= The segmented control =============
+   --r-sm track, --r-sm buttons, the pressed surface as the active fill. The inset ring is the extra a
+   two-option toggle needs that a five-tab strip does not. */
+.authseg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 5px;
+  background: var(--surface-2);
+  border: var(--edge);
+  border-radius: var(--r-sm);
+}
+
+.authseg button {
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg-3);
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--d-base) var(--ease-out), color var(--d-base) var(--ease-out);
+}
+
+.authseg button:hover {
+  color: var(--fg-1);
+}
+
+.authseg button.is-on {
+  background: var(--surface-3);
+  color: var(--fg-1);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+/* ============= Fields =============
+   --surface-3 fill, --border-accent + --ring-input on focus. */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* The micro-label: 11px, 600, uppercase, .04em, the same language as the divider. */
+.login-form__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.login-form__label em {
+  font-style: normal;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg-4);
+}
+
+.login-form__label+.login-form__input,
+.login-form__label+.login-form__wrap {
+  margin-bottom: 5px;
+}
+
+/* `box-sizing` is stated, not inherited: there is no global reset, and a `width: 100%` control with
+   horizontal padding is content-box by default, so it would render wider than its card and hang over
+   the edge — the password variant further still, by the reveal button. */
+.login-form__input {
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: var(--edge);
+  background: var(--surface-3);
+  color: var(--fg-1);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  width: 100%;
+  transition: border-color var(--d-fast) var(--ease-out), box-shadow var(--d-fast) var(--ease-out);
+}
+
+.login-form__input::placeholder {
+  color: var(--fg-4);
+}
+
+.login-form__input:focus,
+.login-form__input:focus-visible {
+  outline: none;
+  border-color: var(--border-accent);
+  box-shadow: var(--ring-input);
+}
+
+.login-form__input:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.login-form__input.is-bad {
+  border-color: var(--danger);
+}
+
+.login-form__input.is-good {
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
+}
+
+.login-form__wrap {
+  position: relative;
+  display: block;
+}
+
+.login-form__wrap .login-form__input {
+  padding-right: 42px;
+}
+
+.login-form__reveal {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--fg-4);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.login-form__reveal:hover {
+  color: var(--fg-2);
+  background: var(--surface-2);
+}
+
+/* The live checks. Everything here is also enforced by the daemon — these say so while typing rather
+   than after submitting. */
+.field-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin: -2px 0 6px;
+}
+
+.field-note>svg {
+  flex-shrink: 0;
+}
+
+.field-note--ok {
+  color: var(--success-fg);
+}
+
+.field-note--bad {
+  color: var(--danger-fg);
+}
+
+/* ============= Buttons =============
+   The site's button family (.host-btn): --r-sm, weight 600, a 1px transparent base border, teal
+   primary → --krystal-teal-hover. These pages keep a taller 46px control, because one full-width
+   committing action is not a toolbar button. */
+.login-form__submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 46px;
+  margin-top: 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: var(--krystal-teal);
+  color: var(--on-accent);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+  transition: background var(--d-fast) var(--ease-out);
+}
+
+.login-form__submit:hover:not(:disabled) {
+  background: var(--krystal-teal-hover);
+}
+
+.login-form__submit:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* A bare text action. */
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--krystal-teal);
+}
+
+.btn-link:hover {
+  color: var(--krystal-teal-hover);
+}
+
+/* A rule with the word sitting in the gap, so the two doors read as alternatives. */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg-4);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  font-weight: 600;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* ============= Provider buttons =============
+   One provider is a branded full-width button; several are a neutral 2-up grid carrying their own
+   marks, because four brand fills stacked in a column is a paint chart and implies a recommendation
+   nobody made. The set and its ORDER are the daemon's answer, never a list this bundle holds. */
+.oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 18px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  width: 100%;
+  color: var(--fg-2);
+  background: var(--surface-2);
+  transition: background var(--d-fast) var(--ease-out), color var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+}
+
+.oauth-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--fg-1);
+  border-color: var(--border-strong);
+}
+
+.oauth-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.oauth-btn>svg {
+  flex-shrink: 0;
+}
+
+.oauth-btn--discord {
+  background: #5865F2;
+  /* Discord Blurple */
+  color: #fff;
+  border-color: transparent;
+}
+
+.oauth-btn--discord:hover:not(:disabled) {
+  background: #4752C4;
+  color: #fff;
+  border-color: transparent;
+}
+
+.oauth-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.oauth-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.oauth-grid .oauth-btn {
+  padding: 0 10px;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+.oauth-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: currentColor;
+  border-radius: var(--r-pill);
+  animation: oauth-spin 700ms linear infinite;
+  vertical-align: middle;
+  transform-origin: center;
+  flex-shrink: 0;
+}
+
+@keyframes oauth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============= Password strength =============
+   Four segments, because a five-point scale invites a number nothing measures. */
+.pw-meter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 1px 0 6px;
+}
+
+.pw-meter__track {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+
+.pw-meter__seg {
+  height: 5px;
+  flex: 1;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+}
+
+.pw-meter__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  min-width: 56px;
+  text-align: right;
+}
+
+.pw-meter[data-level="1"] .pw-meter__seg:nth-child(-n+1) {
+  background: var(--danger);
+}
+
+.pw-meter[data-level="2"] .pw-meter__seg:nth-child(-n+2) {
+  background: var(--warning);
+}
+
+.pw-meter[data-level="3"] .pw-meter__seg:nth-child(-n+3) {
+  background: var(--info);
+}
+
+.pw-meter[data-level="4"] .pw-meter__seg {
+  background: var(--success);
+}
+
+.pw-meter[data-level="1"] .pw-meter__label {
+  color: var(--danger-fg);
+}
+
+.pw-meter[data-level="2"] .pw-meter__label {
+  color: var(--warning-fg);
+}
+
+.pw-meter[data-level="3"] .pw-meter__label {
+  color: var(--info-fg);
+}
+
+.pw-meter[data-level="4"] .pw-meter__label {
+  color: var(--success-fg);
+}
+
+/* ============= Callouts =============
+   A refusal is danger-bg with no border and an --fg-2 body; a note is surface-2 with a teal icon. An
+   all-danger-text banner shouts at somebody who mistyped a password. */
+.login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  background: var(--danger-bg);
+  border-radius: var(--r-sm);
+  padding: 11px 13px;
+}
+
+.login-error>svg {
+  color: var(--danger-fg);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.login-error b {
+  color: var(--fg-1);
+}
+
+/* A refusal about what you TYPED sits with the field it is about, not at the top
+   of the card — the eye is already there on the way back to fixing it. */
+.login-error--field {
+  margin-bottom: 9px;
+}
+
+.login-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+  background: var(--surface-2);
+  border: var(--edge);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+
+.login-note>svg {
+  color: var(--krystal-teal);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.login-note b {
+  color: var(--fg-2);
+}
+
+.login-note--warn {
+  background: var(--warning-bg);
+  border-color: transparent;
+  color: var(--fg-2);
+}
+
+.login-note--warn>svg {
+  color: var(--warning-fg);
+}
+
+.login-note--warn b {
+  color: var(--fg-1);
+}
+
+/* ============= The doorway chip =============
+   Under the card, not in it: whose sign-in this is. */
+.doorway {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px 7px 10px;
+  border-radius: var(--r-pill);
+  background: var(--surface-1);
+  border: var(--edge);
+  color: var(--fg-2);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color var(--d-fast) var(--ease-out), background var(--d-fast) var(--ease-out);
+}
+
+.doorway:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.doorway b {
+  color: var(--fg-1);
+  font-weight: 600;
+}
+
+/* ============= Waiting for approval =============
+   Signed in somewhere, let in nowhere yet: the approval happens on somebody else's screen minutes or
+   days away. */
+.pending {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface-1);
+  border: var(--edge);
+  border-radius: var(--r-sm);
+  padding: 32px 30px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-2);
+}
+
+.pending__icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--success-bg);
+  color: var(--success-fg);
+  border: 1px solid color-mix(in srgb, var(--success) 34%, transparent);
+}
+
+.pending__title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--fg-1);
+}
+
+.pending__body {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--fg-2);
+  margin: 0;
+}
+
+.pending__who {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-3);
+  background: var(--surface-2);
+  border: var(--edge);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
+}
+
+.pending__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pending__actions>* {
+  width: auto;
+  margin: 0;
+  padding: 0 20px;
+}
