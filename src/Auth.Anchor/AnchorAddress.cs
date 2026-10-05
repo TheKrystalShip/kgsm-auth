@@ -7,10 +7,15 @@ namespace TheKrystalShip.Auth.Anchor;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The configured public address when there is one; otherwise the name this anchor serves in a cluster
-/// with a DNS anchor — the accounts capability's own name, which is the same for whichever member holds
-/// the capability. Read on every use: the name is only this anchor's while it holds the capability and
-/// serves it.
+/// The configured public address when there is one; otherwise the issuer's origin, when the issuer is a
+/// URL; otherwise the name this anchor serves in a cluster with a DNS anchor — the accounts capability's
+/// own name, which is the same for whichever member holds the capability. Read on every use: the name is
+/// only this anchor's while it holds the capability and serves it.
+/// </para>
+/// <para>
+/// The issuer comes before an assigned name because a sign-in begins at the issuer, and the request in
+/// flight is a cookie on the issuer's origin: a provider's round trip that returned to another origin
+/// would arrive without it and could complete nothing.
 /// </para>
 /// <para>
 /// A provider accepts only redirect URIs registered on its application, so the callback has to be one of
@@ -26,7 +31,8 @@ internal sealed class AnchorAddress(AnchorOptions options, IEnumerable<ISelfAddr
     public string? Base =>
         options.PublicBaseUrl is { Length: > 0 } configured
             ? configured.TrimEnd('/')
-            : _assigned.SelectMany(s => s.Addresses).FirstOrDefault()?.TrimEnd('/');
+            : options.IssuerOrigin
+                ?? _assigned.SelectMany(s => s.Addresses).FirstOrDefault()?.TrimEnd('/');
 
     /// <summary>Where a provider sends the browser back after a sign-in, or null with no address.</summary>
     public string? RedirectUri(string provider) =>

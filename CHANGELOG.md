@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — a provider's round trip returns to the issuer (daemon 4.1.1)
+
+- With no `PublicBaseUrl`, the provider callbacks are built on the issuer's origin when the issuer is a
+  URL, before the capability's assigned name. A sign-in begins at the issuer and its request in flight is
+  a cookie there, so a callback on another origin completed nothing.
+
 ### Added — tks-auth runs without KGSM (daemon 4.1.0)
 
 - The daemon composes a core — accounts, sessions, the OpenID Connect provider, clients, the account

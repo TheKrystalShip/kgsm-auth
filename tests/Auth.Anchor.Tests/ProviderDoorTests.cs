@@ -442,6 +442,20 @@ public sealed class RegisterTests(AnchorFixture anchor)
             new AnchorAddress(configured, [new Served("https://auth.anchors.example.com")]).RedirectUri("discord"));
     }
 
+    [Fact]
+    public void The_callback_returns_to_the_issuers_origin_before_an_assigned_name()
+    {
+        // A sign-in begins at the issuer and its request in flight is a cookie there; a round trip that
+        // came back to the capability's assigned name instead would arrive without it.
+        AnchorOptions issued = AnchorOptions.FromSettings(
+            new AnchorSettings { PublicBaseUrl = "", Issuer = "https://auth.example.com" });
+        var address = new AnchorAddress(issued, [new Served("https://auth.anchors.example.com")]);
+
+        Assert.Equal("https://auth.example.com/auth/discord/callback", address.RedirectUri("discord"));
+        Assert.Equal(
+            "https://auth.example.com/auth/identities/discord/callback", address.LinkRedirectUri("discord"));
+    }
+
     private sealed class Served(params string[] addresses) : TheKrystalShip.KGSM.Cluster.Membership.ISelfAddressSource
     {
         public IReadOnlyList<string> Now { get; set; } = addresses;
