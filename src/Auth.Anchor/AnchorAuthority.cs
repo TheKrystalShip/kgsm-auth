@@ -75,7 +75,7 @@ internal sealed class AnchorAuthority(AnchorOptions options, ILogger<AnchorAutho
 internal sealed class AuthorityIntake(
     AnchorAuthority authority,
     AnchorJournal journal,
-    AuthorityBroadcast broadcast,
+    IAuthorityAnnouncer broadcast,
     ILogger<AuthorityIntake> logger) : IAuthorityIntake
 {
     /// <inheritdoc />

@@ -22,7 +22,7 @@ public sealed class AnchorStandingTests
     [Fact]
     public void A_machine_with_no_cluster_holds_its_own_accounts()
     {
-        var role = new AnchorRole(Options(secret: ""));
+        var role = new AnchorRole(Options(secret: "").Enabled);
 
         // The standalone install the plan promises is unaffected: no assignment to read, and every
         // door open exactly as it was.
@@ -34,7 +34,7 @@ public sealed class AnchorStandingTests
     [Fact]
     public void A_clustered_anchor_stands_by_until_it_has_read_the_assignment()
     {
-        var role = new AnchorRole(Options(secret: "a shared cluster secret"));
+        var role = new AnchorRole(Options(secret: "a shared cluster secret").Enabled);
 
         // Not "assume I hold it until told otherwise": that would make this member the authority for
         // exactly the window in which it does not know whether it is one.
@@ -45,7 +45,7 @@ public sealed class AnchorStandingTests
     [Fact]
     public void Holding_the_capability_makes_it_the_authority()
     {
-        var role = new AnchorRole(Options(secret: "a shared cluster secret"));
+        var role = new AnchorRole(Options(secret: "a shared cluster secret").Enabled);
 
         Assert.True(role.Update(AnchorStanding.Holder, "hotrod-auth"));
         Assert.True(role.IsAuthority);
@@ -55,7 +55,7 @@ public sealed class AnchorStandingTests
     [Fact]
     public void Losing_the_capability_stands_it_down_and_names_the_holder()
     {
-        var role = new AnchorRole(Options(secret: "a shared cluster secret"));
+        var role = new AnchorRole(Options(secret: "a shared cluster secret").Enabled);
         role.Update(AnchorStanding.Holder, "hotrod-auth");
 
         // The §7·a safeguard: a member that believed it was the anchor while the cluster names
@@ -68,7 +68,7 @@ public sealed class AnchorStandingTests
     [Fact]
     public void An_unchanged_standing_is_not_reported_as_a_change()
     {
-        var role = new AnchorRole(Options(secret: "a shared cluster secret"));
+        var role = new AnchorRole(Options(secret: "a shared cluster secret").Enabled);
         Assert.True(role.Update(AnchorStanding.Holder, "hotrod-auth"));
 
         // The worker logs on change, so a steady state must not narrate itself once per interval.
@@ -78,7 +78,7 @@ public sealed class AnchorStandingTests
     [Fact]
     public void A_change_of_holder_alone_is_still_a_change()
     {
-        var role = new AnchorRole(Options(secret: "a shared cluster secret"));
+        var role = new AnchorRole(Options(secret: "a shared cluster secret").Enabled);
         role.Update(AnchorStanding.StandingBy, null);
 
         // "Nobody has it yet" and "somebody else has it" are the same standing and different facts,
@@ -122,7 +122,7 @@ public sealed class AnchorClaimTests : IDisposable
         var store = new TheKrystalShip.KGSM.Cluster.Storage.ClusterStore(
             cluster, Microsoft.Extensions.Logging.Abstractions.NullLogger<TheKrystalShip.KGSM.Cluster.Storage.ClusterStore>.Instance);
         var state = new ClusterStateStore(store, cluster);
-        var role = new AnchorRole(cluster);
+        var role = new AnchorRole(cluster.Enabled);
         using var signer = EcdsaSessionSigner.Generate();
 
         var worker = new ClusterMembershipWorker(

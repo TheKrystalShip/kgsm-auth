@@ -27,13 +27,13 @@ namespace TheKrystalShip.Auth.Anchor;
 internal sealed class SessionBroadcast(
     IClusterBus bus,
     MemberTargets targets,
-    ILogger<SessionBroadcast> logger)
+    ILogger<SessionBroadcast> logger) : ISessionAnnouncer
 {
     /// <summary>The type every member already registers a handler for.</summary>
     internal const string RevokeType = "session.revoke";
 
     /// <summary>Announce that one session is over.</summary>
-    internal async Task RevokedAsync(string sessionId, CancellationToken ct)
+    public async Task RevokedAsync(string sessionId, CancellationToken ct)
     {
         IReadOnlyList<ClusterTarget> members = await targets.ResolveAsync(ct).ConfigureAwait(false);
         if (members.Count == 0)

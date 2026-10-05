@@ -367,7 +367,7 @@ internal static class AccountPageEndpoints
         {
             IReadOnlyList<string> ended = await registry.RevokeAllAsync(handles, ctx.RequestAborted);
             var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
-            var broadcast = ctx.RequestServices.GetRequiredService<SessionBroadcast>();
+            var broadcast = ctx.RequestServices.GetRequiredService<ISessionAnnouncer>();
             foreach (string sid in ended)
             {
                 validator.Evict(sid);
@@ -404,7 +404,7 @@ internal static class AccountPageEndpoints
         {
             await registry.RevokeAsync(target, ctx.RequestAborted);
             ctx.RequestServices.GetRequiredService<ISessionValidator>().Evict(target);
-            await ctx.RequestServices.GetRequiredService<SessionBroadcast>().RevokedAsync(target, ctx.RequestAborted);
+            await ctx.RequestServices.GetRequiredService<ISessionAnnouncer>().RevokedAsync(target, ctx.RequestAborted);
             await journal.SessionRevokedAsync(SessionRevokeScopes.Self, user.UserId, user.Username, target,
                 count: null, actor, AnchorJournal.OriginUi, ctx.RequestAborted);
         }

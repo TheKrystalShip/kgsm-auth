@@ -1,9 +1,39 @@
 # `Auth.Anchor` (`tks-auth`) — locked decisions
 
-The cluster member that holds the accounts and signs people in to the whole cluster at once. Built from
-this repo's libraries by project reference. Its own design authority is `../cluster-auth-plan.md`,
-and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace root). Minting is
-`Minting/CLAUDE.md`.
+The OpenID Connect provider that holds the accounts and signs people in — on its own, or as the member
+of a KGSM cluster that signs people in to the whole cluster at once. Built from this repo's libraries
+by project reference. Its own design authority is `../cluster-auth-plan.md`, its OpenID Connect half
+`../hosted-sign-in-plan.md` (both at the workspace root), and its place as the organization's provider
+`kgsm-docs/plans/tks-auth.md`. Minting is `Minting/CLAUDE.md`.
+
+## The core and the KGSM module
+
+- **`Program.cs` composes the core, and the KGSM module only when a cluster is configured.**
+  `TksAuthCore` (`AddTksAuthCore`, `MapTksAuthCore`) is accounts, sessions, the OpenID Connect doors,
+  clients, the account page, the admin and authority routes and the journal. `KgsmModule`
+  (`AddKgsmModule`, `MapKgsmModule`) is membership and the bus, the DNS member,
+  `ClusterMembershipWorker` (standing, the founding claim, the `auth.*` facts, announced clients), the
+  catalog's handlers and `AuthorityReporter`, `MemberDepartureWorker`, `AuthorityBroadcast` and its
+  worker, `SessionBroadcast`, the member snapshot, the roster, `/auth/cluster/public-key` and the
+  component surface.
+- **One switch: the cluster secret.** `KgsmModule.ClusterFrom` reads it; `ClusterOptions.Enabled`
+  decides whether the module is composed and is what `AnchorRole` is built from, so the standing and
+  the composition cannot disagree. There is no second setting.
+- **Every KGSM path is the module's.** `/etc/kgsm/cluster-founded`, `/var/lib/kgsm/anchors` (the
+  descriptor and the manifest beside it) and the cluster store are reached only from module code. A
+  standalone install reads and writes nothing under `/etc/kgsm` or `/var/lib/kgsm`;
+  `StandaloneAnchorTests` asserts that and that no module service is registered.
+- **The core tells other members things only through `ISessionAnnouncer` and
+  `IAuthorityAnnouncer`.** The module binds them to `SessionBroadcast` and `AuthorityBroadcast`; a
+  standalone anchor binds both to `StandaloneAnnouncements`, which ends nothing elsewhere and clears
+  the authority outbox, because nobody else holds its sessions or its accounts. A core class that
+  resolves a module service directly breaks every standalone start.
+- **A standalone anchor's own actions enter its catalog from the binary, never from disk.**
+  `StandaloneCatalog` reports `AuthActions.Declared` as this anchor's manifest on every start. In a
+  cluster the reporter reads the installed manifest instead, and the two never both run: a report
+  replaces the member's last one wholesale, so two reporters under one member id would overwrite each
+  other. The standalone report carries no `auth:config.*` or `auth:journal.read`, since the surface
+  those gate is the module's.
 
 ## The daemon
 
@@ -129,10 +159,10 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
 
 ## Administering itself
 
-- **The anchor administers itself, because on the ordinary topology nothing else is there to.** A
-  leaf is configured and read through the node that runs it; an anchor is a peer of every node rather
-  than something one of them hosts, and the machine it sits on need run no Control Panel at all. So
-  `/auth/config` and `/auth/logs` are served by the daemon being configured and the daemon being read,
+- **In a KGSM cluster the anchor administers itself, because on the ordinary topology nothing else is
+  there to.** A leaf is configured and read through the node that runs it; an anchor is a peer of
+  every node rather than something one of them hosts, and the machine it sits on need run no Control
+  Panel at all. So the module serves `/auth/config` and `/auth/logs` from the daemon being configured and the daemon being read,
   on the anchor's own `auth:config.*` and `auth:journal.read` — a daemon's log is the account store
   described from the side.
 - **The unit both surfaces name is the descriptor's, never a second setting.** One name in one place
@@ -155,8 +185,8 @@ and its OpenID Connect half `../hosted-sign-in-plan.md` (both at the workspace r
   follows its journal — and passes only on a host where the thing under test is already installed,
   which is measuring the host.
 - **The catalog is kept here, from every member's report.** `AuthorityIntake` is the one place a
-  report or an uninstall lands — over the bus from another member, or directly from this anchor's own
-  reporter — and the one place what it changed is journaled, attributed to the member it came from as
+  report or an uninstall lands — over the bus from another member, directly from this anchor's own
+  reporter, or, standalone, from `StandaloneCatalog` — and the one place what it changed is journaled, attributed to the member it came from as
   `system:<member>`. A node speaks only for its own instances: an uninstall is matched on the sender's
   member id and the nonce, never on a node the message names.
 - **A member's report is forgotten only when the roster marks it left.** That is what removing a member

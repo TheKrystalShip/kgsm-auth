@@ -5,7 +5,7 @@ the "what you must not break".
 
 ## What this is
 
-The shared authorization model for the ecosystem, and the cluster's sign-in provider. The packages are
+The shared authorization model for the ecosystem, and the organization's sign-in provider. The packages are
 consumed by kgsm-api, kgsm-llm, kgsm-bot and kgsm-dns, so a change here changes who can do what on
 every surface at once.
 
@@ -23,10 +23,16 @@ which is what lets one be added with no access story of its own; a session carri
 **KGSM owns the accounts.** `Auth.Users` holds them in one file per host: a local account exists on
 its own with a password, and an external identity is a credential attached to it.
 
-**The repo also holds one deployable.** `src/Auth.Anchor` builds `tks-auth`, the cluster
-member that holds the accounts and signs people in to the whole cluster at once. It is built from
-these libraries by project reference, so a change to a library is a compile break here before it is
-anything else.
+**The repo also holds one deployable.** `src/Auth.Anchor` builds `tks-auth`, the OpenID Connect
+provider that holds the accounts and signs people in. It is built from these libraries by project
+reference, so a change to a library is a compile break here before it is anything else.
+
+**tks-auth runs with no KGSM; KGSM is a module of it.** The core — accounts, sessions, the OpenID
+Connect provider, clients, the account and admin doors, the journal — is everything a standalone
+install runs. The KGSM module, composed only when a cluster secret is configured, is what makes it the
+member that holds a KGSM cluster's accounts and signs people in to every member at once. A core
+change must not reach for anything the module registers, and nothing in the core touches `/etc/kgsm`
+or `/var/lib/kgsm` (`src/Auth.Anchor/CLAUDE.md` holds the seam).
 
 **The access model is `Auth.Access`** — actions declared by components, permissions, ranked roles,
 assignments scoped to the cluster, a node or an instance, and service accounts — with its authority

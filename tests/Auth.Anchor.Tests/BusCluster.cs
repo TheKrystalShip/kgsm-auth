@@ -133,6 +133,7 @@ internal sealed class BusCluster : IAsyncDisposable
             builder.Services.AddSingleton<AnchorAuthority>();
             builder.Services.AddSingleton<MemberTargets>();
             builder.Services.AddSingleton<AuthorityBroadcast>();
+            builder.Services.AddSingleton<IAuthorityAnnouncer>(sp => sp.GetRequiredService<AuthorityBroadcast>());
             builder.Services.AddSingleton(TimeProvider.System);
             builder.Services.AddSingleton<AuthorityBroadcastWorker>();
             builder.Services.AddSingleton<AuthorityIntake>();
@@ -156,7 +157,7 @@ internal sealed class BusCluster : IAsyncDisposable
                 TimeSpan.Zero));
             builder.Services.AddSingleton<SessionReader>();
             builder.Services.AddSingleton<AuthorityCaller>();
-            builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>()));
+            builder.Services.AddSingleton(sp => new AnchorRole(sp.GetRequiredService<ClusterOptions>().Enabled));
         }
         else
         {

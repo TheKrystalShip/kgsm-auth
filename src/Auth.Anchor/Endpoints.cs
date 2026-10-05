@@ -280,7 +280,7 @@ internal static class Endpoints
             // the other members is what stops that bearer from being spent on them meanwhile.
             await registry.RevokeAsync(claims.SessionId, ctx.RequestAborted);
             validator.Evict(claims.SessionId);
-            await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
+            await ctx.RequestServices.GetRequiredService<ISessionAnnouncer>()
                 .RevokedAsync(claims.SessionId, ctx.RequestAborted);
 
             // A separate fact from the disable that caused it, and worth its own line because the two
@@ -467,7 +467,8 @@ internal static class Endpoints
     }
 
     /// <summary>
-    /// Send the cluster what this anchor's writes changed, now rather than on the broadcast's timer.
+    /// Settle what this anchor's writes owe, now rather than on a timer: in a KGSM cluster, sent to every
+    /// member.
     /// </summary>
     /// <remarks>
     /// Every write already owes its change in the store's outbox, in the same transaction; this only
@@ -475,7 +476,7 @@ internal static class Endpoints
     /// the timer sends it.
     /// </remarks>
     internal static Task AnnounceAsync(HttpContext ctx) =>
-        ctx.RequestServices.GetRequiredService<AuthorityBroadcast>().DrainAsync(ctx.RequestAborted);
+        ctx.RequestServices.GetRequiredService<IAuthorityAnnouncer>().DrainAsync(ctx.RequestAborted);
 
     /// <summary>The person who acted, as an audit trail names one.</summary>
     internal static string ActorOf(Caller caller) =>

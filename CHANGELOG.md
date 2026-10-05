@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — tks-auth runs without KGSM (daemon 4.1.0)
+
+- The daemon composes a core — accounts, sessions, the OpenID Connect provider, clients, the account
+  and admin doors, the journal — and a KGSM module beside it only when a cluster secret is configured.
+  The module is cluster membership, the DNS member, the standing and the founding claim, the `auth.*`
+  facts, replication of the account store, members' catalog reports and uninstalls, forgetting a
+  removed member, session revocations to members, the member snapshot, the roster,
+  `/auth/cluster/public-key` and the component surface.
+- With no cluster it founds itself: an empty store gets the Owner and its one-time password, it holds
+  its own accounts, and it reads and writes nothing under `/etc/kgsm` or `/var/lib/kgsm`. Its own
+  `auth:*` actions enter its catalog from the declarations the binary carries, so they are grantable
+  with no manifest on disk, and the authority outbox is settled at once since no member is owed it.
+- With a cluster configured, behaviour is unchanged.
+
 ### Changed — the journal package readers scan (daemon 4.0.1)
 
 - The daemon builds on `TheKrystalShip.KGSM.Journal` 2.4.0, whose layout rule names `tks-auth` a

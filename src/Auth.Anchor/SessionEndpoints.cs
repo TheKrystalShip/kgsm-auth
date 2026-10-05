@@ -159,7 +159,7 @@ internal static class SessionEndpoints
             await RegistryOf(ctx).RevokeAllAsync(handles, ctx.RequestAborted);
 
         var validator = ctx.RequestServices.GetRequiredService<ISessionValidator>();
-        var broadcast = ctx.RequestServices.GetRequiredService<SessionBroadcast>();
+        var broadcast = ctx.RequestServices.GetRequiredService<ISessionAnnouncer>();
 
         foreach (string sid in ended)
         {
@@ -195,7 +195,7 @@ internal static class SessionEndpoints
 
         ctx.RequestServices.GetRequiredService<ISessionValidator>().Evict(sid);
 
-        await ctx.RequestServices.GetRequiredService<SessionBroadcast>()
+        await ctx.RequestServices.GetRequiredService<ISessionAnnouncer>()
             .RevokedAsync(sid, ctx.RequestAborted);
     }
 

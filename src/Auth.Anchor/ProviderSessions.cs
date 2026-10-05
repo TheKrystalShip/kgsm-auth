@@ -78,7 +78,7 @@ internal sealed class ProviderSessions(
     AnchorOptions options,
     IUserStore store,
     ISessionValidator validator,
-    SessionBroadcast broadcast,
+    ISessionAnnouncer broadcast,
     AnchorJournal journal)
 {
     /// <summary>The live provider session this browser's cookie names, or null.</summary>

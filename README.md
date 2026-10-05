@@ -4,10 +4,12 @@ The shared authorization model for the KGSM ecosystem: **one definition of who m
 every surface onto a host, so the same person gets the same authority through the Control Panel, the
 assistant and the Discord bot alike.
 
-Five libraries, a test package and one daemon. The daemon — **`tks-auth`** — is the cluster's
-sign-in provider: it holds the accounts, signs people in, and mints every session, and every install
-runs one. The libraries are what every other component compiles against to verify those sessions and
-decide what the person holding one may do. None of them can mint a session.
+Five libraries, a test package and one daemon. The daemon — **`tks-auth`** — is an OpenID Connect
+provider: it holds the accounts, signs people in, and mints every session. It runs with no KGSM on
+the machine at all; configuring a KGSM cluster switches on its KGSM module, which makes it the
+cluster's account authority, and every KGSM install runs one. The libraries are what every other
+component compiles against to verify those sessions and decide what the person holding one may do.
+None of them can mint a session.
 
 ## Packages
 
@@ -191,19 +193,38 @@ revoked session still presenting its token is exactly what a stolen one does.
 
 ## The auth anchor
 
-`tks-auth` is the member of a cluster that holds the accounts. One store, one writer, one
-address a person signs in at — an OpenID Connect provider every browser surface is a client of — and
-a session it mints is valid on **every** member, because its audience is the cluster rather than a
-machine. The identity design is `../cluster-auth-plan.md` and the sign-in's is
-`../hosted-sign-in-plan.md`; this is what the daemon serves.
+`tks-auth` holds the accounts. One store, one writer, one address a person signs in at — an OpenID
+Connect provider every browser surface is a client of. In a KGSM cluster it is the member that holds
+the cluster's accounts, and a session it mints is valid on **every** member, because its audience is
+the cluster rather than a machine. The identity design is `../cluster-auth-plan.md` and the sign-in's
+is `../hosted-sign-in-plan.md`; this is what the daemon serves.
 
 | | |
 |---|---|
 | `GET /health` | the ecosystem's liveness probe |
 | `GET /authorize`, `POST /token`, `GET /sign-out` | the OpenID Connect doors; the only way a session is minted, renewed or ended by its holder |
+| `GET /.well-known/jwks.json` | the verification key set |
 | `GET /auth/cluster/users` | every account, to a caller holding any `auth:*` action |
 | `GET /auth/cluster/users/{id}/sessions` | an account's live sessions, on `auth:accounts.disable` |
-| `GET /auth/cluster/public-key` | the verification key set |
+| `GET /auth/cluster/public-key` | the verification key set, for members (KGSM module) |
+
+### The core, and the KGSM module
+
+`Program.cs` composes two halves. **The core** (`TksAuthCore`) is the provider: accounts, sessions,
+the OpenID Connect doors, registered clients, the account page, the admin and authority routes, and
+the journal. **The KGSM module** (`KgsmModule`) is composed beside it only when a KGSM cluster is
+configured — the cluster secret is set, the one switch, read once at start: cluster membership and the
+bus, the DNS member, the standing and the founding claim, the `auth.*` facts members read, replication
+of the account store, members' catalog reports and uninstalls, forgetting a removed member, session
+revocations members hear, and this anchor's own component surface (`/auth/config`, `/auth/logs`, …)
+read from KGSM's descriptor.
+
+With no cluster, tks-auth **founds itself**: an empty store gets the Owner account and its one-time
+password, it holds its own accounts and serves every core door, and it reads and writes nothing under
+`/etc/kgsm` or `/var/lib/kgsm`. Its own `auth:*` actions enter its catalog from the declarations the
+binary carries (`AuthActions.Declared`, which a test holds equal to the manifest the build writes), so
+they are grantable with no manifest on disk. What a write owes other members is settled at once, since
+there are none: a machine that later joins a cluster hands its members a snapshot.
 
 **Sessions are signed asymmetrically, and that is the whole point.** The anchor holds the private
 key; every member verifies with the published public one. A member that could mint what it verifies
@@ -224,7 +245,8 @@ after — the gap between the two is the window the whole mode exists to close. 
 cannot be read stops the daemon: replacing it invalidates every session in the cluster and leaves
 every member checking against a key nothing signs with, so "this anchor has no key yet" and "this
 anchor's key is unreadable" must not take the same path. The public half is served at
-`/auth/cluster/public-key` and `/.well-known/jwks.json`, and gossiped to every member.
+`/.well-known/jwks.json` and, with the KGSM module, at `/auth/cluster/public-key` and gossiped to every
+member.
 
 **Access is evaluated on every request, never read off the token.** The token carries no claim about
 it, so a change of access lands at the caller's next request. The account's standing is re-read on
@@ -316,9 +338,10 @@ mints credentials. The same origins are published as `auth.origins` for every me
 
 ### One member of a cluster
 
-The anchor joins a cluster **directly** — not through a node, not through an API — as a member of
-kind `anchor`. It needs the shared secret in `/etc/kgsm/kgsm-cluster.env` and nothing else; a machine
-with no secret is not part of a cluster, which is a state rather than a misconfiguration.
+With the KGSM module, the anchor joins a cluster **directly** — not through a node, not through an
+API — as a member of kind `anchor`. It needs the shared secret in `/etc/kgsm/kgsm-cluster.env` and
+nothing else; a machine with no secret is not part of a cluster, which is a state rather than a
+misconfiguration.
 
 **Which member holds the accounts is cluster state, not configuration.** When nobody holds them, the
 anchor on the machine that founded the cluster claims them — the machine whose founding record,

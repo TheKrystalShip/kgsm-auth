@@ -153,7 +153,7 @@ internal static class AuthorityEndpoints
         await AuthorityJournaling.JournalAsync(
             ctx.RequestServices.GetRequiredService<AnchorJournal>(), write, caller.Actor!, AnchorJournal.OriginUi,
             member: null, ctx.RequestAborted);
-        await ctx.RequestServices.GetRequiredService<AuthorityBroadcast>().DrainAsync(ctx.RequestAborted);
+        await ctx.RequestServices.GetRequiredService<IAuthorityAnnouncer>().DrainAsync(ctx.RequestAborted);
 
         await Endpoints.WriteJson(ctx, StatusCodes.Status200OK,
             new AuthorityEditResult(write.Version, write.CreatedId, write.Changes.Count),

@@ -60,7 +60,7 @@ internal sealed class AnchorBootstrapper(
         if (FirstAdmin.TryWritePasswordFile(path, FirstAdmin.DefaultUsername, password, out Exception? error))
         {
             logger.LogInformation(
-                "this cluster had no accounts, so the Owner account '{Username}' was created. Its "
+                "the account store was empty, so the Owner account '{Username}' was created. Its "
                 + "one-time password is in {Path} — read it, sign in, and change it; the file is "
                 + "removed on that first sign-in.", FirstAdmin.DefaultUsername, path);
             return;

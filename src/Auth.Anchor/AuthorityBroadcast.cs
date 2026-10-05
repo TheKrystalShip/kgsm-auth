@@ -24,12 +24,12 @@ internal sealed class AuthorityBroadcast(
     IClusterBus bus,
     MemberTargets members,
     AnchorAuthority authority,
-    ILogger<AuthorityBroadcast> logger)
+    ILogger<AuthorityBroadcast> logger) : IAuthorityAnnouncer
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>Send everything owed. Safe from anywhere, at any time; one drain runs at once.</summary>
-    internal async Task DrainAsync(CancellationToken ct)
+    public async Task DrainAsync(CancellationToken ct)
     {
         if (authority.Store is not { } store)
             return;
