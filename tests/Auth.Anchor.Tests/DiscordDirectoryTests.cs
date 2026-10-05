@@ -130,4 +130,53 @@ public class DiscordDirectoryTests
 
         Assert.Equal("Bearer user-token", meAuth);
     }
+
+    // ── Who a token belongs to, for an exchange ──────────────────────────────
+
+    private static Task<DiscordAuthorization?> Authorization(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
+        DiscordDirectory.ReadAuthorizationAsync(new HttpClient(new StubHandler(respond)), "activity-token", default);
+
+    [Fact]
+    public async Task A_token_names_its_application_its_user_and_its_expiry()
+    {
+        string? asked = null;
+        DiscordAuthorization? authorization = await Authorization(r =>
+        {
+            asked = $"{r.RequestUri!.AbsolutePath} {r.Headers.Authorization}";
+            return Json(HttpStatusCode.OK, """
+                {"application":{"id":"777","name":"Activity"},"scopes":["identify"],
+                 "expires":"2026-10-12T10:00:00.000000+00:00",
+                 "user":{"id":"42","username":"haru","global_name":"Haru","avatar":"abc"}}
+                """);
+        });
+
+        Assert.Equal("/api/oauth2/@me Bearer activity-token", asked);
+        Assert.NotNull(authorization);
+        Assert.Equal("777", authorization.ApplicationId);
+        Assert.Equal("discord:42", authorization.Identity.Handle);
+        Assert.Equal("Haru", authorization.Identity.Display);
+        Assert.Equal(new DateTimeOffset(2026, 10, 12, 10, 0, 0, TimeSpan.Zero), authorization.Expires);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    public async Task A_token_Discord_refuses_is_null(HttpStatusCode status) =>
+        Assert.Null(await Authorization(_ => Json(status, """{"message":"401: Unauthorized"}""")));
+
+    [Fact]
+    public async Task A_token_without_identify_names_nobody_and_is_null() =>
+        Assert.Null(await Authorization(_ => Json(HttpStatusCode.OK,
+            """{"application":{"id":"777"},"scopes":["guilds"],"expires":"2026-10-12T10:00:00+00:00"}""")));
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    public async Task A_rate_limit_or_an_outage_throws(HttpStatusCode status) =>
+        await Assert.ThrowsAsync<DiscordAuthException>(() => Authorization(_ => Json(status, "{}")));
+
+    [Fact]
+    public async Task An_unreadable_answer_throws() =>
+        await Assert.ThrowsAsync<DiscordAuthException>(() => Authorization(_ => Json(HttpStatusCode.OK, "not json")));
 }

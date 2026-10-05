@@ -288,6 +288,18 @@
       "risk": "safe"
     },
     {
+      "key": "discordTokenCacheMinutes",
+      "env": "Anchor__DiscordTokenCacheMinutes",
+      "label": "Discord token memory",
+      "description": "How long this provider remembers who a Discord token belongs to when an application exchanges one, so a viewer re-exchanging every few minutes does not ask Discord each time. Never longer than the token itself lives; a token revoked at Discord is still accepted for up to this long. Zero asks Discord every time.",
+      "group": "access",
+      "type": "int",
+      "default": "10",
+      "min": 0,
+      "unit": "minutes",
+      "risk": "safe"
+    },
+    {
       "key": "authorityHeartbeatSeconds",
       "env": "Anchor__AuthorityHeartbeatSeconds",
       "label": "Access heartbeat",

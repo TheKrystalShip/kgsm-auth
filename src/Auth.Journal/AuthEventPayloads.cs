@@ -239,6 +239,32 @@ public static class AuthEventPayloads
             Nullable(w, "Client", clientId);
         };
 
+    /// <summary>A token exchange: who asked, for whom, and what it came to.</summary>
+    /// <param name="client">The client that authenticated and asked.</param>
+    /// <param name="application">The application the token is, or would have been, for.</param>
+    /// <param name="identity">The Discord identity exchanged, as <c>provider:subject</c>, when it is known.</param>
+    /// <param name="userId">The account that identity proves, when one does.</param>
+    /// <param name="username">What that account is called, when one does.</param>
+    /// <param name="actedBy">
+    /// The client acting for the person, when the token names it as actor (RFC 8693 <c>act</c>); null when
+    /// the person presented their own credential.
+    /// </param>
+    /// <param name="reason">Why no token was given — one of <see cref="TokenExchangeRefusals"/> — or null when one was.</param>
+    /// <returns>The payload writer.</returns>
+    public static Action<Utf8JsonWriter> TokenExchange(
+        string client, string application, string? identity, string? userId, string? username,
+        string? actedBy, string? reason) =>
+        w =>
+        {
+            w.WriteString("Client", client ?? string.Empty);
+            w.WriteString("Application", application ?? string.Empty);
+            Nullable(w, "Identity", identity);
+            Nullable(w, "UserId", userId);
+            Nullable(w, "Username", username);
+            Nullable(w, "ActedBy", actedBy);
+            Nullable(w, "Reason", reason);
+        };
+
     private static void Strings(Utf8JsonWriter writer, string name, IReadOnlyList<string> values)
     {
         writer.WriteStartArray(name);

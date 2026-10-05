@@ -127,6 +127,10 @@ internal static class TksAuthCore
         // The address the callbacks are built from is the configured one, or — with the module — the
         // name a cluster's DNS anchor assigned; with neither registered the sequence is empty.
         services.AddHttpClient(nameof(DiscordDirectory), c => c.Timeout = TimeSpan.FromSeconds(10));
+
+        // Who a Discord token an application exchanges belongs to, remembered for its life up to a cap,
+        // on the same typed client.
+        services.AddSingleton<DiscordAuthorizations>();
         services.AddSingleton(sp => new AnchorAddress(
             sp.GetRequiredService<AnchorOptions>(),
             sp.GetServices<ISelfAddressSource>()));

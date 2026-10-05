@@ -100,6 +100,45 @@ public static class AuthEvents
 
     /// <summary>A client was given a new secret, ending the one it held.</summary>
     public const string ClientSecretRotated = "auth.application.secret.rotated";
+
+    /// <summary>
+    /// A client exchanged a Discord credential for an access token naming an account (RFC 8693).
+    /// </summary>
+    public const string TokenExchanged = "auth.token.exchanged";
+
+    /// <summary>
+    /// An authenticated client asked for an exchange and was given no token, for the reason the line
+    /// carries — one of <see cref="TokenExchangeRefusals"/>.
+    /// </summary>
+    public const string TokenExchangeRefused = "auth.token.exchange_refused";
+}
+
+/// <summary>
+/// Why an exchange gave no token, as <c>auth.token.exchange_refused</c> carries it.
+/// </summary>
+/// <remarks>
+/// One name for the fact that a client asked and was refused, with the reason riding on the line where a
+/// reader can filter on it.
+/// </remarks>
+public static class TokenExchangeRefusals
+{
+    /// <summary>Discord does not recognise the token, or it does not say who it belongs to.</summary>
+    public const string SubjectInvalid = "subject_invalid";
+
+    /// <summary>The token was issued by a Discord application the client may not present.</summary>
+    public const string DiscordApplication = "discord_application";
+
+    /// <summary>The client's application is not registered for this kind of exchange.</summary>
+    public const string ClientNotAllowed = "client_not_allowed";
+
+    /// <summary>No account holds the Discord identity, and none was made for it.</summary>
+    public const string AccountUnknown = "account_unknown";
+
+    /// <summary>The account is waiting on an administrator's approval.</summary>
+    public const string AccountPending = "account_pending";
+
+    /// <summary>The account is switched off.</summary>
+    public const string AccountDisabled = "account_disabled";
 }
 
 /// <summary>

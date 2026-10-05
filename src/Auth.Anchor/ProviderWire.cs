@@ -79,6 +79,22 @@ internal sealed record OAuthError(
     [property: JsonPropertyName("error")] string Error,
     [property: JsonPropertyName("error_description")] string? ErrorDescription);
 
+/// <summary>What a token exchange at <c>/token</c> answers with (RFC 8693 §2.2.1). It carries no refresh token.</summary>
+internal sealed record TokenExchangeResponse(
+    [property: JsonPropertyName("access_token")] string AccessToken,
+    [property: JsonPropertyName("issued_token_type")] string IssuedTokenType,
+    [property: JsonPropertyName("token_type")] string TokenType,
+    [property: JsonPropertyName("expires_in")] long ExpiresIn);
+
+/// <summary>
+/// An exchange refused because of the account the Discord identity leads to: <c>invalid_grant</c> with
+/// the extension parameter <c>account_status</c> (RFC 6749 §5.2), which a caller words for the person.
+/// </summary>
+internal sealed record OAuthAccountError(
+    [property: JsonPropertyName("error")] string Error,
+    [property: JsonPropertyName("error_description")] string? ErrorDescription,
+    [property: JsonPropertyName("account_status")] string AccountStatus);
+
 /// <summary>The account as the bearer's session sees it.</summary>
 internal sealed record UserInfoResponse(
     [property: JsonPropertyName("sub")] string Sub,

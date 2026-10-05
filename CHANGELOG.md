@@ -7,6 +7,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — token exchange for Discord surfaces (daemon 4.3.0, journal 3.2.0, testing 2.2.0)
+
+- **`/token` takes `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693)** from an authenticated
+  confidential client of an application outside KGSM; discovery lists it. A public client is
+  `unauthorized_client`, a client that does not authenticate `invalid_client`, a KGSM client
+  `unauthorized_client`. The answer is RFC 8693 §2.2.1's: `access_token`, `issued_token_type`
+  (`urn:ietf:params:oauth:token-type:access_token`), `token_type` `Bearer`, `expires_in` — no refresh
+  token and no session.
+- **A Discord access token** (`urn:tks:params:oauth:token-type:discord-access-token`): Discord's
+  `oauth2/@me` says whose it is and which Discord application holds it; one from an application the
+  client's application does not list is `invalid_grant`. The identity resolves to its account, or an
+  unknown one is provisioned pending under the Discord sign-in's rule and cap.
+- **Acting for a Discord user** (`urn:tks:params:oauth:token-type:discord-user-id`), for an application
+  registered to act for Discord users: the token names the account and carries
+  `act: {"sub": "<client id>"}`. An unknown id is not provisioned.
+- **A pending, disabled or unknown account is `invalid_grant` with `account_status`** (`pending`,
+  `disabled`, `unknown`), never a token.
+- **What Discord says about a token is held** for the token's remaining life, at most
+  `DiscordTokenCacheMinutes` (10), keyed by its SHA-256 and bounded in size; refusals and outages are
+  never held.
+- **`Auth.Journal`** names `auth.token.exchanged` and `auth.token.exchange_refused`, with the
+  `TokenExchange` payload (`Client`, `Application`, `Identity`, `UserId`, `Username`, `ActedBy`, `Reason`)
+  and the reasons in `TokenExchangeRefusals`.
+- **`Auth.Testing`** mints an application's access token with no session (`ApplicationAccess.SessionId`
+  null leaves out `sid`) and with an actor (`ApplicationAccess.Actor`, `ApplicationClaims.Actor`).
+
 ### Added — applications, their audiences and the actions claim (daemon 4.2.0, access 2.1.0, journal 3.1.0, testing 2.1.0)
 
 - **The client registry is an application registry.** An application has an id (its action namespace),

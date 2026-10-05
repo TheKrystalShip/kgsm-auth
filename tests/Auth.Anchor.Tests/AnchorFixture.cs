@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 
 using TheKrystalShip.Auth.Users;
 using TheKrystalShip.KGSM.Cluster;
@@ -119,7 +120,12 @@ public sealed class AnchorFixture : IDisposable
 
         Store = new SqliteAuthorityStore(new UserStoreOptions { Path = Path.Combine(Root, "users.db") });
 
-        _factory = new WebApplicationFactory<Program>();
+        // Discord, answered in process. The provider door's tests are decided before Discord would be
+        // reached; a token exchange asks it who a token belongs to, and a test says what it answers.
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services => services
+                .AddHttpClient(nameof(DiscordDirectory))
+                .ConfigurePrimaryHttpMessageHandler(() => Discord)));
         Client = _factory.CreateClient();
 
         // A clustered anchor starts standing by and becomes the holder once it has read the
@@ -140,6 +146,9 @@ public sealed class AnchorFixture : IDisposable
 
     /// <summary>A client onto the running anchor.</summary>
     public HttpClient Client { get; }
+
+    /// <summary>What the running anchor reaches when it calls <c>discord.com</c>.</summary>
+    public FakeDiscord Discord { get; } = new();
 
     /// <summary>Something out of the running daemon's own service graph.</summary>
     public T Service<T>() => (T)_factory.Services.GetService(typeof(T))!;
@@ -325,6 +334,76 @@ public sealed class AnchorFixture : IDisposable
         {
             // A file the daemon still holds open. The temp tree is disposable either way.
         }
+    }
+}
+
+/// <summary>
+/// Discord's <c>GET /oauth2/@me</c>, as a test sets it up: each access token answers with the
+/// application it was issued to and the user it belongs to, or with a status.
+/// </summary>
+/// <remarks>
+/// It counts every question per token, which is how a test tells an answer held by the provider from
+/// one it asked for again. A token nobody set up is one Discord does not honour.
+/// </remarks>
+public sealed class FakeDiscord : HttpMessageHandler
+{
+    private readonly Dictionary<string, Func<HttpResponseMessage>> _answers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _asked = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// <paramref name="token"/> belongs to <paramref name="userId"/> and was issued to
+    /// <paramref name="application"/>, living until <paramref name="expires"/> (an hour when absent).
+    /// </summary>
+    public void Issue(string token, string application, string userId, string username, DateTimeOffset? expires = null)
+    {
+        string json = JsonSerializer.Serialize(new
+        {
+            application = new { id = application, name = "Activity " + application },
+            scopes = new[] { "identify" },
+            expires = (expires ?? DateTimeOffset.UtcNow.AddHours(1)).ToString("O"),
+            user = new { id = userId, username, global_name = username.ToUpperInvariant(), avatar = (string?)null },
+        });
+        Answer(token, () => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        });
+    }
+
+    /// <summary><paramref name="token"/> is answered with <paramref name="status"/> and no body worth reading.</summary>
+    public void Fail(string token, System.Net.HttpStatusCode status) =>
+        Answer(token, () => new HttpResponseMessage(status) { Content = new StringContent("{}") });
+
+    /// <summary>How many times Discord has been asked about <paramref name="token"/>.</summary>
+    public int Asked(string token)
+    {
+        lock (_answers)
+            return _asked.GetValueOrDefault(token);
+    }
+
+    private void Answer(string token, Func<HttpResponseMessage> answer)
+    {
+        lock (_answers)
+            _answers[token] = answer;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        string token = request.Headers.Authorization?.Parameter ?? "";
+        Func<HttpResponseMessage>? answer;
+        lock (_answers)
+        {
+            _asked[token] = _asked.GetValueOrDefault(token) + 1;
+            _answers.TryGetValue(token, out answer);
+        }
+
+        if (request.RequestUri?.AbsolutePath != "/api/oauth2/@me" || answer is null)
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized) { Content = new StringContent("{}") });
+        return Task.FromResult(answer());
+    }
+
+    // The client factory disposes the handler chain it built; this one outlives every chain it is put in.
+    protected override void Dispose(bool disposing)
+    {
     }
 }
 

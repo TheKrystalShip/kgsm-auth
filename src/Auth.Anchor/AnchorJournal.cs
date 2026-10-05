@@ -74,6 +74,12 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
     /// </remarks>
     internal const string OriginUi = "ui";
 
+    /// <summary>
+    /// A person in Discord, reached through an application that exchanged a Discord credential here — an
+    /// Activity presenting their token, or a bot acting for them.
+    /// </summary>
+    internal const string OriginDiscord = "discord";
+
     /// <summary>Record a session beginning or ending.</summary>
     /// <remarks>
     /// The actor is the identity that arrived, not this anchor: nobody else was involved in a sign-in,
@@ -163,6 +169,18 @@ internal sealed class AnchorJournal(IEventJournalWriter writer, ILogger<AnchorJo
     internal Task ApplicationAsync(
         string type, string id, string? name, string? clientId, string actor, string? origin, CancellationToken ct = default) =>
         WriteAsync(type, actor, origin, AuthEventPayloads.Application(id, name, clientId), ct);
+
+    /// <summary>Record a token exchange given a token, or refused one for <paramref name="reason"/>.</summary>
+    /// <remarks>
+    /// The actor is the person the exchange is for, as far as it is known: whoever holds the Discord
+    /// identity. The client that asked, and the one acting for them, ride in the payload.
+    /// </remarks>
+    internal Task TokenExchangeAsync(
+        string client, string application, string? identity, string? userId, string? username,
+        string? actedBy, string? reason, string actor, CancellationToken ct = default) =>
+        WriteAsync(
+            reason is null ? AuthEvents.TokenExchanged : AuthEvents.TokenExchangeRefused, actor, OriginDiscord,
+            AuthEventPayloads.TokenExchange(client, application, identity, userId, username, actedBy, reason), ct);
 
     /// <summary>Append one line, saying what was lost if it cannot.</summary>
     /// <remarks>

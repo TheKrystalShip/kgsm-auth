@@ -137,6 +137,10 @@ A login answers three different things and they must not be collapsed:
 | `4xx` from the token endpoint | an expired, replayed or forged code | `null` — a `401`, start again |
 | `5xx`, unreachable, malformed | **unknown** | `DiscordAuthException` — a `502` |
 
+A token exchange asks Discord the same kind of question and keeps the same three answers: `oauth2/@me`
+naming a user is an identity, a `401`/`403` is `invalid_grant`, and a `429`, a `5xx` or no answer is
+`temporarily_unavailable` with a `502`.
+
 The third is the one that matters. "We could not ask" is not "the answer is no": a door that reads
 an outage as a verdict either locks out someone who really does hold the role or admits someone who
 does not. The same rule holds one layer down — a store that cannot be read throws rather than
@@ -276,7 +280,7 @@ browser-facing URL (`https://auth.anchors.example.com`); with anything else ever
 | `GET /authorize/context` | what the pages draw for the request in flight: the client, the providers, whether registration is open |
 | `POST /authorize/register` | make an account against the request in flight, same-origin only; the wait follows |
 | `GET /authorize/{provider}` | an external provider's round trip for the request in flight |
-| `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token`. A confidential client authenticates by `client_secret_basic` or `client_secret_post` |
+| `POST /token` | `authorization_code` or `refresh_token`; access, refresh and `id_token`. A confidential client authenticates by `client_secret_basic` or `client_secret_post`, and may exchange a Discord credential for an access token (see [Exchanging a Discord credential](#exchanging-a-discord-credential)) |
 | `GET /userinfo` | the account behind a KGSM bearer |
 | `GET /sign-out`, `POST /sign-out` | end a browser's sign-in and everything minted under it; asks without a hint |
 | `GET/POST /auth/cluster/clients`, `DELETE /auth/cluster/clients/{id}` | KGSM's clients, on `auth:config.read` and `auth:config.write` |
@@ -385,6 +389,62 @@ when it is registered, when the address changes and every `Anchor__ManifestRefre
 are held under `application:<id>` beside every member's report and arrive unmapped. A manifest in another
 namespace, in a KGSM component's, or declaring requirements is refused whole, and one that cannot be read
 changes nothing.
+
+### Exchanging a Discord credential
+
+An application whose surfaces live in Discord gets its tokens by **token exchange** (RFC 8693) at
+`/token`, from one of its confidential clients — never from a public one, and never for KGSM:
+
+```http
+POST /token
+Authorization: Basic <client id:secret>
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+&subject_token=<subject>
+&subject_token_type=<one of the two below>
+```
+
+| `subject_token_type` | `subject_token` | the client's application must | the token |
+|---|---|---|---|
+| `urn:tks:params:oauth:token-type:discord-access-token` | a Discord access token with `identify` — an Activity's | list the Discord application it was issued to (`--discord-app`) | names the person |
+| `urn:tks:params:oauth:token-type:discord-user-id` | a Discord user id — whoever invoked a bot | act for Discord users (`--act-for-discord`) | names the person, with `act: {"sub": "<client id>"}` |
+
+For a Discord token, the provider asks Discord's `oauth2/@me` whose it is and which Discord application
+holds it; it never holds that application's secret. The Discord identity resolves to the account it is
+attached to, and an active account gets the application's access token exactly as a sign-in would mint it
+— `at+jwt`, its audience, its lifetime, `tks_actions` — answered as RFC 8693 §2.2.1 says:
+
+```json
+{ "access_token": "…", "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+  "token_type": "Bearer", "expires_in": 300 }
+```
+
+There is no refresh token and no session: the holder exchanges again before it runs out. `audience` may
+name the application's own and `requested_token_type` the access-token type; a `resource`, a `scope`, an
+actor token or anything else asked for is refused (`invalid_target`, `invalid_scope`, `invalid_request`).
+
+**An account that is not active is told why, never given a token.** The answer is `invalid_grant` with
+the extension parameter `account_status`:
+
+| `account_status` | means |
+|---|---|
+| `pending` | the account waits on an administrator's approval |
+| `disabled` | the account is switched off |
+| `unknown` | no account holds the Discord identity |
+
+A Discord token whose identity nobody holds makes a **pending** account, under the same rule and cap a
+Discord sign-in here does. A Discord id alone makes nothing — learning who an id is would take a bot
+token — so it is `unknown` until the person signs in or links the identity.
+
+**What Discord says about a token is remembered for the token's life, at most
+`Anchor__DiscordTokenCacheMinutes` (10)**, under the token's SHA-256, so an Activity re-exchanging every
+few minutes asks Discord once. A refusal or an outage is never remembered. A token revoked at Discord is
+still exchanged for up to that cap.
+
+Every exchange an authenticated client asks for is journaled — `auth.token.exchanged`, or
+`auth.token.exchange_refused` with its reason — with the client, the application, the Discord identity,
+the account and the acting client.
 
 ### One member of a cluster
 

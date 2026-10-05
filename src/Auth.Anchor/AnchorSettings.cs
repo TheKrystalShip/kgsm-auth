@@ -62,6 +62,18 @@ internal sealed class AnchorSettings
         Min = Floors.ManifestRefreshMinutes, Unit = "minutes")]
     public int? ManifestRefreshMinutes { get; set; }
 
+    /// <summary>
+    /// The longest Discord's answer about one of its access tokens is held for a token exchange. Zero asks
+    /// Discord on every exchange.
+    /// </summary>
+    /// <panel>How long this provider remembers who a Discord token belongs to when an application exchanges
+    /// one, so a viewer re-exchanging every few minutes does not ask Discord each time. Never longer than
+    /// the token itself lives; a token revoked at Discord is still accepted for up to this long. Zero asks
+    /// Discord every time.</panel>
+    [ConfigField("discordTokenCacheMinutes", "Discord token memory", Group = "access", Risk = ConfigRisk.Safe,
+        Min = 0, Unit = "minutes")]
+    public int? DiscordTokenCacheMinutes { get; set; }
+
     /// <summary>Whether somebody with no account may make one.</summary>
     /// <panel>Whether a person with no account can create one from the sign-in page. The account they
     /// get holds nothing until somebody grants it something, and the limit below bounds how

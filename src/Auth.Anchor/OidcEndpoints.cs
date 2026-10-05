@@ -62,7 +62,7 @@ internal static class OidcEndpoints
             EndSessionEndpoint: issuer + "/sign-out",
             ResponseTypesSupported: ["code"],
             ResponseModesSupported: ["query"],
-            GrantTypesSupported: ["authorization_code", "refresh_token"],
+            GrantTypesSupported: ["authorization_code", "refresh_token", TokenExchange.GrantType],
             SubjectTypesSupported: ["public"],
             IdTokenSigningAlgValuesSupported: ["ES256"],
             ScopesSupported: ["openid"],
@@ -535,7 +535,8 @@ internal static class OidcEndpoints
     // ── Token ─────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// <c>POST /token</c>: exchange a code for a session, or rotate one.
+    /// <c>POST /token</c>: exchange a code for a session, rotate one, or exchange a Discord credential for
+    /// an application's access token (<see cref="TokenExchange"/>).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -550,8 +551,8 @@ internal static class OidcEndpoints
     /// cluster for KGSM — and the <c>id_token</c> beside it is the client's.
     /// </para>
     /// <para>
-    /// The client is authenticated before either grant is looked at, so a client that fails to prove its
-    /// secret never reaches a code or a session.
+    /// The client is authenticated before any grant is looked at, so a client that fails to prove its
+    /// secret never reaches a code, a session or Discord.
     /// </para>
     /// </remarks>
     internal static async Task Token(HttpContext ctx)
@@ -606,9 +607,13 @@ internal static class OidcEndpoints
                 await RefreshAsync(ctx, form, auth);
                 return;
 
+            case TokenExchange.GrantType:
+                await TokenExchange.ExchangeAsync(ctx, form, auth);
+                return;
+
             default:
                 await OAuthErrorAsync(ctx, StatusCodes.Status400BadRequest, "unsupported_grant_type",
-                    "The grants served are authorization_code and refresh_token.");
+                    $"The grants served are authorization_code, refresh_token and {TokenExchange.GrantType}.");
                 return;
         }
     }
@@ -1185,7 +1190,7 @@ internal static class OidcEndpoints
     /// readers is how one of them is fooled.</remarks>
     private static string? Single(IQueryCollection q, string name) => One(q[name]);
 
-    private static string? Single(IFormCollection f, string name) => One(f[name]);
+    internal static string? Single(IFormCollection f, string name) => One(f[name]);
 
     private static string? One(StringValues values) =>
         values.Count == 1 && !string.IsNullOrEmpty(values[0]) ? values[0] : null;

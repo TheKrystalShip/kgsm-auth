@@ -41,7 +41,10 @@ public sealed record RefreshClaims(KgsmIdentity Identity, string SessionId, stri
 /// <param name="Username">The account's username, as <c>preferred_username</c>.</param>
 /// <param name="DisplayName">What the account is shown as, as <c>name</c>.</param>
 /// <param name="Picture">The account's picture, when one is known.</param>
-/// <param name="SessionId">The session it is scoped to.</param>
+/// <param name="SessionId">
+/// The session it is scoped to, carried as <c>sid</c>; null for a token minted by an exchange, which
+/// belongs to no session and is never refreshed.
+/// </param>
 /// <param name="ClientId">The client it was minted for.</param>
 /// <param name="Audience">The application's audience, the one string its resource server checks.</param>
 /// <param name="Lifetime">How long it lives: the application's, never KGSM's.</param>
@@ -54,11 +57,18 @@ public sealed record ApplicationAccess(
     string Username,
     string DisplayName,
     string? Picture,
-    string SessionId,
+    string? SessionId,
     string ClientId,
     string Audience,
     TimeSpan Lifetime,
-    IReadOnlyList<string> Actions);
+    IReadOnlyList<string> Actions)
+{
+    /// <summary>
+    /// The client acting for the account, carried as <c>act</c> (RFC 8693 §4.1) — <c>{"sub": "&lt;client id&gt;"}</c> —
+    /// or null when the account's holder is the one presenting it.
+    /// </summary>
+    public string? Actor { get; init; }
+}
 
 /// <summary>The claims an access token for an application outside KGSM carries beyond the registered ones.</summary>
 public static class ApplicationClaims
@@ -74,6 +84,12 @@ public static class ApplicationClaims
 
     /// <summary>The JWT <c>typ</c> of an access token (RFC 9068), which no id token carries.</summary>
     public const string AccessTokenType = "at+jwt";
+
+    /// <summary>
+    /// Who is acting for the subject (RFC 8693 §4.1): an object whose <c>sub</c> is the acting client's id.
+    /// A resource server holding a token with it is being called by that client on the subject's behalf.
+    /// </summary>
+    public const string Actor = "act";
 }
 
 /// <summary>How the anchor mints session tokens.</summary>
@@ -221,14 +237,17 @@ public sealed class SessionTokenService : ISessionTokenService
             ["sub"] = access.Subject,
             [ApplicationClaims.ClientId] = access.ClientId,
             [KgsmAuthClaims.TokenKind] = KgsmTokenKind.Access,
-            [KgsmAuthClaims.SessionId] = access.SessionId,
             [KgsmAuthClaims.Jti] = jti,
             ["preferred_username"] = access.Username,
             ["name"] = access.DisplayName,
             [ApplicationClaims.Actions] = access.Actions.ToArray(),
         };
+        if (access.SessionId is not null)
+            claims[KgsmAuthClaims.SessionId] = access.SessionId;
         if (access.Picture is not null)
             claims["picture"] = access.Picture;
+        if (access.Actor is not null)
+            claims[ApplicationClaims.Actor] = new Dictionary<string, object>(StringComparer.Ordinal) { ["sub"] = access.Actor };
 
         string token = _handler.CreateToken(new SecurityTokenDescriptor
         {

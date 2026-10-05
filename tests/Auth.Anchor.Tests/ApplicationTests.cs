@@ -650,7 +650,7 @@ public sealed class ApplicationTests(AnchorFixture anchor) : IAsyncLifetime
     }
 
     /// <summary>Serves manifests on the loopback, as an application serves its own.</summary>
-    private sealed class ManifestServer : IAsyncDisposable
+    internal sealed class ManifestServer : IAsyncDisposable
     {
         private readonly WebApplication _app;
         private readonly Dictionary<string, string> _documents = new(StringComparer.Ordinal);

@@ -116,7 +116,8 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
 - **A sign-in is recorded where a session is minted, which is one place.** `MintSessionFor`, reached
   only from the code exchange at `/token`, and every session it mints lives under a provider session. A
   second mint site is a second place to forget the line, and forgetting is silent: the person is signed
-  in and nothing says so.
+  in and nothing says so. The token exchange mints no session; it records `auth.token.exchanged` where it
+  mints, its one place.
 - **One line per fact that changed, never one per request**, and only when the action actually
   happened. A patch that changes an account's status writes its line; one that changes nothing writes none;
   a sign-out for a session that had already ended writes none. An access review reads for one fact at
@@ -271,6 +272,38 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   nothing, so an application whose server is briefly down keeps every grant. Reports from the bus are
   members', never an application's.
 
+## The token exchange (`TokenExchange`, `DiscordAuthorizations`)
+
+- **`/token` takes `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693) from an authenticated
+  confidential client of an application outside KGSM, and from nothing else.** A public client is
+  `unauthorized_client`; one that does not prove its secret, or names none, is `invalid_client`. KGSM's
+  clients are refused: a KGSM session lives under a browser's sign-in, and an exchange has none.
+- **Two subject token types, defined here.** `urn:tks:params:oauth:token-type:discord-access-token` is a
+  Discord access token: Discord's `oauth2/@me` says whose it is and which Discord application holds it,
+  and one from an application not in the client's application's `DiscordApplications` is
+  `invalid_grant`. `urn:tks:params:oauth:token-type:discord-user-id` is a snowflake from a client whose
+  application `ActForDiscord`; the token it gets carries `act: {"sub": "<client id>"}`. An application
+  registered for neither kind is `unauthorized_client`. Never add a third type that takes a Discord
+  identity on a client's word without either a token Discord vouches for or the act-for flag.
+- **The token is the code flow's for that application, minus the session.** `at+jwt`, its audience, its
+  lifetime, `tks_actions` evaluated at this mint, the account as `sub` — no `sid`, no refresh token, no
+  `id_token`. The holder exchanges again; an Activity already holds the Discord token it exchanges.
+- **The account decides the answer.** Only an active account gets a token. Pending, disabled and unknown
+  are `invalid_grant` with the extension parameter `account_status` (`pending`, `disabled`, `unknown`),
+  which the caller words for the person — never a token, never a bare error it has to guess at.
+- **A Discord token nobody holds provisions a pending account; a Discord id does not.** The first runs
+  `IdentityLinkService.ResolveOrProvisionAsync` under `Anchor__Pending*`, the rule and cap a Discord
+  sign-in here uses, and journals the same `user.provisioned` and `identity.linked`. A bare id cannot be
+  provisioned: learning who an id is needs a bot token, which this provider never holds.
+- **Every exchange an authenticated client asks for is a line** — `auth.token.exchanged` or
+  `auth.token.exchange_refused` with its reason — naming the client, the application, the Discord
+  identity, the account and the acting client, origin `discord`. An outage at Discord or the store
+  decides nothing and writes nothing.
+- **What Discord says about a token is held for the token's life, capped at
+  `Anchor__DiscordTokenCacheMinutes`.** Keyed by the token's SHA-256, never the token; bounded by entry
+  count; a refusal and an outage are never held. The cap is how long a token revoked at Discord is still
+  exchanged here, so it is a setting and not a constant.
+
 ## The Discord round trip (`DiscordDirectory`, `OAuthHandshake`)
 
 - **It answers who, and only who.** `DiscordDirectory` is an `IIdentityProvider` and stays the only
@@ -279,8 +312,13 @@ by project reference. Its own design authority is `../cluster-auth-plan.md`, its
   takes no bot token: what a person may do is the account store's answer, and a login here proves one
   fact — that the caller holds this subject at Discord. `DiscordAuthException` derives from
   `KgsmAuthProviderException` so a caller handles any provider's outage identically.
-- **The caller's token buys one thing and is dropped.** It is presented to `users/@me` and never
-  stored, so a completed login leaves the host holding no credential at Discord at all.
+- **The exchange asks it too, with no application of this provider's.**
+  `DiscordDirectory.ReadAuthorizationAsync` presents a token another Discord application was issued to
+  `oauth2/@me` on the same typed client and reads the answer through source-generated metadata. A
+  `401`/`403`, or a token without `identify`, is `null`; a `429`, a `5xx`, an unreachable host or an
+  unreadable body throws.
+- **The caller's token buys one thing and is dropped.** It is presented to `users/@me` or `oauth2/@me`
+  and never stored, so a completed login or exchange leaves the host holding no credential at Discord.
 - **Register it transient, and resolve it once per composition.** It is a typed `HttpClient`; holding
   one in a singleton pins a handler for the process lifetime and silently stops the factory rotating
   it, so DNS changes never land. The composition resolves the client once and hands the same instance

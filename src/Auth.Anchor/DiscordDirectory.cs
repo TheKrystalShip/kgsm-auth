@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TheKrystalShip.Auth.Anchor;
 
@@ -26,6 +27,33 @@ public sealed class DiscordAuthException(string message, Exception? inner = null
 /// else, and no scope Discord can grant says what they may do on a KGSM host.
 /// </param>
 public sealed record DiscordOAuthEndpoints(string RedirectUri, string Scopes = "identify");
+
+/// <summary>What Discord says about one of its access tokens.</summary>
+/// <param name="ApplicationId">The Discord application the token was issued to.</param>
+/// <param name="Identity">The Discord user it belongs to, as <c>discord:&lt;id&gt;</c>.</param>
+/// <param name="Expires">When Discord stops honouring it.</param>
+public sealed record DiscordAuthorization(string ApplicationId, KgsmIdentity Identity, DateTimeOffset Expires);
+
+/// <summary>The body of Discord's <c>GET /oauth2/@me</c>, as much of it as is read.</summary>
+internal sealed record DiscordAuthorizationWire(
+    [property: JsonPropertyName("application")] DiscordApplicationWire? Application,
+    [property: JsonPropertyName("scopes")] IReadOnlyList<string>? Scopes,
+    [property: JsonPropertyName("expires")] DateTimeOffset? Expires,
+    [property: JsonPropertyName("user")] DiscordUserWire? User);
+
+/// <summary>The application a Discord token was issued to.</summary>
+internal sealed record DiscordApplicationWire([property: JsonPropertyName("id")] string? Id);
+
+/// <summary>The user a Discord token belongs to, present when it carries <c>identify</c>.</summary>
+internal sealed record DiscordUserWire(
+    [property: JsonPropertyName("id")] string? Id,
+    [property: JsonPropertyName("username")] string? Username,
+    [property: JsonPropertyName("global_name")] string? GlobalName,
+    [property: JsonPropertyName("avatar")] string? Avatar);
+
+/// <summary>Serializer metadata for what is read from Discord, so nothing is reflected over under AOT.</summary>
+[JsonSerializable(typeof(DiscordAuthorizationWire))]
+internal sealed partial class DiscordJsonContext : JsonSerializerContext;
 
 /// <summary>
 /// The one chokepoint to <c>discord.com</c>. Everything the anchor asks Discord goes through here,
@@ -151,6 +179,77 @@ public sealed class DiscordDirectory(
                 display,
                 avatarHash is null ? null : $"https://cdn.discordapp.com/avatars/{userId}/{avatarHash}.png",
                 [.. endpoints.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries)]);
+        }
+    }
+
+    /// <summary>
+    /// Who a Discord access token belongs to and which Discord application issued it, as Discord's
+    /// <c>GET /oauth2/@me</c> answers for the bearer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It needs no application of this provider's: the token is its own credential, issued to somebody
+    /// else's Discord application, and this provider never holds that application's secret. That is why
+    /// it is static and takes only the typed client.
+    /// </para>
+    /// <para>
+    /// <b>A token Discord refuses is <see langword="null"/>; an outage throws.</b> A <c>401</c> or
+    /// <c>403</c> is a token that is expired, revoked or forged — the caller's problem. A token without the
+    /// <c>identify</c> scope names no user, and is the same answer: it cannot say who it belongs to. A
+    /// <c>5xx</c>, a rate limit, an unreachable host or an unreadable body is
+    /// <see cref="DiscordAuthException"/>: "we could not ask" is not "the answer is no".
+    /// </para>
+    /// </remarks>
+    public static async Task<DiscordAuthorization?> ReadAuthorizationAsync(
+        HttpClient http, string accessToken, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiBase}/oauth2/@me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await http.SendAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            throw new DiscordAuthException("Discord oauth2/@me endpoint unreachable.", ex);
+        }
+
+        using (response)
+        {
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                return null;
+            if (!response.IsSuccessStatusCode)
+                throw new DiscordAuthException($"Discord oauth2/@me returned {(int)response.StatusCode}.");
+
+            DiscordAuthorizationWire? wire;
+            try
+            {
+                wire = JsonSerializer.Deserialize(
+                    await response.Content.ReadAsStringAsync(ct), DiscordJsonContext.Default.DiscordAuthorizationWire);
+            }
+            catch (JsonException ex)
+            {
+                throw new DiscordAuthException("Discord returned malformed JSON.", ex);
+            }
+
+            if (wire?.Application?.Id is not { Length: > 0 } applicationId || wire.Expires is not { } expires)
+                throw new DiscordAuthException("Discord oauth2/@me named no application or expiry.");
+            if (wire.User?.Id is not { Length: > 0 } userId)
+                return null;
+
+            string username = wire.User.Username ?? userId;
+            return new DiscordAuthorization(
+                applicationId,
+                new KgsmIdentity(
+                    KgsmActorProvider.Discord,
+                    userId,
+                    username,
+                    wire.User.GlobalName ?? username,
+                    wire.User.Avatar is { } avatar ? $"https://cdn.discordapp.com/avatars/{userId}/{avatar}.png" : null,
+                    [.. wire.Scopes ?? []]),
+                expires);
         }
     }
 

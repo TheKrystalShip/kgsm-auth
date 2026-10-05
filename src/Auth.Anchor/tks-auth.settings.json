@@ -116,7 +116,11 @@
 
     // How often every registered application's action manifest is read again from where it serves
     // it. Registering an application, or changing where its manifest is, reads it at once.
-    "ManifestRefreshMinutes": 15
+    "ManifestRefreshMinutes": 15,
+
+    // The longest Discord's answer about one of its access tokens is held when an application exchanges
+    // it, never past the token's own expiry. Zero asks Discord on every exchange.
+    "DiscordTokenCacheMinutes": 10
   },
 
   "Logging": {

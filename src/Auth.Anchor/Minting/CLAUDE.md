@@ -17,7 +17,8 @@ the anchor would mint.
   to the cluster and carrying no claim about access. `MintApplicationAccess` mints an application's
   access token from an `ApplicationAccess` — its audience, its lifetime, `client_id`, the account as
   `sub`, and `ApplicationClaims.Actions` (`tks_actions`) as an array however many it holds — typed
-  `at+jwt`; `MintApplicationRefresh` audiences an application's refresh token to the issuer, the one
+  `at+jwt`, with `sid` only when it belongs to a session and `act` (`ApplicationClaims.Actor`, RFC 8693
+  §4.1) only when a client acts for the account; `MintApplicationRefresh` audiences an application's refresh token to the issuer, the one
   place it is presented. `ReadRefreshAsync` accepts either refresh audience and reports which in
   `RefreshClaims.Audience`; `ValidationParameters`, the bearer check, accepts only the cluster's.
 - **The files stay free of anything only the anchor has.** `Auth.Testing` compiles them against

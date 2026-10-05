@@ -238,6 +238,8 @@ internal sealed record SessionRevoke(string Scope, string Sid);
 [JsonSerializable(typeof(OidcDiscovery))]
 [JsonSerializable(typeof(TokenResponse))]
 [JsonSerializable(typeof(OAuthError))]
+[JsonSerializable(typeof(TokenExchangeResponse))]
+[JsonSerializable(typeof(OAuthAccountError))]
 [JsonSerializable(typeof(UserInfoResponse))]
 [JsonSerializable(typeof(CredentialAnswer))]
 [JsonSerializable(typeof(ClientsPage))]
